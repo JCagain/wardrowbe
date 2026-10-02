@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>词表颜色预览（临时）</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px;
+    background: #f6f6f7; color: #1c1c1e;
+    font: 14px/1.6 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #6e6e73; margin-bottom: 28px; }
+  h2 { font-size: 15px; margin: 28px 0 10px; font-weight: 600; }
+  h2 .fam-slug { color: #8e8e93; font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+  .swatch {
+    border-radius: 10px; overflow: hidden;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+  }
+  .chip { height: 72px; display: flex; align-items: flex-end; padding: 8px 10px; }
+  .chip .hex {
+    font: 11px/1 ui-monospace, Menlo, Consolas, monospace;
+    opacity: .85;
+  }
+  .meta { padding: 8px 10px 10px; }
+  .name { font-weight: 600; }
+  .slug { color: #8e8e93; font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .strip { height: 10px; border-radius: 6px; margin: -2px 0 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+  footer { margin-top: 36px; color: #8e8e93; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>词表颜色预览</h1>
+  <div class="sub">9 色系 · 48 色 —— 来源 <code>docs/specs/vocabulary.md</code>（临时预览页，可随手删）</div>
+  <div id="app"></div>
+  <footer>hex 为词表当前值；深浅文字色按底色亮度自动反相，仅预览用。</footer>
+
+<script>
+const families = [
+  { slug: "orange-yellow", label: "橙黄系", colors: [
+    ["yellow", "正黄", "#ffd600"], ["lemon", "柠檬黄", "#f2e600"], ["cream", "米黄", "#efe3c2"],
+    ["ginger", "姜黄", "#d29b2e"], ["pumpkin", "南瓜色", "#f79433"],
+    ["orange", "正橙", "#ef6c00"], ["tangerine", "脏橘", "#c26a3e"],
+  ]},
+  { slug: "pink", label: "粉色系", colors: [
+    ["pink", "正粉", "#f06292"], ["sakura", "樱花粉", "#f8bbd0"], ["lotus", "藕粉", "#d8a7b1"],
+    ["coral", "珊瑚粉", "#f08080"], ["rose", "玫红", "#c2185b"],
+  ]},
+  { slug: "neutral", label: "黑白灰系", colors: [
+    ["white", "白", "#f7f7f7"], ["black", "黑", "#1a1a1a"], ["gray", "灰", "#9e9e9e"],
+    ["off-white", "米白", "#f2ede3"], ["light-gray", "浅灰", "#c9c9c9"], ["dark-gray", "深灰", "#5b5b5b"],
+  ]},
+  { slug: "red", label: "红色系", colors: [
+    ["red", "正红", "#e60012"], ["cherry", "樱桃红", "#b31c3f"],
+    ["brick", "砖红", "#a1422f"], ["wine", "酒红", "#8a2b42"], ["dark-red", "深红", "#3f0b12"],
+  ]},
+  { slug: "metallic", label: "金属系", colors: [
+    ["gold", "金", "#d4af37"], ["silver", "银", "#c0c0c0"],
+  ]},
+  { slug: "blue", label: "蓝色系", colors: [
+    ["blue", "正蓝", "#1565c0"], ["sky", "天蓝", "#64b5f6"], ["misty", "雾霾蓝", "#8fa9bf"],
+    ["royal", "宝蓝", "#2456a5"], ["denim", "牛仔蓝", "#3d5a80"], ["klein", "克莱因蓝", "#002fa7"],
+    ["navy", "藏青", "#1b2a4a"],
+  ]},
+  { slug: "green", label: "绿色系", colors: [
+    ["green", "正绿", "#2e7d32"], ["mint", "薄荷绿", "#9adbc8"], ["avocado", "牛油果绿", "#87a96b"],
+    ["grass", "草绿", "#7cb342"], ["olive", "橄榄绿", "#6b7b3a"], ["army", "军绿", "#4b5320"],
+    ["dark-green", "墨绿", "#1b4332"],
+  ]},
+  { slug: "purple", label: "紫色系", colors: [
+    ["purple", "正紫", "#6a1b9a"], ["taro", "浅紫", "#d2c5ef"], ["lavender", "薰衣草紫", "#967bb6"],
+    ["grape", "葡萄紫", "#5e35b1"],
+  ]},
+  { slug: "brown", label: "棕色系", colors: [
+    ["brown", "正棕", "#6d4c41"], ["khaki", "卡其", "#bfa882"], ["camel", "驼色", "#c19a6b"],
+    ["caramel", "焦糖", "#a1663b"], ["coffee", "咖啡棕", "#4e342e"],
+  ]},
+];
+
+function textColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.55 ? "#1c1c1e" : "#ffffff";
+}
+
+const app = document.getElementById("app");
+for (const fam of families) {
+  const section = document.createElement("section");
+  section.innerHTML = `<h2>${fam.label}<span class="fam-slug">${fam.slug} · ${fam.colors.length} 色</span></h2>
+    <div class="strip" style="background:linear-gradient(90deg, ${fam.colors.map(c => c[2]).join(", ")})"></div>`;
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  for (const [slug, label, hex] of fam.colors) {
+    const card = document.createElement("div");
+    card.className = "swatch";
+    card.innerHTML = `
+      <div class="chip" style="background:${hex}">
+        <span class="hex" style="color:${textColor(hex)}">${hex}</span>
+      </div>
+      <div class="meta">
+        <div class="name">${label}</div>
+        <div class="slug">${slug}</div>
+      </div>`;
+    grid.appendChild(card);
+  }
+  section.appendChild(grid);
+  app.appendChild(section);
+}
+</script>
+</body>
+</html>
