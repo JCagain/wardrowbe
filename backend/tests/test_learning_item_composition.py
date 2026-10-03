@@ -23,4 +23,4 @@ def test_layers_dresses_and_suits_are_recorded_under_their_role():
 
 
 def test_non_types_and_accessories_are_ignored():
-    assert slot_composition(["heels", "unknown", None, "hat", "bag"]) == {}
+    assert slot_composition(["hairband", "unknown", None, "hat", "bag"]) == {}
