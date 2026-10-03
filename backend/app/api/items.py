@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -61,8 +62,15 @@ router = APIRouter(prefix="/items", tags=["Items"])
 
 RECENT_ANALYSIS_LIMIT = 10
 
-TAG_WRITEBACK_FIELDS = {"type", "subtype", "colors", "primary_color", "tags"}
+TAG_WRITEBACK_FIELDS = {"type", "subtype", "primary_colors", "secondary_colors", "tags"}
 _EMPTY_TAG_VALUES = (None, "", [], {})
+
+
+def _parse_csv_form_field(value: str | None) -> list[str]:
+    """Multipart arrays arrive as comma-joined strings (add-dialog contract)."""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 def _has_tag_content(field: str, value: Any) -> bool:
@@ -174,8 +182,16 @@ async def create_item(
     name: str | None = Form(None),
     brand: str | None = Form(None),
     notes: str | None = Form(None),
-    colors: str | None = Form(None),
-    primary_color: str | None = Form(None),
+    body_part: str | None = Form(None),
+    primary_colors: str | None = Form(None),  # comma-joined
+    secondary_colors: str | None = Form(None),  # comma-joined
+    style: str | None = Form(None),  # comma-joined
+    temp_low: float | None = Form(None),
+    temp_high: float | None = Form(None),
+    purchase_date: str | None = Form(None),  # "YYYY" or "YYYY-MM"
+    purchase_price: Decimal | None = Form(None),
+    is_archived: bool = Form(False),  # multipart sends "true"/"false" strings
+    archive_reason: str | None = Form(None),
     favorite: bool = Form(False),
     skip_ai: bool = Form(False),
 ) -> ItemResponse:
@@ -220,9 +236,6 @@ async def create_item(
             detail=str(e),
         ) from None
 
-    # Parse colors from comma-separated string
-    color_list = colors.split(",") if colors else None
-
     # Create item - use "unknown" if type not provided (AI will detect)
     item_data = ItemCreate(
         type=type or "unknown",
@@ -230,8 +243,16 @@ async def create_item(
         name=name,
         brand=brand,
         notes=notes,
-        colors=color_list,
-        primary_color=primary_color,
+        body_part=body_part,
+        primary_colors=_parse_csv_form_field(primary_colors),
+        secondary_colors=_parse_csv_form_field(secondary_colors),
+        style=_parse_csv_form_field(style),
+        temp_low=temp_low,
+        temp_high=temp_high,
+        purchase_date=purchase_date,
+        purchase_price=purchase_price,
+        is_archived=is_archived,
+        archive_reason=archive_reason,
         favorite=favorite,
     )
 

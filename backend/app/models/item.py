@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     Numeric,
@@ -69,13 +70,16 @@ class ClothingItem(Base):
 
     # Tags and attributes
     tags: Mapped[dict] = mapped_column(JSONB, default=dict)
-    colors: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
-    primary_color: Mapped[str | None] = mapped_column(String(50))
     pattern: Mapped[str | None] = mapped_column(String(50))
     material: Mapped[str | None] = mapped_column(String(50))
     style: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     formality: Mapped[str | None] = mapped_column(String(50))
     season: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    body_part: Mapped[str | None] = mapped_column(String(50))
+    primary_colors: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    secondary_colors: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    temp_low: Mapped[float | None] = mapped_column(Float)
+    temp_high: Mapped[float | None] = mapped_column(Float)
 
     # AI metadata
     status: Mapped[ItemStatus] = mapped_column(
@@ -130,6 +134,9 @@ class ClothingItem(Base):
     name: Mapped[str | None] = mapped_column(String(100))
     brand: Mapped[str | None] = mapped_column(String(100))
     purchase_date: Mapped[date | None] = mapped_column(Date)
+    # 'year' | 'month' — purchase_date always stores day=1; this says how much
+    # of the year-month the user actually entered.
+    purchase_date_precision: Mapped[str | None] = mapped_column(String(8))
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)

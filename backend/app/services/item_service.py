@@ -11,6 +11,20 @@ from app.models.item import ClothingItem, ItemHistory, ItemStatus, TaggingStatus
 from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
 
 
+def parse_purchase_date(value: str | None) -> tuple[date | None, str | None]:
+    """Convert the API's "YYYY" | "YYYY-MM" string to (Date, precision).
+
+    Both forms persist as day 1 of the month; the precision marker says how
+    much of the year-month the user actually entered. Empty clears both.
+    """
+    if not value:
+        return None, None
+    if len(value) == 4:
+        return date(int(value), 1, 1), "year"
+    year, month = value.split("-")
+    return date(int(year), int(month), 1), "month"
+
+
 class ItemService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -63,7 +77,14 @@ class ItemService:
         if filters.favorite is not None:
             query = query.where(ClothingItem.favorite == filters.favorite)
         if filters.colors:
-            query = query.where(ClothingItem.colors.overlap(filters.colors))
+            # `colors` filter semantics are unchanged: matches items whose
+            # primary OR secondary color arrays overlap the requested values.
+            query = query.where(
+                or_(
+                    ClothingItem.primary_colors.overlap(filters.colors),
+                    ClothingItem.secondary_colors.overlap(filters.colors),
+                )
+            )
 
         # Archive filter
         query = query.where(ClothingItem.is_archived == filters.is_archived)
@@ -204,6 +225,8 @@ class ItemService:
         if item_data.tags:
             tags = item_data.tags.model_dump(exclude_none=True)
 
+        purchase_date, purchase_date_precision = parse_purchase_date(item_data.purchase_date)
+
         # Create item
         item = ClothingItem(
             user_id=user_id,
@@ -214,16 +237,24 @@ class ItemService:
             type=item_data.type,
             subtype=item_data.subtype,
             tags=tags,
-            colors=item_data.colors or [],
-            primary_color=item_data.primary_color,
+            body_part=item_data.body_part,
+            primary_colors=item_data.primary_colors or [],
+            secondary_colors=item_data.secondary_colors or [],
+            temp_low=item_data.temp_low,
+            temp_high=item_data.temp_high,
+            style=item_data.style or [],
             status=ItemStatus.processing,  # AI analysis will update to ready
             upload_key=upload_key,
             name=item_data.name,
             brand=item_data.brand,
             notes=item_data.notes,
-            purchase_date=item_data.purchase_date,
+            purchase_date=purchase_date,
+            purchase_date_precision=purchase_date_precision,
             purchase_price=item_data.purchase_price,
             favorite=item_data.favorite,
+            is_archived=item_data.is_archived,
+            archive_reason=item_data.archive_reason,
+            archived_at=datetime.now(UTC) if item_data.is_archived else None,
         )
 
         self.db.add(item)
@@ -241,15 +272,34 @@ class ItemService:
             else:
                 update_data["tags"] = tags.model_dump(exclude_none=True)
 
+        # purchase_date arrives as "YYYY" | "YYYY-MM" | null and needs the same
+        # (Date, precision) split as the create path — including clearing both
+        # columns when the field is explicitly nulled.
+        if "purchase_date" in update_data:
+            purchase_date, purchase_date_precision = parse_purchase_date(update_data["purchase_date"])
+            update_data["purchase_date"] = purchase_date
+            update_data["purchase_date_precision"] = purchase_date_precision
+
+        # Flipping is_archived keeps the same lifecycle side effects as the
+        # dedicated archive/restore endpoints (status + archived_at).
+        if "is_archived" in update_data and update_data["is_archived"] is not None:
+            if update_data["is_archived"] and not item.is_archived:
+                update_data["archived_at"] = datetime.now(UTC)
+                update_data["status"] = ItemStatus.archived
+            elif not update_data["is_archived"] and item.is_archived:
+                update_data["archived_at"] = None
+                update_data["status"] = ItemStatus.ready
+
         for field, value in update_data.items():
             setattr(item, field, value)
 
         if "tags" in update_data:
             attributes.flag_modified(item, "tags")
             tag_data = update_data["tags"] or {}
+            # Only columns that still exist on the item. tags.colors /
+            # tags.primary_color stay in the JSONB blob as AI display metadata
+            # and are deliberately not written back to any column.
             for column in (
-                "colors",
-                "primary_color",
                 "pattern",
                 "material",
                 "style",
@@ -582,7 +632,11 @@ class ItemService:
     async def get_color_distribution(self, user_id: UUID) -> list[dict]:
         result = await self.db.execute(
             select(
-                func.unnest(ClothingItem.colors).label("color"),
+                # primary + secondary in one unnest keeps the historical
+                # "any color on the item" semantics of the old colors column.
+                func.unnest(ClothingItem.primary_colors + ClothingItem.secondary_colors).label(
+                    "color"
+                ),
                 func.count().label("count"),
             )
             .where(

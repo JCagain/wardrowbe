@@ -181,7 +181,7 @@ class FamilyRatingResponse(BaseModel):
 
 class OutfitResponse(BaseModel):
     id: UUID
-    occasion: str
+    occasion: str | None = None
     scheduled_for: date | None = None
     status: str
     name: str | None = None
@@ -355,8 +355,10 @@ def outfit_to_response(
                 type=item.type,
                 subtype=item.subtype,
                 name=item.name,
-                primary_color=item.primary_color,
-                colors=item.colors or [],
+                # Legacy response shape kept: primary_color = first primary,
+                # colors = primary + secondary union.
+                primary_color=item.primary_colors[0] if item.primary_colors else None,
+                colors=[*item.primary_colors, *item.secondary_colors],
                 image_path=item.image_path,
                 thumbnail_path=item.thumbnail_path,
                 layer_type=outfit_item.layer_type,
@@ -584,7 +586,9 @@ class SuggestionCreateRequest(OutfitAttributeFields):
     model_config = ConfigDict(extra="forbid")
 
     items: list[UUID] = Field(min_length=1, max_length=20)
-    occasion: str = Field(max_length=50)
+    # Optional: outfits.occasion is nullable, so an authored suggestion may
+    # omit the occasion entirely. When provided it must still be a known value.
+    occasion: Annotated[str | None, Field(max_length=50)] = None
     name: Annotated[str | None, Field(max_length=100)] = None
     scheduled_for: date | None = Field(
         default=None, description="Defaults to the user's current date"
@@ -594,7 +598,9 @@ class SuggestionCreateRequest(OutfitAttributeFields):
 
     @field_validator("occasion")
     @classmethod
-    def validate_occasion(cls, v: str) -> str:
+    def validate_occasion(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         v = v.strip().lower()
         if v not in VALID_OCCASIONS:
             raise ValueError(

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.item import ClothingItem, ItemStatus
+from app.models.outfit import Outfit, OutfitSource
 from app.schemas.item import ItemCreate, ItemFilter
 from app.services.item_service import ItemService
 from app.workers.tagging import update_item_status_to_error
@@ -315,18 +316,19 @@ class TestItemService:
     @pytest.mark.asyncio
     async def test_get_color_distribution(self, db_session: AsyncSession, test_user):
         """Test getting color distribution."""
-        # Create items with colors
+        # Create items with colors (primary + secondary union is counted)
         items_data = [
-            {"colors": ["black", "white"]},
-            {"colors": ["black", "navy"]},
-            {"colors": ["black"]},
+            {"primary_colors": ["black", "white"]},
+            {"primary_colors": ["black"], "secondary_colors": ["navy"]},
+            {"primary_colors": ["black"]},
         ]
         for data in items_data:
             item = ClothingItem(
                 user_id=test_user.id,
                 type="shirt",
                 image_path=f"test/{uuid4()}.jpg",
-                colors=data["colors"],
+                primary_colors=data["primary_colors"],
+                secondary_colors=data.get("secondary_colors", []),
                 status=ItemStatus.ready,
             )
             db_session.add(item)
@@ -1706,3 +1708,175 @@ class TestBulkRetryCooldown:
         released = result.scalar_one()
         assert released.status == ItemStatus.error
         assert released.ai_failed_at < datetime.now(UTC) - timedelta(seconds=100)
+
+
+class TestPersonalWardrobeFields:
+    """body_part / primary+secondary color arrays / temp bounds / purchase-date precision.
+
+    The create endpoint is multipart (image file + form fields), so the brief's
+    JSON payloads are submitted as form data with comma-joined array fields —
+    the shape the add-dialog sends. Assertions follow the brief; where the
+    brief's route does not exist (POST /api/v1/outfits), the closest real
+    create/validation surface is used and disclosed in the report.
+    """
+
+    async def _create_item(self, client: AsyncClient, auth_headers, data: dict):
+        return await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={**data, "skip_ai": "true"},
+            headers=auth_headers,
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_item_with_new_fields(self, client: AsyncClient, auth_headers):
+        resp = await self._create_item(
+            client,
+            auth_headers,
+            {
+                "type": "tank-top",
+                "body_part": "tops",
+                "primary_colors": "army,black",
+                "secondary_colors": "",
+                "temp_low": "12",
+                "temp_high": "22",
+                "purchase_date": "2024-03",
+                "purchase_price": "199.0",
+            },
+        )
+        assert resp.status_code in (200, 201), resp.text
+        data = resp.json()
+        assert data["primary_colors"] == ["army", "black"]
+        assert data["secondary_colors"] == []
+        assert data["body_part"] == "tops"
+        assert data["temp_low"] == 12
+        assert data["temp_high"] == 22
+        assert data["purchase_price"] == 199.0
+        assert data["purchase_date"].startswith("2024-03")
+        assert data["purchase_date_precision"] == "month"
+
+    @pytest.mark.asyncio
+    async def test_purchase_date_year_only_roundtrip(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user
+    ):
+        resp = await self._create_item(
+            client,
+            auth_headers,
+            {"type": "shirt", "purchase_date": "2023"},
+        )
+        assert resp.status_code in (200, 201), resp.text
+        data = resp.json()
+        assert data["purchase_date"].startswith("2023-01")
+        assert data["purchase_date_precision"] == "year"
+
+        # Storage shape: "YYYY" persists as Jan 1 of that year + precision marker.
+        db_item = (
+            await db_session.execute(
+                select(ClothingItem).where(ClothingItem.id == UUID(data["id"]))
+            )
+        ).scalar_one()
+        assert db_item.purchase_date == date(2023, 1, 1)
+        assert db_item.purchase_date_precision == "year"
+
+    @pytest.mark.asyncio
+    async def test_list_hides_retired_by_default(self, client: AsyncClient, auth_headers):
+        create = await self._create_item(client, auth_headers, {"type": "shirt"})
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"is_archived": True, "archive_reason": "donated"},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+        default_list = await client.get("/api/v1/items", headers=auth_headers)
+        assert item_id not in [i["id"] for i in default_list.json()["items"]]
+        filtered = await client.get(
+            "/api/v1/items", params={"is_archived": "true"}, headers=auth_headers
+        )
+        assert item_id in [i["id"] for i in filtered.json()["items"]]
+
+    @pytest.mark.asyncio
+    async def test_occasion_is_optional_on_outfits(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user
+    ):
+        # Validation surface: omitting occasion must not produce an "occasion"
+        # error. POST /api/v1/outfits does not exist on this API (405); the
+        # real outfit create route is POST /api/v1/outfits/suggestions.
+        resp = await client.post(
+            "/api/v1/outfits/suggestions",
+            json={"source": "manual", "scheduled_for": "2026-10-01"},
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 201, 422), resp.text  # other fields may be required
+        if resp.status_code != 422:
+            assert resp.json().get("occasion") in (None, "")
+        else:
+            assert "occasion" not in resp.text
+
+        # Persistence surface: the outfits row itself accepts NULL occasion and
+        # the response surfaces it as null (DB column was NOT NULL before).
+        outfit = Outfit(
+            user_id=test_user.id,
+            occasion=None,
+            source=OutfitSource.manual,
+            scheduled_for=date(2026, 10, 1),
+        )
+        db_session.add(outfit)
+        await db_session.commit()
+        await db_session.refresh(outfit)
+
+        fetched = await client.get(f"/api/v1/outfits/{outfit.id}", headers=auth_headers)
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json().get("occasion") in (None, "")
+
+    @pytest.mark.asyncio
+    async def test_create_item_with_comma_separated_style(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Add-dialog path: top-level `style` form field, comma-joined.
+        resp = await self._create_item(
+            client,
+            auth_headers,
+            {"type": "shirt", "style": "casual,smart-casual"},
+        )
+        assert resp.status_code in (200, 201), resp.text
+        assert resp.json()["style"] == ["casual", "smart-casual"]
+
+    @pytest.mark.asyncio
+    async def test_update_item_new_fields_with_tags_style(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Detail-dialog path: PATCH JSON with type + body_part + new fields, and
+        # style arriving on tags.style.
+        create = await self._create_item(client, auth_headers, {"type": "shirt"})
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        resp = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={
+                "type": "tank-top",
+                "body_part": "tops",
+                "primary_colors": ["army"],
+                "secondary_colors": ["black"],
+                "temp_low": 5,
+                "temp_high": 18,
+                "purchase_date": "2024",
+                "purchase_price": 88,
+                "tags": {"pattern": "solid", "style": ["casual"]},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["type"] == "tank-top"
+        assert data["body_part"] == "tops"
+        assert data["primary_colors"] == ["army"]
+        assert data["secondary_colors"] == ["black"]
+        assert data["temp_low"] == 5
+        assert data["temp_high"] == 18
+        assert data["purchase_price"] == 88
+        assert data["purchase_date"].startswith("2024-01")
+        assert data["purchase_date_precision"] == "year"
+        assert data["style"] == ["casual"]

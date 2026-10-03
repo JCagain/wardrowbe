@@ -3,13 +3,24 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.utils.garment_vocabulary import DEFAULT_WASH_INTERVALS
 from app.utils.signed_urls import sign_image_url
 
 
 class ItemTags(BaseModel):
+    # AI-tagging display metadata. The AI JSON contract still names colors /
+    # primary_color (see app.services.ai_service); these keys live only in the
+    # tags JSONB blob, never on the item's own color columns.
     colors: list[str] = Field(default_factory=list)
     primary_color: str | None = None
     pattern: str | None = None
@@ -26,15 +37,31 @@ class ItemBase(BaseModel):
     name: str | None = Field(None, max_length=100)
     brand: str | None = Field(None, max_length=100)
     notes: str | None = None
-    purchase_date: date | None = None
+    # "YYYY" or "YYYY-MM"; persisted as day-1 of the month plus a precision flag.
+    purchase_date: str | None = Field(default=None, pattern=r"^\d{4}(-\d{2})?$")
     purchase_price: Decimal | None = Field(None, ge=0)
     favorite: bool = False
+
+    @field_serializer("purchase_price")
+    def _serialize_purchase_price(self, value: Decimal | None) -> float | None:
+        # Wire format is a JSON number (frontend Item.purchase_price is typed
+        # number); Decimal's default JSON rendering is a string.
+        return float(value) if value is not None else None
+    body_part: str | None = None
+    primary_colors: list[str] = Field(default_factory=list)
+    secondary_colors: list[str] = Field(default_factory=list)
+    temp_low: float | None = None
+    temp_high: float | None = None
 
 
 class ItemCreate(ItemBase):
     tags: ItemTags | None = None
-    colors: list[str] | None = None
-    primary_color: str | None = None
+    # Add-dialog submits style as a top-level comma-joined form field; the
+    # detail dialog keeps submitting it as tags.style. Both paths persist to
+    # the item.style column.
+    style: list[str] = Field(default_factory=list)
+    is_archived: bool = False
+    archive_reason: str | None = Field(None, max_length=50)
 
 
 class ItemUpdate(BaseModel):
@@ -43,17 +70,32 @@ class ItemUpdate(BaseModel):
     name: str | None = Field(None, max_length=100)
     brand: str | None = Field(None, max_length=100)
     notes: str | None = None
-    purchase_date: date | None = None
+    purchase_date: str | None = Field(default=None, pattern=r"^\d{4}(-\d{2})?$")
     purchase_price: Decimal | None = Field(None, ge=0)
     favorite: bool | None = None
     tags: ItemTags | None = None
-    colors: list[str] | None = None
-    primary_color: str | None = None
+    body_part: str | None = None
+    primary_colors: list[str] = Field(default_factory=list)
+    secondary_colors: list[str] = Field(default_factory=list)
+    temp_low: float | None = None
+    temp_high: float | None = None
+    is_archived: bool | None = None
+    archive_reason: str | None = Field(None, max_length=50)
     wash_interval: int | None = None
 
 
 class ItemResponse(ItemBase):
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("purchase_date", mode="before")
+    @classmethod
+    def _format_purchase_date(cls, v: Any) -> str | None:
+        # Storage is a Date (always day 1 of the month); the wire format is
+        # "YYYY-MM" so the client can render year-only rows with the precision
+        # flag instead of guessing.
+        if isinstance(v, date):
+            return v.strftime("%Y-%m")
+        return v
 
     @model_validator(mode="before")
     @classmethod
@@ -86,8 +128,6 @@ class ItemResponse(ItemBase):
     medium_path: str | None = None
     original_image_path: str | None = None
     tags: dict = Field(default_factory=dict)
-    colors: list[str] = Field(default_factory=list)
-    primary_color: str | None = None
     pattern: str | None = None
     material: str | None = None
     style: list[str] = Field(default_factory=list)
@@ -114,6 +154,7 @@ class ItemResponse(ItemBase):
     wash_interval: int | None = None
     needs_wash: bool = False
     additional_images: list["ItemImageResponse"] = Field(default_factory=list)
+    purchase_date_precision: str | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
