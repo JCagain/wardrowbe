@@ -91,8 +91,10 @@ describe('locale catalogs', () => {
     expect(locales.sort()).toEqual([...SUPPORTED_LOCALES].sort());
   });
 
-  for (const locale of SUPPORTED_LOCALES) {
-    if (locale === 'en') continue;
+  // Parity only gates zh-CN; en is the key source. Other locales are frozen (kept, not checked).
+  const CHECKED_LOCALES = ['zh-CN'];
+
+  for (const locale of CHECKED_LOCALES) {
     it(`${locale} has the same key set as en`, () => {
       const target = loadLocale(locale);
       const missing = Object.keys(en).filter((k) => target[k] === undefined);

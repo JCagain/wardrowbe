@@ -5,16 +5,10 @@ import { usePathname } from 'next/navigation';
 import {
   Home,
   Shirt,
-  Sparkles,
-  Layers,
   LayoutGrid,
   History,
   BarChart3,
-  Brain,
   Settings,
-  Users,
-  Bell,
-  HeartHandshake,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
@@ -26,18 +20,12 @@ export function Sidebar() {
   const navigation = [
     { name: t('dashboard'), href: '/dashboard', icon: Home },
     { name: t('wardrobe'), href: '/dashboard/wardrobe', icon: Shirt },
-    { name: t('suggestOutfit'), href: '/dashboard/suggest', icon: Sparkles },
     { name: t('outfits'), href: '/dashboard/outfits', icon: LayoutGrid },
-    { name: t('pairings'), href: '/dashboard/pairings', icon: Layers },
     { name: t('history'), href: '/dashboard/history', icon: History },
-    { name: t('familyFeed'), href: '/dashboard/family/feed', icon: HeartHandshake },
     { name: t('analytics'), href: '/dashboard/analytics', icon: BarChart3 },
-    { name: t('aiLearning'), href: '/dashboard/learning', icon: Brain },
   ];
 
   const secondaryNavigation = [
-    { name: t('family'), href: '/dashboard/family', icon: Users },
-    { name: t('notifications'), href: '/dashboard/notifications', icon: Bell },
     { name: t('settings'), href: '/dashboard/settings', icon: Settings },
   ];
 
