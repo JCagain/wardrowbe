@@ -4,9 +4,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from scripts.compile_vocabulary import compile_vocabulary
+
 ROOT = Path(__file__).resolve().parents[2]
 COMPILE = ROOT / "backend" / "scripts" / "compile_vocabulary.py"
-JSON_PATH = ROOT / "backend" / "app" / "data" / "garment_vocabulary.json"
 
 EXPECTED_COUNTS = {
     "body_parts": 7,
@@ -119,3 +122,67 @@ def test_chromatic_families_anchor_正x_first():
     for family, anchor in anchors.items():
         values = [c["value"] for c in data["colors"]["values"] if c["family"] == family]
         assert values[0] == anchor, (family, values)
+
+
+TYPE_TABLE = """\
+## 一、类型：部位 → 类别
+
+### 上衣 `tops`
+
+| slug | 中文名 | 备注 |
+|------|--------|------|
+"""
+
+COLOR_TABLE = """\
+## 二、颜色：色系 → 具体色
+
+### 黑白灰系 `neutral`
+
+| slug | 中文名 | hex |
+|------|--------|------|
+"""
+
+STYLE_TABLE = """\
+## 五、风格 `styles`（可随时增行）
+
+| slug | 中文名 | 备注 |
+|------|--------|------|
+"""
+
+
+def test_malformed_rows_raise_value_error():
+    bad_slug = TYPE_TABLE + "| 背心 | 背心 | |\n"
+    with pytest.raises(ValueError) as exc:
+        compile_vocabulary(bad_slug)
+    assert "| 背心 | 背心 | |" in str(exc.value)
+
+    short_row = TYPE_TABLE + "| tank-top |\n"
+    with pytest.raises(ValueError) as exc:
+        compile_vocabulary(short_row)
+    assert "| tank-top |" in str(exc.value)
+
+    empty_label = TYPE_TABLE + "| tank-top |  | |\n"
+    with pytest.raises(ValueError) as exc:
+        compile_vocabulary(empty_label)
+    assert "| tank-top |  | |" in str(exc.value)
+
+
+def test_duplicate_slugs_raise_value_error():
+    for md, lines in (
+        (TYPE_TABLE + "| tank-top | 背心 | |\n| tank-top | 背心二 | |\n",
+         ["| tank-top | 背心 | |", "| tank-top | 背心二 | |"]),
+        (COLOR_TABLE + "| white | 白 | `#f7f7f7` |\n| white | 白二 | `#eeeeee` |\n",
+         ["| white | 白 | `#f7f7f7` |", "| white | 白二 | `#eeeeee` |"]),
+        (STYLE_TABLE + "| casual | 休闲 | |\n| casual | 休闲二 | |\n",
+         ["| casual | 休闲 | |", "| casual | 休闲二 | |"]),
+    ):
+        with pytest.raises(ValueError) as exc:
+            compile_vocabulary(md)
+        for line in lines:
+            assert line in str(exc.value), (line, exc.value)
+
+
+def test_spaced_separator_row_is_ignored():
+    with_sep = TYPE_TABLE + "| --- |\n| tank-top | 背心 | |\n"
+    without = TYPE_TABLE + "| tank-top | 背心 | |\n"
+    assert compile_vocabulary(with_sep) == compile_vocabulary(without)

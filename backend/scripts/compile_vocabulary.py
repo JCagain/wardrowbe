@@ -56,7 +56,9 @@ SEASON_SEED = [("spring", "春"), ("summer", "夏"), ("fall", "秋"),
                ("winter", "冬"), ("all-season", "四季")]
 
 HEX_RE = re.compile(r"`(#[0-9a-fA-F]{6})`")
-ROW_RE = re.compile(r"^\|\s*([a-z0-9-]+)\s*\|")
+# Slug must contain at least one alphanumeric so separator cells like "---" never match.
+ROW_RE = re.compile(r"^\|\s*([a-z0-9-]*[a-z0-9][a-z0-9-]*)\s*\|")
+SEP_CELL_RE = re.compile(r"^:?-+:?$")
 # Matches '### label `slug`' and '## 五、风格 `styles`（可随时增行）' — both H2 and H3
 # headings that carry a slug, with optional trailing annotation after the slug.
 SECTION_RE = re.compile(r"^#{2,3}\s+(.+?)\s+`([a-z0-9-]+)`")
@@ -64,6 +66,21 @@ SECTION_RE = re.compile(r"^#{2,3}\s+(.+?)\s+`([a-z0-9-]+)`")
 
 def _row_cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _is_separator_row(line: str) -> bool:
+    """Markdown separator rows ('|---|', '| --- |', '| :--- |') are skipped, not parsed."""
+    cells = _row_cells(line)
+    return bool(cells) and bool(SEP_CELL_RE.match(cells[0]))
+
+
+def _data_row(line: str, section: str) -> tuple[str, str]:
+    """Return (slug, label) from a table data row; raise ValueError on any malformation."""
+    m = ROW_RE.match(line)
+    cells = _row_cells(line) if m else []
+    if not m or len(cells) < 2 or not cells[1]:
+        raise ValueError(f"malformed table row in section '{section}': {line!r}")
+    return m.group(1), cells[1]
 
 
 def _iter_tables(text: str):
@@ -82,61 +99,65 @@ def _iter_tables(text: str):
                 yield section, rows
             section, rows = None, []
             continue
-        if section and line.startswith("|") and not line.startswith("|--") and "slug" not in line:
+        if section and line.startswith("|") and "slug" not in line and not _is_separator_row(line):
             rows.append(line)
     if section:
         yield section, rows
 
 
+def _section_label(md_text: str, section: str) -> str | None:
+    for line in md_text.splitlines():
+        m = SECTION_RE.match(line)
+        if m and m.group(2) == section:
+            return m.group(1)
+    return None
+
+
+def _remember(known: dict[str, str], value: str, line: str, section: str) -> None:
+    if value in known:
+        raise ValueError(
+            f"duplicate slug '{value}' in section '{section}': {known[value]!r} and {line!r}"
+        )
+    known[value] = line
+
+
 def compile_vocabulary(md_text: str) -> dict:
     body_parts, types, color_families, colors, styles = [], [], [], [], []
+    seen_types: dict[str, str] = {}
+    seen_colors: dict[str, str] = {}
+    seen_styles: dict[str, str] = {}
     for section, rows in _iter_tables(md_text):
         if section in {"dresses", "accessories", "tops", "jewelry", "outerwear",
                        "bottoms", "footwear"}:
-            label = None
-            for line in md_text.splitlines():
-                m = SECTION_RE.match(line)
-                if m and m.group(2) == section:
-                    label = m.group(1)
-                    break
-            body_parts.append({"value": section, "label": label})
+            body_parts.append({"value": section, "label": _section_label(md_text, section)})
             for line in rows:
-                m = ROW_RE.match(line)
-                value = m.group(1)
-                cells = _row_cells(line)
-                type_label = cells[1]
+                value, type_label = _data_row(line, section)
+                _remember(seen_types, value, line, section)
                 role, wash = SEED_TYPE_META.get(value, FALLBACK_META)
                 types.append({
                     "value": value, "label": type_label, "body_part": section,
                     "role": role, "wash_interval": wash,
                 })
-        elif section.endswith("-") or section in {
+        elif section in {
             "neutral", "red", "orange-yellow", "green", "blue", "purple",
             "pink", "brown", "metallic",
         }:
-            label = None
-            for line in md_text.splitlines():
-                m = SECTION_RE.match(line)
-                if m and m.group(2) == section:
-                    label = m.group(1)
-                    break
-            color_families.append({"value": section, "label": label})
+            color_families.append({"value": section, "label": _section_label(md_text, section)})
             for line in rows:
-                m = ROW_RE.match(line)
-                value = m.group(1)
-                cells = _row_cells(line)
+                value, color_label = _data_row(line, section)
+                _remember(seen_colors, value, line, section)
                 hex_m = HEX_RE.search(line)
                 if not hex_m:
-                    raise ValueError(f"color row without hex: {line!r}")
+                    raise ValueError(f"color row without hex in section '{section}': {line!r}")
                 colors.append({
-                    "value": value, "label": cells[1],
+                    "value": value, "label": color_label,
                     "family": section, "hex": hex_m.group(1).lower(),
                 })
         elif section == "styles":
             for line in rows:
-                m = ROW_RE.match(line)
-                cells = _row_cells(line)
-                styles.append({"value": m.group(1), "label": cells[1]})
+                value, style_label = _data_row(line, section)
+                _remember(seen_styles, value, line, section)
+                styles.append({"value": value, "label": style_label})
 
     return {
         "body_parts": body_parts,
