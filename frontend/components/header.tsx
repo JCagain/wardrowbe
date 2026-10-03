@@ -7,7 +7,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useTranslations } from 'next-intl';
-import { LocaleSwitcher } from '@/components/locale-switcher';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -61,8 +60,6 @@ export function Header({ onMenuClick }: HeaderProps) {
             <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </Button>
-
-          <LocaleSwitcher />
 
           <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-border" aria-hidden="true" />
 

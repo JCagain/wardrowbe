@@ -45,9 +45,14 @@ function balanced(value) {
   return depth === 0;
 }
 
-const locales = readdirSync(MESSAGES_DIR).filter((d) => statSync(join(MESSAGES_DIR, d)).isDirectory()).sort();
+// Parity only gates zh-CN; en is the key source. Other locales are frozen (kept, not checked).
+const CHECKED_LOCALES = ['zh-CN'];
+const locales = readdirSync(MESSAGES_DIR)
+  .filter((d) => statSync(join(MESSAGES_DIR, d)).isDirectory())
+  .filter((d) => CHECKED_LOCALES.includes(d))
+  .sort();
 
-if (!locales.includes(SOURCE_LOCALE)) {
+if (!statSync(join(MESSAGES_DIR, SOURCE_LOCALE), { throwIfNoEntry: false })?.isDirectory()) {
   console.error(`i18n-check: no '${SOURCE_LOCALE}' directory in ${MESSAGES_DIR}`);
   process.exit(1);
 }

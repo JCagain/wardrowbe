@@ -2,7 +2,7 @@ export const SUPPORTED_LOCALES = ['en', 'zh-CN', 'zh-TW', 'ko', 'ja', 'fr', 'de'
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
-export const DEFAULT_LOCALE: SupportedLocale = 'en';
+export const DEFAULT_LOCALE: SupportedLocale = 'zh-CN';
 
 export const LOCALE_COOKIE = 'NEXT_LOCALE';
 
