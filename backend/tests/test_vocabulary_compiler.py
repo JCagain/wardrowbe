@@ -13,7 +13,7 @@ COMPILE = ROOT / "backend" / "scripts" / "compile_vocabulary.py"
 
 EXPECTED_COUNTS = {
     "body_parts": 7,
-    "types": 48,
+    "types": 52,
     "color_families": 9,
     "color_values": 48,
     "styles": 11,
@@ -21,6 +21,18 @@ EXPECTED_COUNTS = {
     "materials": 15,
     "formality": 6,
 }
+
+# Final order rules (source: docs/specs/vocabulary.md). Catch-all rows (label 其他xx
+# or the slugs below) always sort last inside their part.
+BODY_PART_ORDER = ["tops", "bottoms", "dresses", "outerwear", "footwear", "accessories", "jewelry"]
+COLOR_FAMILY_ORDER = ["neutral", "brown", "red", "orange-yellow", "green", "blue", "purple", "pink", "metallic"]
+NEUTRAL_ORDER = ["black", "white", "gray", "dark-gray", "light-gray", "off-white"]
+METALLIC_ORDER = ["gold", "silver"]
+CATCHALL_SLUGS = {"top", "bottom", "accessories", "jewelry"}
+
+
+def _is_catchall(entry: dict) -> bool:
+    return entry["value"] in CATCHALL_SLUGS or entry["label"].startswith("其他")
 
 
 def compile_to_dict():
@@ -79,7 +91,12 @@ def test_counts_and_shape():
         assert set(s) == {"value", "label"}
 
 
-def test_pinyin_order_of_lists():
+def test_body_parts_follow_the_fixed_logical_order():
+    data = compile_to_dict()
+    assert [p["value"] for p in data["body_parts"]] == BODY_PART_ORDER
+
+
+def test_types_within_a_part_are_pinyin_sorted_with_catchall_last():
     from pypinyin import lazy_pinyin
 
     def pinyin_key(label):
@@ -88,29 +105,40 @@ def test_pinyin_order_of_lists():
         return "".join(lazy_pinyin(label)).lower()
 
     data = compile_to_dict()
-    for collection in (data["body_parts"], data["styles"]):
-        labels = [e["label"] for e in collection]
-        assert labels == sorted(labels, key=pinyin_key), labels
-
     by_part = {}
     for t in data["types"]:
-        by_part.setdefault(t["body_part"], []).append(t["label"])
-    for part, labels in by_part.items():
+        by_part.setdefault(t["body_part"], []).append(t)
+    for part, entries in by_part.items():
+        catchalls = [e for e in entries if _is_catchall(e)]
+        regular = [e for e in entries if not _is_catchall(e)]
+        labels = [e["label"] for e in regular]
         assert labels == sorted(labels, key=pinyin_key), (part, labels)
-
-    family_labels = [f["label"] for f in data["colors"]["families"]]
-    assert family_labels == sorted(family_labels, key=pinyin_key), family_labels
+        assert entries == regular + catchalls, (part, [e["value"] for e in entries])
 
 
-def test_neutral_and_metallic_are_pinyin_sorted_inside():
+def test_color_families_follow_the_fixed_color_order():
+    data = compile_to_dict()
+    assert [f["value"] for f in data["colors"]["families"]] == COLOR_FAMILY_ORDER
+
+
+def test_neutral_and_metallic_keep_table_order():
+    data = compile_to_dict()
+    by_family = {}
+    for c in data["colors"]["values"]:
+        by_family.setdefault(c["family"], []).append(c["value"])
+    assert by_family["neutral"] == NEUTRAL_ORDER
+    assert by_family["metallic"] == METALLIC_ORDER
+
+
+def test_styles_are_pinyin_sorted():
     from pypinyin import lazy_pinyin
 
+    def pinyin_key(label):
+        return "".join(lazy_pinyin(label)).lower()
+
     data = compile_to_dict()
-    for family in ("neutral", "metallic"):
-        labels = [
-            c["label"] for c in data["colors"]["values"] if c["family"] == family
-        ]
-        assert labels == sorted(labels, key=lambda s: "".join(lazy_pinyin(s)).lower()), labels
+    labels = [e["label"] for e in data["styles"]]
+    assert labels == sorted(labels, key=pinyin_key), labels
 
 
 def test_chromatic_families_anchor_正x_first():

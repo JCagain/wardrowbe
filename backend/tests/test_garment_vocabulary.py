@@ -80,7 +80,7 @@ def test_v2_sections_are_loaded():
     from app.utils import garment_vocabulary as gv
 
     assert len(gv.BODY_PARTS) == 7
-    assert len(gv.TYPE_LABELS) == 48
+    assert len(gv.TYPE_LABELS) == 52
     assert len(gv.COLOR_FAMILIES) == 9
     assert len(gv.COLOR_VALUES) == 48
     assert len(gv.STYLE_VALUES) == 11
@@ -88,7 +88,7 @@ def test_v2_sections_are_loaded():
     assert gv.BODY_PART_BY_TYPE["tank-top"] == "tops"
     assert gv.BODY_PART_BY_TYPE["necklace"] == "jewelry"
     assert set(gv.TYPES_BY_PART) == {p["value"] for p in gv.BODY_PARTS}
-    assert sum(len(v) for v in gv.TYPES_BY_PART.values()) == 48
+    assert sum(len(v) for v in gv.TYPES_BY_PART.values()) == 52
 
 
 def test_render_tagging_prompt_renders_new_tokens():
