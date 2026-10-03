@@ -12,6 +12,8 @@ from app.config import get_settings
 from app.models.item import ClothingItem, ItemStatus, TaggedBy, TaggingStatus
 from app.models.preference import UserPreference
 from app.services.ai_service import AIService, ClothingTags
+from app.utils.color_migration import migrate_legacy_colors
+from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
 from app.workers.db import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -111,11 +113,17 @@ def tags_to_item_fields(tags: ClothingTags, raw_response: str | None = None) -> 
     if tags.logprobs_confidence is not None:
         tags_jsonb["logprobs_confidence"] = tags.logprobs_confidence
 
+    # Column writes use the new arrays: the AI JSON contract still emits
+    # primary_color/colors (kept in tags_jsonb above), so split and normalize
+    # through the same helper the DB data migration used.
+    primary_list, secondary_list = migrate_legacy_colors(tags.primary_color, tags.colors)
+
     fields = {
         "type": tags.type,
         "subtype": tags.subtype,
-        "primary_color": tags.primary_color,
-        "colors": tags.colors,
+        "body_part": BODY_PART_BY_TYPE.get(tags.type),
+        "primary_colors": primary_list,
+        "secondary_colors": secondary_list,
         "pattern": tags.pattern,
         "material": tags.material,
         "style": tags.style,
@@ -258,7 +266,7 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
             # item the user already moved past, which is harmless (unlike the error path).
             # Update item fields - only update if user hasn't already set a value
             # Always update: ai_processed, ai_confidence, status, ai_raw_response
-            # Conditionally update: type, subtype, primary_color, colors, pattern, material, style, formality, season
+            # Conditionally update: type, subtype, body_part, primary_colors, secondary_colors, pattern, material, style, formality, season
             ai_fields = tags_to_item_fields(tags, tags.raw_response)
             # Snapshotted once: applying tagging_status before tagged_by/tagged_at in the
             # same loop would otherwise make the guard for the later two fields see the
@@ -286,11 +294,14 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
                 elif field == "subtype":
                     if not item.subtype:
                         setattr(item, field, value)
-                elif field == "primary_color":
-                    if not item.primary_color or item.primary_color == "unknown":
+                elif field == "primary_colors":
+                    # Same "unless the user already set it (or it's still the
+                    # default/unknown)" rule the old primary_color column had.
+                    if not item.primary_colors or item.primary_colors == ["unknown"]:
                         setattr(item, field, value)
                 else:
-                    # For other fields (colors, pattern, material, style, etc.), only set if not already set
+                    # For other fields (secondary_colors, body_part, pattern,
+                    # material, style, etc.), only set if not already set
                     current_value = getattr(item, field, None)
                     if (
                         current_value is None

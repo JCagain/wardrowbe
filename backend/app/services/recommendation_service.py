@@ -246,10 +246,11 @@ class RecommendationService:
             else:
                 parts.append(item_type)
 
-            if item.colors and len(item.colors) > 1:
-                parts.append(f"colors: {', '.join(item.colors)}")
-            elif item.primary_color:
-                parts.append(item.primary_color)
+            all_colors = item.primary_colors + item.secondary_colors
+            if all_colors and len(all_colors) > 1:
+                parts.append(f"colors: {', '.join(all_colors)}")
+            elif item.primary_colors:
+                parts.append(item.primary_colors[0])
 
             if item.pattern and item.pattern != "solid":
                 parts.append(item.pattern)

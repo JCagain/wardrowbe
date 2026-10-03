@@ -280,7 +280,7 @@ def _preference_score(
     learned: dict | None,
 ) -> float:
     score = 1.0
-    color = (item.primary_color or "").lower()
+    color = ((item.primary_colors[0] if item.primary_colors else None) or "").lower()
 
     if preferences:
         fav_colors = [c.lower() for c in (preferences.color_favorites or [])]

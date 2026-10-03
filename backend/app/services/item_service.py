@@ -9,6 +9,7 @@ from sqlalchemy.orm import attributes, selectinload
 
 from app.models.item import ClothingItem, ItemHistory, ItemStatus, TaggingStatus, WashHistory
 from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
+from app.utils.color_migration import migrate_legacy_colors
 
 
 def parse_purchase_date(value: str | None) -> tuple[date | None, str | None]:
@@ -296,9 +297,7 @@ class ItemService:
         if "tags" in update_data:
             attributes.flag_modified(item, "tags")
             tag_data = update_data["tags"] or {}
-            # Only columns that still exist on the item. tags.colors /
-            # tags.primary_color stay in the JSONB blob as AI display metadata
-            # and are deliberately not written back to any column.
+            # Only columns that still exist on the item.
             for column in (
                 "pattern",
                 "material",
@@ -308,6 +307,19 @@ class ItemService:
             ):
                 if column in tag_data:
                     setattr(item, column, tag_data[column])
+            # tags.colors / tags.primary_color are the AI JSON shape (kept on
+            # ItemTags). Project them onto the new color columns through the
+            # same legacy-normalizing splitter the data migration used — but
+            # only when the request didn't set the columns directly: the detail
+            # dialog sends top-level primary_colors/secondary_colors AND a tags
+            # blob that still carries the original AI color keys.
+            if "primary_colors" not in update_data and "secondary_colors" not in update_data:
+                if "primary_color" in tag_data or "colors" in tag_data:
+                    primary_list, secondary_list = migrate_legacy_colors(
+                        tag_data.get("primary_color"), tag_data.get("colors")
+                    )
+                    item.primary_colors = primary_list
+                    item.secondary_colors = secondary_list
 
         await self.db.flush()
         # Re-fetch with eager loading to ensure relationships are properly loaded

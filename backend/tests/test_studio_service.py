@@ -41,7 +41,7 @@ async def wardrobe_items(db_session, studio_user):
             type=item_type,
             image_path=f"test/{item_type}.jpg",
             status=ItemStatus.ready,
-            primary_color="blue",
+            primary_colors=["blue"],
             wear_count=0,
             wears_since_wash=0,
             needs_wash=False,

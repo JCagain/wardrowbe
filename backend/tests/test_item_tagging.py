@@ -261,7 +261,10 @@ class TestWriteBack:
         assert data["tagging_status"] == "tagged"
         assert data["tagged_by"] == "manual"
         assert data["tagged_at"] is not None
-        assert data["colors"] == ["blue"]
+        # The AI JSON shape (tags.colors / tags.primary_color) projects onto
+        # the new color columns at the persistence boundary.
+        assert data["primary_colors"] == ["blue"]
+        assert data["secondary_colors"] == []
 
     @pytest.mark.asyncio
     async def test_flat_empty_values_stay_pending(
@@ -425,8 +428,11 @@ class TestTagsToColumnsProjection:
             ),
         )
 
-        assert updated.colors == ["red"]
-        assert updated.primary_color == "red"
+        # tags.colors / tags.primary_color (AI JSON shape) land on the new
+        # color columns: primary_color wins primary_colors, colors minus the
+        # primary become secondary_colors.
+        assert updated.primary_colors == ["red"]
+        assert updated.secondary_colors == []
         assert updated.pattern == "striped"
         assert updated.material == "cotton"
         assert updated.style == ["casual"]

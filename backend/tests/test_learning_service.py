@@ -29,7 +29,7 @@ def _make_outfit_with_feedback(user_id, items_data, accepted=True, rating=4, occ
             user_id=user_id,
             type=item_kwargs.get("type", "shirt"),
             image_path="test.jpg",
-            primary_color=item_kwargs.get("primary_color", "blue"),
+            primary_colors=[item_kwargs.get("primary_color", "blue")],
             style=item_kwargs.get("style", []),
         )
         oi = OutfitItem(outfit_id=outfit.id, item_id=item.id, position=0)
@@ -156,7 +156,7 @@ class TestIncrementalEMA:
             user_id=user_id,
             type="shirt",
             image_path="test.jpg",
-            primary_color="navy",
+            primary_colors=["navy"],
             style=["classic"],
         )
         db_session.add(item)
@@ -204,7 +204,7 @@ class TestItemPairScores:
                 user_id=user_id,
                 type="shirt",
                 image_path="test.jpg",
-                primary_color=color,
+                primary_colors=[color],
                 style=["casual"],
             )
             db_session.add(item)

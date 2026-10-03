@@ -27,8 +27,8 @@ def _item(**kwargs) -> ClothingItem:
         "type": "shirt",
         "subtype": None,
         "image_path": "test.jpg",
-        "primary_color": None,
-        "colors": [],
+        "primary_colors": [],
+        "secondary_colors": [],
         "pattern": None,
         "material": None,
         "style": [],
@@ -370,17 +370,17 @@ class TestRecencyScore:
 
 class TestPreferenceScore:
     def test_fav_color_boost(self):
-        item = _item(primary_color="blue")
+        item = _item(primary_colors=["blue"])
         prefs = _prefs(color_favorites=["blue"])
         assert _preference_score(item, prefs, None) == 1.1
 
     def test_avoid_color_penalty(self):
-        item = _item(primary_color="orange")
+        item = _item(primary_colors=["orange"])
         prefs = _prefs(color_avoid=["orange"])
         assert _preference_score(item, prefs, None) == 0.7
 
     def test_clamped_bounds(self):
-        item = _item(primary_color="orange")
+        item = _item(primary_colors=["orange"])
         prefs = _prefs(color_avoid=["orange"])
         learned = {
             "learned_avoid_colors": ["orange"],
@@ -391,7 +391,7 @@ class TestPreferenceScore:
         assert score <= 1.2
 
     def test_learned_fav_boost(self):
-        item = _item(primary_color="blue")
+        item = _item(primary_colors=["blue"])
         learned = {"learned_favorite_colors": ["blue"]}
         assert _preference_score(item, None, learned) == 1.05
 

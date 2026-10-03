@@ -243,7 +243,7 @@ class TestSuggestRequestTimeOfDay:
                 type=item_type,
                 image_path=f"test/{uuid4()}.jpg",
                 status=ItemStatus.ready,
-                primary_color="blue",
+                primary_colors=["blue"],
             )
             db_session.add(item)
         await db_session.commit()
@@ -314,7 +314,7 @@ class TestSuggestEndpointRuntime:
             type="shirt",
             image_path=f"test/{uuid4()}.jpg",
             status=ItemStatus.ready,
-            primary_color="blue",
+            primary_colors=["blue"],
         )
         outfit = Outfit(
             user_id=test_user.id,
@@ -357,8 +357,8 @@ def _make_item(**kwargs) -> ClothingItem:
         "user_id": uuid4(),
         "type": "shirt",
         "image_path": "test.jpg",
-        "primary_color": "blue",
-        "colors": ["blue"],
+        "primary_colors": ["blue"],
+        "secondary_colors": [],
         "formality": "casual",
         "season": [],
         "style": [],
@@ -464,14 +464,14 @@ class TestIncludeItems:
             type="shirt",
             image_path=f"test/{uuid4()}.jpg",
             status=ItemStatus.ready,
-            primary_color="blue",
+            primary_colors=["blue"],
         )
         ai_item = ClothingItem(
             user_id=test_user.id,
             type="pants",
             image_path=f"test/{uuid4()}.jpg",
             status=ItemStatus.ready,
-            primary_color="black",
+            primary_colors=["black"],
         )
         db_session.add_all([mand_item, ai_item])
         await db_session.commit()
@@ -515,7 +515,7 @@ class TestIncludeItems:
             type="shirt",
             image_path=f"test/{uuid4()}.jpg",
             status=ItemStatus.ready,
-            primary_color="blue",
+            primary_colors=["blue"],
         )
         outfit = Outfit(
             user_id=test_user.id,
