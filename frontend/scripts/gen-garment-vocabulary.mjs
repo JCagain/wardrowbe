@@ -31,6 +31,7 @@ function render({ body_parts, types, colors, seasons, styles, materials, formali
     `export const TYPE_ENTRIES = ${json(types.map(({ value, label, body_part }) => ({ value, label, body_part })))} as const;`,
     `export const COLOR_VALUES = ${json(colors.values)} as const;`,
     `export const STYLE_LABELS = ${json(Object.fromEntries(styles.map((s) => [s.value, s.label])))} as const;`,
+    `export const BODY_PART_LABELS = ${json(Object.fromEntries(body_parts.map((p) => [p.value, p.label])))} as const;`,
     '',
     'export const ITEM_ROLE: Record<string, string> = {',
     roles,

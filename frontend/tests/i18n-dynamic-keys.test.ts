@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLOTHING_SUBTYPES, OCCASIONS } from '@/lib/types';
-import { BODY_PART_VALUES, COLOR_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
+import { COLOR_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
 import { SUPPORTED_LOCALES } from '@/lib/i18n/locales';
 
 // scripts/i18n-keys.mjs resolves t('literal') call sites, but several components build the key at
@@ -58,9 +58,6 @@ const DYNAMIC_KEYS: Array<[string, readonly string[]]> = [
   ['notifications.days', NOTIFICATION_DAYS],
   ['outfits.calendar.weekDays', CALENDAR_WEEKDAYS],
   ['wardrobe.sort', WARDROBE_SORTS],
-  // useBodyParts renders t(`bodyParts.${value}`); the generated vocabulary carries
-  // body-part values only, so their display names live in the catalog for now.
-  ['wardrobe.bodyParts', BODY_PART_VALUES],
   ['settings.body.fields', BODY_FIELDS],
   ['settings.body.sizePlaceholders', SIZE_FIELDS],
 ];

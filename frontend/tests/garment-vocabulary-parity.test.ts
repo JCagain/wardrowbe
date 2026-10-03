@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import constants from '@/messages/en/constants.json';
 import {
   FORMALITY_VALUES, ITEM_ROLE, MATERIAL_VALUES,
-  BODY_PART_VALUES, TYPE_ENTRIES, COLOR_FAMILY_VALUES, COLOR_VALUES, STYLE_VALUES, SEASON_VALUES,
+  BODY_PART_VALUES, BODY_PART_LABELS, TYPE_ENTRIES, COLOR_FAMILY_VALUES, COLOR_VALUES, STYLE_VALUES, SEASON_VALUES,
 } from '@/lib/generated/garment-vocabulary';
 import { CLOTHING_COLORS, CLOTHING_TYPES } from '@/lib/types';
 
 const VOCABULARY_PATH = resolve(__dirname, '..', '..', 'backend', 'app', 'data', 'garment_vocabulary.json');
 const vocabulary = JSON.parse(readFileSync(VOCABULARY_PATH, 'utf8')) as {
-  body_parts: Array<{ value: string }>;
+  body_parts: Array<{ value: string; label: string }>;
   types: Array<{ value: string; label: string; role: string; body_part: string }>;
   colors: { families: Array<{ value: string }>; values: Array<{ value: string; family: string; hex: string }> };
   seasons: Array<{ value: string }>;
@@ -40,6 +40,7 @@ describe('garment vocabulary', () => {
 
   it('exposes v2 sections matching the backend JSON', () => {
     expect(BODY_PART_VALUES).toEqual(vocabulary.body_parts.map((p: { value: string }) => p.value));
+    expect(BODY_PART_LABELS).toEqual(Object.fromEntries(vocabulary.body_parts.map((p) => [p.value, p.label])));
     expect(TYPE_ENTRIES.map((t) => t.value)).toEqual(vocabulary.types.map((t: { value: string }) => t.value));
     expect(COLOR_VALUES.map((c) => c.hex)).toEqual(vocabulary.colors.values.map((c: { hex: string }) => c.hex));
     expect(STYLE_VALUES).toEqual(vocabulary.styles.map((s: { value: string }) => s.value));

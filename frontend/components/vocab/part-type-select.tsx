@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { BODY_PART_LABELS } from '@/lib/generated/garment-vocabulary';
 import type { TypeEntry, VocabEntry } from '@/lib/types';
 
 export function PartTypeSelect({
@@ -31,7 +32,9 @@ export function PartTypeSelect({
       >
         <option value="">{t('bodyPart')}</option>
         {parts.map((p) => (
-          <option key={p.value} value={p.value}>{p.label}</option>
+          <option key={p.value} value={p.value}>
+            {BODY_PART_LABELS[p.value as keyof typeof BODY_PART_LABELS] ?? p.label}
+          </option>
         ))}
       </select>
       <select

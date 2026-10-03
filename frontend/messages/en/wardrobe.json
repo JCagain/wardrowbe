@@ -105,15 +105,6 @@
     "rotating": "Rotating…"
   },
   "allTypes": "All types",
-  "bodyParts": {
-    "accessories": "Accessories",
-    "bottoms": "Bottoms",
-    "dresses": "Dresses/Sets",
-    "footwear": "Footwear",
-    "jewelry": "Jewelry",
-    "outerwear": "Outerwear",
-    "tops": "Tops"
-  },
   "bulkActions": {
     "cancelAllError": "Failed to cancel analysis",
     "cancelAllQueued": "{count, plural, one {Cancelled # in-progress analysis} other {Cancelled # in-progress analyses}}",
