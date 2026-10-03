@@ -11,7 +11,7 @@ import { CLOTHING_TYPES } from '@/lib/types';
 const VOCABULARY_PATH = resolve(__dirname, '..', '..', 'backend', 'app', 'data', 'garment_vocabulary.json');
 const vocabulary = JSON.parse(readFileSync(VOCABULARY_PATH, 'utf8')) as {
   body_parts: Array<{ value: string }>;
-  types: Array<{ value: string; role: string; body_part: string }>;
+  types: Array<{ value: string; label: string; role: string; body_part: string }>;
   colors: { families: Array<{ value: string }>; values: Array<{ value: string; family: string; hex: string }> };
   seasons: Array<{ value: string }>;
   styles: Array<{ value: string }>;
@@ -29,8 +29,10 @@ describe('garment vocabulary', () => {
     expect([...FORMALITY_VALUES]).toEqual(vocabulary.formality);
   });
 
-  it('has exactly one English label per type, material, formality and role', () => {
-    expect(sorted(Object.keys(constants.types))).toEqual(sorted(vocabulary.types.map((t) => t.value)));
+  it('has labels for types in the vocabulary and exact i18n keys for materials, formality and roles', () => {
+    // Type labels live in the vocabulary itself (single source; constants.types is
+    // no longer required to enumerate them — Task 7/12 retire those lists).
+    expect(vocabulary.types.every((t) => Boolean(t.label))).toBe(true);
     expect(sorted(Object.keys(constants.materials))).toEqual(sorted(vocabulary.materials));
     expect(sorted(Object.keys(constants.formalities))).toEqual(sorted(vocabulary.formality));
     expect(sorted(Object.keys(constants.roles))).toEqual(sorted(new Set(vocabulary.types.map((t) => t.role))));
