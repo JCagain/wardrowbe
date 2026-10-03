@@ -15,14 +15,22 @@ const quote = (value) => `'${value}'`;
 const key = (value) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? value : quote(value));
 const list = (values) => `[${values.map(quote).join(', ')}] as const`;
 
-function render({ types, materials, formality }) {
+function render({ body_parts, types, colors, seasons, styles, materials, formality }) {
   const roles = types.map(({ value, role }) => `  ${key(value)}: ${quote(role)},`).join('\n');
+  const json = (value) => JSON.stringify(value);
   return [
     '// Generated from backend/app/data/garment_vocabulary.json by scripts/gen-garment-vocabulary.mjs.',
     '// Do not edit by hand; run `npm run vocab:gen`.',
     `export const CLOTHING_TYPE_VALUES = ${list(types.map((t) => t.value))};`,
     `export const MATERIAL_VALUES = ${list(materials)};`,
     `export const FORMALITY_VALUES = ${list(formality)};`,
+    `export const BODY_PART_VALUES = ${list(body_parts.map((p) => p.value))};`,
+    `export const SEASON_VALUES = ${list(seasons.map((s) => s.value))};`,
+    `export const STYLE_VALUES = ${list(styles.map((s) => s.value))};`,
+    `export const COLOR_FAMILY_VALUES = ${list(colors.families.map((f) => f.value))};`,
+    `export const TYPE_ENTRIES = ${json(types.map(({ value, label, body_part }) => ({ value, label, body_part })))} as const;`,
+    `export const COLOR_VALUES = ${json(colors.values)} as const;`,
+    `export const STYLE_LABELS = ${json(Object.fromEntries(styles.map((s) => [s.value, s.label])))} as const;`,
     '',
     'export const ITEM_ROLE: Record<string, string> = {',
     roles,
