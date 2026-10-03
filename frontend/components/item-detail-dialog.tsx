@@ -68,6 +68,7 @@ import {
   TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
+import { partTypeChangeHandlers } from '@/lib/item-edit-form';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { ColorEyedropper } from '@/components/color-eyedropper';
@@ -675,8 +676,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                       entries={[...TYPE_ENTRIES]}
                       bodyPart={editForm.body_part}
                       type={editForm.type}
-                      onBodyPartChange={(v) => setEditForm({ ...editForm, body_part: v })}
-                      onTypeChange={(v) => setEditForm({ ...editForm, type: v })}
+                      {...partTypeChangeHandlers(setEditForm)}
                     />
                   </div>
                   <div className="space-y-2">
