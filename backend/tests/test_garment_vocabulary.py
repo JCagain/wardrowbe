@@ -74,3 +74,38 @@ def test_scorer_layer_types_are_real_types():
 
 def test_scorer_heavy_materials_are_real_materials():
     assert HEAVY_LAYER_MATERIALS <= VALID_MATERIALS
+
+
+def test_v2_sections_are_loaded():
+    from app.utils import garment_vocabulary as gv
+
+    assert len(gv.BODY_PARTS) == 7
+    assert len(gv.TYPE_LABELS) == 48
+    assert len(gv.COLOR_FAMILIES) == 9
+    assert len(gv.COLOR_VALUES) == 48
+    assert len(gv.STYLE_VALUES) == 11
+    assert set(gv.SEASON_VALUES) == {"spring", "summer", "fall", "winter", "all-season"}
+    assert gv.BODY_PART_BY_TYPE["tank-top"] == "tops"
+    assert gv.BODY_PART_BY_TYPE["necklace"] == "jewelry"
+    assert set(gv.TYPES_BY_PART) == {p["value"] for p in gv.BODY_PARTS}
+    assert sum(len(v) for v in gv.TYPES_BY_PART.values()) == 48
+
+
+def test_render_tagging_prompt_renders_new_tokens():
+    from app.utils.garment_vocabulary import render_tagging_prompt
+
+    rendered = render_tagging_prompt(
+        "<<BODY_PARTS>>|<<TYPES>>|<<COLORS>>|<<STYLES>>|<<SEASONS>>|<<MATERIALS>>|<<FORMALITY>>"
+    )
+    assert "<<" not in rendered
+    # Assert on value slugs (what render_tagging_prompt projects); 军绿/泛三坑 are the labels of army/three-pits.
+    assert "army" in rendered and "three-pits" in rendered and "all-season" in rendered
+
+
+def test_every_color_slug_is_unique_and_hex_is_lowercase():
+    from app.utils import garment_vocabulary as gv
+
+    values = [c["value"] for c in gv.COLOR_VALUES]
+    assert len(values) == len(set(values))
+    for c in gv.COLOR_VALUES:
+        assert c["hex"] == c["hex"].lower()

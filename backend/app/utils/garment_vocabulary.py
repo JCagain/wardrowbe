@@ -13,10 +13,34 @@ MATERIALS: tuple[str, ...] = tuple(_DATA["materials"])
 # Ordered from least to most formal; the scorer measures distance along this scale.
 FORMALITY: tuple[str, ...] = tuple(_DATA["formality"])
 
+BODY_PARTS: tuple[dict, ...] = tuple(_DATA["body_parts"])
+BODY_PART_BY_TYPE: dict[str, str] = {t["value"]: t["body_part"] for t in _DATA["types"]}
+TYPES_BY_PART: dict[str, tuple[str, ...]] = {
+    part["value"]: tuple(
+        t["value"] for t in _DATA["types"] if t["body_part"] == part["value"]
+    )
+    for part in _DATA["body_parts"]
+}
+TYPE_LABELS: dict[str, str] = {t["value"]: t["label"] for t in _DATA["types"]}
+COLOR_FAMILIES: tuple[dict, ...] = tuple(_DATA["colors"]["families"])
+COLOR_VALUES: tuple[dict, ...] = tuple(_DATA["colors"]["values"])
+COLOR_VALUE_SET: set[str] = {c["value"] for c in _DATA["colors"]["values"]}
+STYLE_VALUES: tuple[str, ...] = tuple(s["value"] for s in _DATA["styles"])
+STYLE_LABELS: dict[str, str] = {s["value"]: s["label"] for s in _DATA["styles"]}
+SEASON_VALUES: tuple[str, ...] = tuple(s["value"] for s in _DATA["seasons"])
+SEASON_LABELS: dict[str, str] = {s["value"]: s["label"] for s in _DATA["seasons"]}
+
 
 def render_tagging_prompt(template: str) -> str:
-    return (
-        template.replace("<<TYPES>>", ", ".join(TYPES))
-        .replace("<<MATERIALS>>", ", ".join(MATERIALS))
-        .replace("<<FORMALITY>>", ", ".join(FORMALITY))
-    )
+    replacements = {
+        "<<TYPES>>": ", ".join(t["value"] for t in _DATA["types"]),
+        "<<MATERIALS>>": ", ".join(MATERIALS),
+        "<<FORMALITY>>": ", ".join(FORMALITY),
+        "<<BODY_PARTS>>": ", ".join(p["value"] for p in _DATA["body_parts"]),
+        "<<COLORS>>": ", ".join(c["value"] for c in _DATA["colors"]["values"]),
+        "<<STYLES>>": ", ".join(s["value"] for s in _DATA["styles"]),
+        "<<SEASONS>>": ", ".join(s["value"] for s in _DATA["seasons"]),
+    }
+    for token, value in replacements.items():
+        template = template.replace(token, value)
+    return template
