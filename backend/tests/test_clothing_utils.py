@@ -167,7 +167,7 @@ def test_first_multi_slot_item_wins_when_they_overlap():
 
 def test_two_dresses_keep_only_the_first():
     first, second = _ids(2)
-    item_type_map = {first: "dress", second: "jumpsuit"}
+    item_type_map = {first: "dress", second: "jumpskirt"}
     assert deduplicate_by_body_slot([first, second], item_type_map) == [first]
 
 
