@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CLOTHING_COLORS, CLOTHING_SUBTYPES, CLOTHING_TYPES, OCCASIONS } from '@/lib/types';
+import { CLOTHING_SUBTYPES, OCCASIONS } from '@/lib/types';
+import { COLOR_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
 import { SUPPORTED_LOCALES } from '@/lib/i18n/locales';
 
 // scripts/i18n-keys.mjs resolves t('literal') call sites, but several components build the key at
@@ -49,8 +50,6 @@ const STYLE_VALUES = ['bold', 'casual', 'formal', 'minimalist', 'sporty'] as con
 const WEATHER_CONDITIONS = ['clear', 'cloudy', 'rain', 'snow'] as const;
 
 const DYNAMIC_KEYS: Array<[string, readonly string[]]> = [
-  ['constants.types', CLOTHING_TYPES.map((t) => t.value)],
-  ['constants.colors', CLOTHING_COLORS.map((c) => c.value)],
   ['constants.subtypes', Array.from(new Set(Object.values(CLOTHING_SUBTYPES).flat()))],
   ['constants.occasions', OCCASIONS.map((o) => o.value)],
   ['constants.styles', STYLE_VALUES],
@@ -70,6 +69,19 @@ describe('runtime-built translation keys', () => {
       expect(missing, `missing from messages/en: ${missing.map((m) => `${namespace}.${m}`).join(', ')}`).toEqual([]);
     });
   }
+});
+
+// Colors and types are vocabulary-owned: their labels live in the vocabulary itself
+// (single source; constants.colors / constants.types no longer enumerate them — Task 7
+// retires those lists). Same contract as garment-vocabulary-parity.test.ts.
+describe('vocabulary-owned labels', () => {
+  it('constants.colors: every vocabulary color has a non-empty label', () => {
+    expect(COLOR_VALUES.every((c) => c.label.trim().length > 0)).toBe(true);
+  });
+
+  it('constants.types: every vocabulary type has a non-empty label', () => {
+    expect(TYPE_ENTRIES.every((t) => t.label.trim().length > 0)).toBe(true);
+  });
 });
 
 describe('locale catalogs', () => {
