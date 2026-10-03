@@ -50,25 +50,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useLogWash, useWashHistory, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
-  useClothingTypes,
-  useClothingColors,
+  useBodyParts,
   useFormalityLabel,
   useMaterialLabel,
   useSubtypeLabel,
 } from '@/lib/hooks/use-translated-constants';
+import {
+  COLOR_VALUES,
+  STYLE_LABELS,
+  STYLE_VALUES,
+  TYPE_ENTRIES,
+} from '@/lib/generated/garment-vocabulary';
+import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
+import { PartTypeSelect } from '@/components/vocab/part-type-select';
+import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { ColorEyedropper } from '@/components/color-eyedropper';
 import { GeneratePairingsDialog } from '@/components/generate-pairings-dialog';
 import { useFeatures } from '@/lib/hooks/use-features';
@@ -85,9 +86,18 @@ interface ItemDetailDialogProps {
 interface EditForm {
   name: string;
   type: string;
+  body_part: string;
   subtype: string;
   brand: string;
-  primary_color: string;
+  primary_colors: string[];
+  secondary_colors: string[];
+  style: string[];
+  temp_low: number | undefined;
+  temp_high: number | undefined;
+  purchase_date: string;
+  purchase_price: number | undefined;
+  is_archived: boolean;
+  archive_reason: string;
   notes: string;
   favorite: boolean;
   wash_interval: number | undefined;
@@ -97,11 +107,22 @@ function editFormFromItem(item: Item): EditForm {
   return {
     name: item.name || '',
     type: item.type,
+    // Derive the part from the type when the item predates the body_part column.
+    body_part:
+      item.body_part || TYPE_ENTRIES.find((e) => e.value === item.type)?.body_part || '',
     // Pre-fill a rejected AI type as the subtype so picking the nearest
     // supported type doesn't lose what the model actually saw.
     subtype: item.subtype || (item.type === 'unknown' && item.ai_unrecognized_type) || '',
     brand: item.brand || '',
-    primary_color: item.primary_color || '',
+    primary_colors: item.primary_colors ?? [],
+    secondary_colors: item.secondary_colors ?? [],
+    style: item.tags.style ?? [],
+    temp_low: item.temp_low ?? undefined,
+    temp_high: item.temp_high ?? undefined,
+    purchase_date: item.purchase_date || '',
+    purchase_price: item.purchase_price ?? undefined,
+    is_archived: item.is_archived,
+    archive_reason: item.archive_reason || '',
     notes: item.notes || '',
     favorite: item.favorite,
     wash_interval: item.wash_interval ?? undefined,
@@ -113,8 +134,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const tc = useTranslations('common');
   const tw = useTranslations('wardrobe');
   const router = useRouter();
-  const clothingTypes = useClothingTypes();
-  const clothingColors = useClothingColors();
+  const bodyParts = useBodyParts();
   const subtypeLabel = useSubtypeLabel();
   const materialLabel = useMaterialLabel();
   const formalityLabel = useFormalityLabel();
@@ -125,9 +145,18 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const [editForm, setEditForm] = useState<EditForm>({
     name: '',
     type: '',
+    body_part: '',
     subtype: '',
     brand: '',
-    primary_color: '',
+    primary_colors: [],
+    secondary_colors: [],
+    style: [],
+    temp_low: undefined,
+    temp_high: undefined,
+    purchase_date: '',
+    purchase_price: undefined,
+    is_archived: false,
+    archive_reason: '',
     notes: '',
     favorite: false,
     wash_interval: undefined,
@@ -164,19 +193,37 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   if (!item) return null;
 
   const handleSave = async () => {
+    let purchaseDate: string | null = null;
+    try {
+      // null (not undefined) so clearing the field actually clears it server-side.
+      purchaseDate = normalizePurchaseDate(editForm.purchase_date) || null;
+    } catch {
+      toast.error(t('invalidPurchaseDate'));
+      return;
+    }
     try {
       await updateItem.mutateAsync({
         id: item.id,
         data: {
           name: editForm.name || undefined,
           type: editForm.type,
+          body_part: editForm.body_part || null,
           // null (not undefined) so clearing the field actually clears it server-side.
           subtype: editForm.subtype.trim() || null,
           brand: editForm.brand || undefined,
-          primary_color: editForm.primary_color || undefined,
+          primary_colors: editForm.primary_colors,
+          secondary_colors: editForm.secondary_colors,
+          temp_low: editForm.temp_low ?? null,
+          temp_high: editForm.temp_high ?? null,
+          purchase_date: purchaseDate,
+          purchase_price: editForm.purchase_price ?? null,
+          is_archived: editForm.is_archived,
+          archive_reason: editForm.is_archived ? editForm.archive_reason.trim() || null : null,
           notes: editForm.notes || undefined,
           favorite: editForm.favorite,
           wash_interval: editForm.wash_interval,
+          // Style keeps its existing submit path (tags.style).
+          tags: { ...item.tags, style: editForm.style },
         },
       });
       setIsEditing(false);
@@ -283,8 +330,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
 
   // Use signed URL from backend for better quality in detail view
   const imageUrl = item.image_url || item.image_path;
-  const colorInfo = clothingColors.find((c) => c.value === item.primary_color);
-  const typeInfo = clothingTypes.find((type) => type.value === item.type);
+  const typeInfo = TYPE_ENTRIES.find((entry) => entry.value === item.type);
+  const colorLabel = (value: string) => COLOR_VALUES.find((c) => c.value === value);
+  const primaryColorInfo = (item.primary_colors ?? []).map(colorLabel);
+  const secondaryColorInfo = (item.secondary_colors ?? []).map(colorLabel);
   const unrecognizedType = item.type === 'unknown' ? item.ai_unrecognized_type : null;
   const subtypeSuggestions = CLOTHING_SUBTYPES[editForm.type] ?? [];
 
@@ -621,21 +670,14 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         {t('unrecognizedType', { value: unrecognizedType })}
                       </p>
                     )}
-                    <Select
-                      value={editForm.type}
-                      onValueChange={(v) => setEditForm({ ...editForm, type: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clothingTypes.map((ct) => (
-                          <SelectItem key={ct.value} value={ct.value}>
-                            {ct.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PartTypeSelect
+                      parts={bodyParts}
+                      entries={[...TYPE_ENTRIES]}
+                      bodyPart={editForm.body_part}
+                      type={editForm.type}
+                      onBodyPartChange={(v) => setEditForm({ ...editForm, body_part: v })}
+                      onTypeChange={(v) => setEditForm({ ...editForm, type: v })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="item-subtype">{t('subtype')}</Label>
@@ -662,35 +704,150 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('primaryColor')}</Label>
-                    <div className="flex gap-2">
-                      <Select
-                        value={editForm.primary_color}
-                        onValueChange={(v) => setEditForm({ ...editForm, primary_color: v })}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder={t('placeholders.selectColor')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clothingColors.map((c) => (
-                            <SelectItem key={c.value} value={c.value}>
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-3 h-3 rounded-full border"
-                                  style={{ backgroundColor: c.hex }}
-                                />
-                                {c.name}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="flex items-center justify-between">
+                      <Label>{t('primaryColors')}</Label>
                       <ColorEyedropper
                         imageUrl={imageUrl}
-                        onColorSelect={(color) => setEditForm({ ...editForm, primary_color: color })}
+                        onColorSelect={(color) =>
+                          setEditForm({
+                            ...editForm,
+                            primary_colors: editForm.primary_colors.includes(color)
+                              ? editForm.primary_colors
+                              : [...editForm.primary_colors, color],
+                          })
+                        }
+                      />
+                    </div>
+                    <ColorMultiSelect
+                      values={editForm.primary_colors}
+                      options={[...COLOR_VALUES]}
+                      onChange={(next) => setEditForm({ ...editForm, primary_colors: next })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('secondaryColors')}</Label>
+                    <ColorMultiSelect
+                      values={editForm.secondary_colors}
+                      options={[...COLOR_VALUES]}
+                      onChange={(next) => setEditForm({ ...editForm, secondary_colors: next })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('style')}</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {STYLE_VALUES.map((value) => {
+                        const active = editForm.style.includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() =>
+                              setEditForm({
+                                ...editForm,
+                                style: active
+                                  ? editForm.style.filter((v) => v !== value)
+                                  : [...editForm.style, value],
+                              })
+                            }
+                            className={`rounded-full border px-2 py-0.5 text-xs ${active ? 'ring-2 ring-primary' : ''}`}
+                          >
+                            {STYLE_LABELS[value]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="item-temp-low">{t('tempLow')}</Label>
+                      <Input
+                        id="item-temp-low"
+                        type="number"
+                        value={editForm.temp_low ?? ''}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            temp_low: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="item-temp-high">{t('tempHigh')}</Label>
+                      <Input
+                        id="item-temp-high"
+                        type="number"
+                        value={editForm.temp_high ?? ''}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            temp_high: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="item-purchase-date">{t('purchaseDate')}</Label>
+                      <Input
+                        id="item-purchase-date"
+                        value={editForm.purchase_date}
+                        onChange={(e) => setEditForm({ ...editForm, purchase_date: e.target.value })}
+                        placeholder={t('purchaseDatePlaceholder')}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="item-purchase-price">{t('purchasePrice')}</Label>
+                      <Input
+                        id="item-purchase-price"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={editForm.purchase_price ?? ''}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            purchase_price: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('status')}</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={editForm.is_archived ? 'outline' : 'default'}
+                        aria-pressed={!editForm.is_archived}
+                        onClick={() => setEditForm({ ...editForm, is_archived: false })}
+                      >
+                        {t('statusActive')}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={editForm.is_archived ? 'default' : 'outline'}
+                        aria-pressed={editForm.is_archived}
+                        onClick={() => setEditForm({ ...editForm, is_archived: true })}
+                      >
+                        {t('statusRetired')}
+                      </Button>
+                    </div>
+                  </div>
+                  {editForm.is_archived && (
+                    <div className="space-y-2">
+                      <Label htmlFor="item-archive-reason">{t('archiveReason')}</Label>
+                      <Input
+                        id="item-archive-reason"
+                        value={editForm.archive_reason}
+                        onChange={(e) => setEditForm({ ...editForm, archive_reason: e.target.value })}
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>{t('notes')}</Label>
                     <Textarea
@@ -757,16 +914,91 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         <span>{item.brand}</span>
                       </div>
                     )}
-                    {colorInfo && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Palette className="h-4 w-4 text-muted-foreground" />
-                        <div
-                          className="w-4 h-4 rounded-full border"
-                          style={{ backgroundColor: colorInfo.hex }}
-                        />
-                        <span>{colorInfo.name}</span>
+                    {(primaryColorInfo.length > 0 || secondaryColorInfo.length > 0) && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Palette className="h-4 w-4 text-muted-foreground mt-0.5" />
+                        <div className="space-y-1">
+                          {primaryColorInfo.length > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground">{t('primaryColors')}</span>
+                              {primaryColorInfo.map((c) =>
+                                c ? (
+                                  <span key={c.value} className="flex items-center gap-1">
+                                    <span
+                                      className="w-4 h-4 rounded-full border"
+                                      style={{ backgroundColor: c.hex }}
+                                    />
+                                    <span>{c.label}</span>
+                                  </span>
+                                ) : null,
+                              )}
+                            </div>
+                          )}
+                          {secondaryColorInfo.length > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground">{t('secondaryColors')}</span>
+                              {secondaryColorInfo.map((c) =>
+                                c ? (
+                                  <span key={c.value} className="flex items-center gap-1">
+                                    <span
+                                      className="w-4 h-4 rounded-full border"
+                                      style={{ backgroundColor: c.hex }}
+                                    />
+                                    <span>{c.label}</span>
+                                  </span>
+                                ) : null,
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
+                    {(item.tags.style?.length ?? 0) > 0 && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Tag className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.tags.style.map((s) => (
+                            <Badge key={s} variant="secondary" className="text-xs">
+                              {STYLE_LABELS[s as keyof typeof STYLE_LABELS] ?? s}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(item.temp_low != null || item.temp_high != null) && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">{t('tempRange')}</span>
+                        <span>
+                          {item.temp_low ?? '—'}~{item.temp_high ?? '—'}℃
+                        </span>
+                      </div>
+                    )}
+                    {(item.purchase_date || item.purchase_price != null) && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex flex-wrap gap-x-3">
+                          {item.purchase_date && (
+                            <span>
+                              {t('purchaseDate')}: {formatPurchaseDate(item.purchase_date, item.purchase_date_precision)}
+                            </span>
+                          )}
+                          {item.purchase_price != null && (
+                            <span>
+                              {t('purchasePrice')}: {item.purchase_price}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">{t('status')}</span>
+                      <Badge variant={item.is_archived ? 'outline' : 'secondary'}>
+                        {item.is_archived ? t('statusRetired') : t('statusActive')}
+                      </Badge>
+                      {item.is_archived && item.archive_reason && (
+                        <span className="text-muted-foreground truncate">{item.archive_reason}</span>
+                      )}
+                    </div>
                     {item.wear_count > 0 && (
                       <div className="flex items-center gap-2 text-sm">
                         <Calendar className="h-4 w-4 text-muted-foreground" />

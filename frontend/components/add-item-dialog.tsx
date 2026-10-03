@@ -28,15 +28,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useCreateItem, useBulkCreateItems, BulkUploadResponse } from '@/lib/hooks/use-items';
-import { useClothingTypes, useClothingColors } from '@/lib/hooks/use-translated-constants';
+import { useBodyParts } from '@/lib/hooks/use-translated-constants';
+import {
+  COLOR_VALUES,
+  STYLE_LABELS,
+  STYLE_VALUES,
+  TYPE_ENTRIES,
+} from '@/lib/generated/garment-vocabulary';
+import type { ColorEntry, TypeEntry } from '@/lib/types';
+import { normalizePurchaseDate } from '@/lib/purchase-date';
+import { PartTypeSelect } from '@/components/vocab/part-type-select';
+import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { useTranslations } from 'next-intl';
 
 interface AddItemDialogProps {
@@ -53,15 +56,23 @@ interface FileWithPreview {
 export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   const t = useTranslations('wardrobe.addItem');
   const tc = useTranslations('common');
-  const clothingTypes = useClothingTypes();
-  const clothingColors = useClothingColors();
+  const bodyParts = useBodyParts();
   // Single upload state
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [type, setType] = useState('');
+  const [bodyPart, setBodyPart] = useState('');
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
-  const [primaryColor, setPrimaryColor] = useState('');
+  const [primaryColors, setPrimaryColors] = useState<string[]>([]);
+  const [secondaryColors, setSecondaryColors] = useState<string[]>([]);
+  const [style, setStyle] = useState<string[]>([]);
+  const [tempLow, setTempLow] = useState('');
+  const [tempHigh, setTempHigh] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchasePrice, setPurchasePrice] = useState('');
+  const [isArchived, setIsArchived] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('');
   const [notes, setNotes] = useState('');
 
   // Bulk upload state
@@ -134,13 +145,31 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
 
     if (!file) return;
 
+    let normalizedPurchaseDate = '';
+    try {
+      normalizedPurchaseDate = normalizePurchaseDate(purchaseDate);
+    } catch {
+      toast.error(t('invalidPurchaseDate'));
+      return;
+    }
+
     const formData = new FormData();
     formData.append('image', file);
     // Type is optional - AI will detect if not provided
     if (type) formData.append('type', type);
+    if (bodyPart) formData.append('body_part', bodyPart);
     if (name) formData.append('name', name);
     if (brand) formData.append('brand', brand);
-    if (primaryColor) formData.append('primary_color', primaryColor);
+    // Arrays travel comma-separated, matching the endpoint's existing form convention.
+    if (primaryColors.length) formData.append('primary_colors', primaryColors.join(','));
+    if (secondaryColors.length) formData.append('secondary_colors', secondaryColors.join(','));
+    if (style.length) formData.append('style', style.join(','));
+    if (tempLow !== '') formData.append('temp_low', tempLow);
+    if (tempHigh !== '') formData.append('temp_high', tempHigh);
+    if (normalizedPurchaseDate) formData.append('purchase_date', normalizedPurchaseDate);
+    if (purchasePrice !== '') formData.append('purchase_price', purchasePrice);
+    formData.append('is_archived', String(isArchived));
+    if (isArchived && archiveReason.trim()) formData.append('archive_reason', archiveReason.trim());
     if (notes) formData.append('notes', notes);
 
     try {
@@ -205,9 +234,18 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     setFile(null);
     setPreview(null);
     setType('');
+    setBodyPart('');
     setName('');
     setBrand('');
-    setPrimaryColor('');
+    setPrimaryColors([]);
+    setSecondaryColors([]);
+    setStyle([]);
+    setTempLow('');
+    setTempHigh('');
+    setPurchaseDate('');
+    setPurchasePrice('');
+    setIsArchived(false);
+    setArchiveReason('');
     setNotes('');
 
     // Bulk upload cleanup - also clean up from the ref
@@ -311,19 +349,15 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
 
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label htmlFor="type">{t('typeLabel')}</Label>
-                  <Select value={type} onValueChange={setType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('letAiDetect')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clothingTypes.map((ct) => (
-                        <SelectItem key={ct.value} value={ct.value}>
-                          {ct.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>{t('typeLabel')}</Label>
+                  <PartTypeSelect
+                    parts={bodyParts}
+                    entries={[...TYPE_ENTRIES]}
+                    bodyPart={bodyPart}
+                    type={type}
+                    onBodyPartChange={setBodyPart}
+                    onTypeChange={setType}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -348,27 +382,124 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="color">{t('primaryColor')}</Label>
-                    <Select value={primaryColor} onValueChange={setPrimaryColor}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={t('selectPlaceholder')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clothingColors.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full border"
-                                style={{ backgroundColor: c.hex }}
-                              />
-                              {c.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="purchase-price">{t('purchasePrice')}</Label>
+                    <Input
+                      id="purchase-price"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={purchasePrice}
+                      onChange={(e) => setPurchasePrice(e.target.value)}
+                    />
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label>{t('primaryColors')}</Label>
+                  <ColorMultiSelect
+                    values={primaryColors}
+                    options={[...COLOR_VALUES]}
+                    onChange={setPrimaryColors}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('secondaryColors')}</Label>
+                  <ColorMultiSelect
+                    values={secondaryColors}
+                    options={[...COLOR_VALUES]}
+                    onChange={setSecondaryColors}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('style')}</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {STYLE_VALUES.map((value) => {
+                      const active = style.includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() =>
+                            setStyle(active ? style.filter((v) => v !== value) : [...style, value])
+                          }
+                          className={`rounded-full border px-2 py-0.5 text-xs ${active ? 'ring-2 ring-primary' : ''}`}
+                        >
+                          {STYLE_LABELS[value]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="temp-low">{t('tempLow')}</Label>
+                    <Input
+                      id="temp-low"
+                      type="number"
+                      value={tempLow}
+                      onChange={(e) => setTempLow(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="temp-high">{t('tempHigh')}</Label>
+                    <Input
+                      id="temp-high"
+                      type="number"
+                      value={tempHigh}
+                      onChange={(e) => setTempHigh(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="purchase-date">{t('purchaseDate')}</Label>
+                  <Input
+                    id="purchase-date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    placeholder={t('purchaseDatePlaceholder')}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('status')}</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isArchived ? 'outline' : 'default'}
+                      aria-pressed={!isArchived}
+                      onClick={() => setIsArchived(false)}
+                    >
+                      {t('statusActive')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isArchived ? 'default' : 'outline'}
+                      aria-pressed={isArchived}
+                      onClick={() => setIsArchived(true)}
+                    >
+                      {t('statusRetired')}
+                    </Button>
+                  </div>
+                </div>
+
+                {isArchived && (
+                  <div className="space-y-2">
+                    <Label htmlFor="archive-reason">{t('archiveReason')}</Label>
+                    <Input
+                      id="archive-reason"
+                      value={archiveReason}
+                      onChange={(e) => setArchiveReason(e.target.value)}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="notes">{t('notesPlaceholder')}</Label>

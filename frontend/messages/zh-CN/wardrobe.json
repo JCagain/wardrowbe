@@ -3,6 +3,7 @@
     "addItem": "添加单品"
   },
   "addItem": {
+    "archiveReason": "退役原因",
     "brandInputPlaceholder": "例如：优衣库",
     "brandPlaceholder": "品牌",
     "bulk": {
@@ -32,17 +33,30 @@
     "dropzone": "拖放图片，或点击选择",
     "dropzoneActive": "将图片拖放到这里",
     "formatHint": "PNG、JPG 或 HEIC",
+    "invalidPurchaseDate": "购买时间需为 2024 或 2024-03 格式",
     "letAiDetect": "由 AI 识别...",
     "nameInputPlaceholder": "例如：蓝色牛津衬衫",
     "namePlaceholder": "名称（选填）",
-    "notesInputPlaceholder": "其他备注...",
-    "notesPlaceholder": "备注",
+    "notesInputPlaceholder": "补充描述...",
+    "notesPlaceholder": "描述",
     "previewAlt": "预览",
     "primaryColor": "主要颜色",
+    "primaryColors": "主色",
+    "purchaseDate": "购买时间",
+    "purchaseDatePlaceholder": "2024 或 2024-03",
+    "purchasePrice": "价格",
+    "secondaryColors": "辅色",
     "selectPlaceholder": "选择...",
     "singleItem": "单件",
+    "status": "状态",
+    "statusActive": "在役",
+    "statusRetired": "已退役",
+    "style": "风格",
     "submit": "添加单品",
     "subtitle": "上传你的衣物照片",
+    "tempHigh": "温度上限（℃）",
+    "tempLow": "温度下限（℃）",
+    "tempRange": "温度",
     "title": "添加单品",
     "typeLabel": "类型（留空则由 AI 检测）",
     "uploading": "上传中..."
@@ -91,6 +105,15 @@
     "rotating": "Rotating…"
   },
   "allTypes": "所有类型",
+  "bodyParts": {
+    "accessories": "配饰",
+    "bottoms": "下装",
+    "dresses": "连衣裙/套装",
+    "footwear": "鞋袜",
+    "jewelry": "首饰",
+    "outerwear": "外套",
+    "tops": "上衣"
+  },
   "bulkActions": {
     "cancelAllError": "Failed to cancel analysis",
     "cancelAllQueued": "{count, plural, one {Cancelled # in-progress analysis} other {Cancelled # in-progress analyses}}",
@@ -172,11 +195,13 @@
       "washError": "标记已洗失败",
       "washed": "单品已标记为已清洗"
     },
+    "archiveReason": "退役原因",
     "brand": "品牌",
+    "invalidPurchaseDate": "购买时间需为 2024 或 2024-03 格式",
     "name": "名称",
-    "notes": "备注",
+    "notes": "描述",
     "placeholders": {
-      "additionalNotes": "补充备注...",
+      "additionalNotes": "补充描述...",
       "brandName": "品牌名称",
       "itemName": "单品名称",
       "selectColor": "选择颜色",
@@ -184,7 +209,19 @@
       "washIntervalDefault": "默认：{count}"
     },
     "primaryColor": "主要颜色",
-    "subtype": "子类型",
+    "primaryColors": "主色",
+    "purchaseDate": "购买时间",
+    "purchaseDatePlaceholder": "2024 或 2024-03",
+    "purchasePrice": "价格",
+    "secondaryColors": "辅色",
+    "status": "状态",
+    "statusActive": "在役",
+    "statusRetired": "已退役",
+    "style": "风格",
+    "subtype": "备注",
+    "tempHigh": "温度上限（℃）",
+    "tempLow": "温度下限（℃）",
+    "tempRange": "温度",
     "titles": {
       "analysisInProgress": "分析进行中...",
       "deleteImage": "删除图片",
@@ -237,6 +274,10 @@
   },
   "needsWash": "需要清洗",
   "pageSize": "每页 {count} 件",
+  "partTypeSelect": {
+    "bodyPart": "部位",
+    "type": "类别"
+  },
   "search": "搜索单品...",
   "sort": {
     "leastRecentlyWorn": "最久未穿",

@@ -858,9 +858,9 @@ function SuggestContent() {
                         <p className="text-sm font-medium truncate">
                           {selectedItem.name || selectedItem.type}
                         </p>
-                        {selectedItem.primary_color && (
+                        {selectedItem.primary_colors?.[0] && (
                           <p className="text-xs text-muted-foreground capitalize truncate">
-                            {selectedItem.primary_color}
+                            {selectedItem.primary_colors[0]}
                           </p>
                         )}
                       </div>

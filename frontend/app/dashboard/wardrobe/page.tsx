@@ -80,7 +80,7 @@ function ItemCard({
   const tc = useTranslations('common');
   const clothingColors = useClothingColors();
   const subtypeLabel = useSubtypeLabel();
-  const colorInfo = clothingColors.find((c) => c.value === item.primary_color);
+  const colorInfo = clothingColors.find((c) => c.value === item.primary_colors?.[0]);
   const isProcessing = item.status === 'processing';
   const isError = item.status === 'error' && !errorDismissed;
   const isBackgroundRemovalKind = item.processing_kind === 'background_removal';

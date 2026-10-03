@@ -3,6 +3,7 @@
     "addItem": "Add Item"
   },
   "addItem": {
+    "archiveReason": "Retirement Reason",
     "brandInputPlaceholder": "e.g., J.Crew",
     "brandPlaceholder": "Brand",
     "bulk": {
@@ -32,17 +33,30 @@
     "dropzone": "Drag & drop an image, or tap to select",
     "dropzoneActive": "Drop the image here",
     "formatHint": "PNG, JPG, or HEIC",
+    "invalidPurchaseDate": "Purchase date must be YYYY or YYYY-MM",
     "letAiDetect": "Let AI detect...",
     "nameInputPlaceholder": "e.g., Blue Oxford Shirt",
     "namePlaceholder": "Name (optional)",
-    "notesInputPlaceholder": "Any additional notes...",
-    "notesPlaceholder": "Notes",
+    "notesInputPlaceholder": "Add a description...",
+    "notesPlaceholder": "Description",
     "previewAlt": "Preview",
     "primaryColor": "Primary Color",
+    "primaryColors": "Primary Colors",
+    "purchaseDate": "Purchase Date",
+    "purchaseDatePlaceholder": "2024 or 2024-03",
+    "purchasePrice": "Price",
+    "secondaryColors": "Secondary Colors",
     "selectPlaceholder": "Select...",
     "singleItem": "Single Item",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusRetired": "Retired",
+    "style": "Style",
     "submit": "Add Item",
     "subtitle": "Upload photos of your clothing items",
+    "tempHigh": "Max Temp (°C)",
+    "tempLow": "Min Temp (°C)",
+    "tempRange": "Temperature",
     "title": "Add Items",
     "typeLabel": "Type (AI will detect if empty)",
     "uploading": "Uploading..."
@@ -91,6 +105,15 @@
     "rotating": "Rotating…"
   },
   "allTypes": "All types",
+  "bodyParts": {
+    "accessories": "Accessories",
+    "bottoms": "Bottoms",
+    "dresses": "Dresses/Sets",
+    "footwear": "Footwear",
+    "jewelry": "Jewelry",
+    "outerwear": "Outerwear",
+    "tops": "Tops"
+  },
   "bulkActions": {
     "cancelAllError": "Failed to cancel analysis",
     "cancelAllQueued": "{count, plural, one {Cancelled # in-progress analysis} other {Cancelled # in-progress analyses}}",
@@ -172,11 +195,13 @@
       "washError": "Failed to mark as washed",
       "washed": "Item marked as washed"
     },
+    "archiveReason": "Retirement Reason",
     "brand": "Brand",
+    "invalidPurchaseDate": "Purchase date must be YYYY or YYYY-MM",
     "name": "Name",
-    "notes": "Notes",
+    "notes": "Description",
     "placeholders": {
-      "additionalNotes": "Additional notes...",
+      "additionalNotes": "Add a description...",
       "brandName": "Brand name",
       "itemName": "Item name",
       "selectColor": "Select color",
@@ -184,7 +209,19 @@
       "washIntervalDefault": "Default: {count}"
     },
     "primaryColor": "Primary Color",
-    "subtype": "Subtype",
+    "primaryColors": "Primary Colors",
+    "purchaseDate": "Purchase Date",
+    "purchaseDatePlaceholder": "2024 or 2024-03",
+    "purchasePrice": "Price",
+    "secondaryColors": "Secondary Colors",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusRetired": "Retired",
+    "style": "Style",
+    "subtype": "Note",
+    "tempHigh": "Max Temp (°C)",
+    "tempLow": "Min Temp (°C)",
+    "tempRange": "Temperature",
     "titles": {
       "analysisInProgress": "Analysis in progress...",
       "deleteImage": "Delete image",
@@ -237,6 +274,10 @@
   },
   "needsWash": "Needs wash",
   "pageSize": "{count} per page",
+  "partTypeSelect": {
+    "bodyPart": "Body Part",
+    "type": "Category"
+  },
   "search": "Search items...",
   "sort": {
     "leastRecentlyWorn": "Least recently worn",

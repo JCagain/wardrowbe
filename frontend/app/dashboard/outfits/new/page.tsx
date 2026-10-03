@@ -124,7 +124,7 @@ export default function StudioEditorPage() {
         name: item.name ?? null,
         thumbnail_url: item.thumbnail_url ?? null,
         image_url: item.image_url ?? null,
-        primary_color: item.primary_color ?? null,
+        primary_color: item.primary_colors?.[0] ?? null,
       }));
     dispatch({
       type: 'LOAD',
@@ -174,7 +174,7 @@ export default function StudioEditorPage() {
         name: item.name ?? null,
         thumbnail_url: item.thumbnail_url ?? null,
         image_url: item.image_url ?? null,
-        primary_color: item.primary_color ?? null,
+        primary_color: item.primary_colors?.[0] ?? null,
       },
     });
   }, [state.items]);

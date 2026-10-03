@@ -100,9 +100,9 @@ export function GeneratePairingsDialog({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{item.name || item.type}</p>
-                {item.primary_color && (
+                {item.primary_colors?.[0] && (
                   <p className="text-sm text-muted-foreground capitalize">
-                    {item.primary_color} {item.type}
+                    {item.primary_colors[0]} {item.type}
                   </p>
                 )}
               </div>

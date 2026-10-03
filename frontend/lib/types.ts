@@ -2,11 +2,34 @@ import { COLOR_VALUES, CLOTHING_TYPE_VALUES } from '@/lib/generated/garment-voca
 
 // API response types matching backend schemas
 
+// Vocabulary entry shapes, shared with the runtime vocabulary hook (use-vocabulary).
+// Vocabulary labels are the single source of Chinese display names: never route them
+// through constants.colors / constants.types translations.
+export interface VocabEntry {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+export interface ColorEntry extends VocabEntry {
+  family: string;
+  hex: string;
+}
+
+export interface TypeEntry extends VocabEntry {
+  body_part: string;
+  role?: string;
+  wash_interval?: number;
+}
+
 export interface ItemTags {
+  // AI-reported tags (unchanged JSON shape). Item-level color truth lives in
+  // primary_colors / secondary_colors.
   colors: string[];
   primary_color?: string;
   pattern?: string;
   material?: string;
+  // Submit path for style is unchanged (tags.style); values come from STYLE_VALUES.
   style: string[];
   season: string[];
   formality?: string;
@@ -26,8 +49,8 @@ export interface Item {
   name?: string;
   brand?: string;
   notes?: string;
-  purchase_date?: string;
-  purchase_price?: number;
+  purchase_date?: string | null;
+  purchase_price?: number | null;
   favorite: boolean;
   image_path: string;
   thumbnail_path?: string;
@@ -37,8 +60,12 @@ export interface Item {
   thumbnail_url?: string;
   medium_url?: string;
   tags: ItemTags;
-  colors: string[];
-  primary_color?: string;
+  body_part?: string | null;
+  primary_colors: string[];
+  secondary_colors: string[];
+  temp_low?: number | null;
+  temp_high?: number | null;
+  purchase_date_precision?: string | null;
   status: 'processing' | 'ready' | 'error' | 'archived';
   ai_processed: boolean;
   ai_confidence?: number;
@@ -63,7 +90,7 @@ export interface Item {
   additional_images: ItemImage[];
   is_archived: boolean;
   archived_at?: string;
-  archive_reason?: string;
+  archive_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +150,7 @@ export interface TaggingProgress {
 export interface ItemFilter {
   type?: string;
   subtype?: string;
+  // Param name kept: the backend filters the primary ∪ secondary color union.
   colors?: string[];
   status?: string;
   favorite?: boolean;

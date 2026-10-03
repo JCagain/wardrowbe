@@ -6,26 +6,37 @@ import {
   CLOTHING_TYPES,
   CLOTHING_COLORS,
   OCCASIONS,
+  VocabEntry,
 } from '@/lib/types';
+import { BODY_PART_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
 
 const STYLE_VALUES = ['bold', 'casual', 'formal', 'minimalist', 'sporty'] as const;
 const WEATHER_CONDITION_VALUES = ['clear', 'cloudy', 'rain', 'snow'] as const;
 
+// Type and color labels come from the vocabulary itself (single source), so they are
+// no longer routed through constants.types / constants.colors translations.
 export function useClothingTypes() {
-  const t = useTranslations('constants.types');
-
-  return useMemo(() => CLOTHING_TYPES.map((ct) => ({
-    ...ct,
-    label: t(ct.value),
-  })), [t]);
+  return useMemo(() => CLOTHING_TYPES.map((ct) => {
+    const entry = TYPE_ENTRIES.find((e) => e.value === ct.value);
+    return {
+      ...ct,
+      label: entry?.label ?? ct.value,
+    };
+  }), []);
 }
 
 export function useClothingColors() {
-  const t = useTranslations('constants.colors');
+  return useMemo(() => CLOTHING_COLORS, []);
+}
 
-  return useMemo(() => CLOTHING_COLORS.map((cc) => ({
-    ...cc,
-    name: t(cc.value),
+// Body-part values come from the vocabulary; their display names live in the message
+// catalog until the runtime vocabulary hook (use-vocabulary) ships them with labels.
+export function useBodyParts(): VocabEntry[] {
+  const t = useTranslations('constants.bodyParts');
+
+  return useMemo(() => BODY_PART_VALUES.map((value) => ({
+    value,
+    label: t(value),
   })), [t]);
 }
 
