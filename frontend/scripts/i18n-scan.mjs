@@ -8,7 +8,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCAN_DIRS = ['app', 'components', 'lib'];
 
 // components/ui holds unmodified shadcn primitives; their strings are structural, not product copy.
-const SKIP_DIRS = new Set(['node_modules', '.next', 'components/ui']);
+// lib/generated holds machine-generated vocabulary data (single source: vocabulary `label`s),
+// not hand-written copy.
+const SKIP_DIRS = new Set(['node_modules', '.next', 'components/ui', 'lib/generated']);
 // lib/auth.ts labels are NextAuth provider metadata, which only NextAuth's built-in sign-in page
 // renders; the app replaces that page with its own /login.
 const SKIP_FILES = new Set(['app/layout.tsx', 'app/providers.tsx', 'lib/auth.ts']);
