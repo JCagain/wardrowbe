@@ -1,37 +1,793 @@
 {
-  "types": [
-    {"value": "shirt", "role": "base_top", "wash_interval": 2},
-    {"value": "t-shirt", "role": "base_top", "wash_interval": 1},
-    {"value": "top", "role": "base_top", "wash_interval": 2},
-    {"value": "pants", "role": "bottom", "wash_interval": 4},
-    {"value": "jeans", "role": "bottom", "wash_interval": 6},
-    {"value": "shorts", "role": "bottom", "wash_interval": 3},
-    {"value": "dress", "role": "full_body", "wash_interval": 2},
-    {"value": "jumpsuit", "role": "full_body", "wash_interval": 2},
-    {"value": "skirt", "role": "bottom", "wash_interval": 3},
-    {"value": "jacket", "role": "outer_layer", "wash_interval": 8},
-    {"value": "coat", "role": "outer_layer", "wash_interval": 10},
-    {"value": "sweater", "role": "base_top", "wash_interval": 5},
-    {"value": "hoodie", "role": "outer_layer", "wash_interval": 4},
-    {"value": "blazer", "role": "outer_layer", "wash_interval": 5},
-    {"value": "suit", "role": "suit", "wash_interval": 5},
-    {"value": "vest", "role": "mid_layer", "wash_interval": 5},
-    {"value": "cardigan", "role": "mid_layer", "wash_interval": 5},
-    {"value": "polo", "role": "base_top", "wash_interval": 2},
-    {"value": "blouse", "role": "base_top", "wash_interval": 2},
-    {"value": "tank-top", "role": "base_top", "wash_interval": 1},
-    {"value": "shoes", "role": "footwear", "wash_interval": 15},
-    {"value": "sneakers", "role": "footwear", "wash_interval": 15},
-    {"value": "boots", "role": "footwear", "wash_interval": 15},
-    {"value": "sandals", "role": "footwear", "wash_interval": 15},
-    {"value": "socks", "role": "socks", "wash_interval": 1},
-    {"value": "tie", "role": "neckwear", "wash_interval": 20},
-    {"value": "hat", "role": "accessory", "wash_interval": 20},
-    {"value": "scarf", "role": "accessory", "wash_interval": 10},
-    {"value": "belt", "role": "accessory", "wash_interval": 20},
-    {"value": "bag", "role": "accessory", "wash_interval": 20},
-    {"value": "accessories", "role": "accessory", "wash_interval": 20}
+  "body_parts": [
+    {
+      "value": "dresses",
+      "label": "连衣裙/套装"
+    },
+    {
+      "value": "accessories",
+      "label": "配饰"
+    },
+    {
+      "value": "tops",
+      "label": "上衣"
+    },
+    {
+      "value": "jewelry",
+      "label": "首饰"
+    },
+    {
+      "value": "outerwear",
+      "label": "外套"
+    },
+    {
+      "value": "bottoms",
+      "label": "下装"
+    },
+    {
+      "value": "footwear",
+      "label": "鞋袜"
+    }
   ],
-  "materials": ["cotton", "denim", "leather", "wool", "polyester", "silk", "linen", "knit", "fleece", "suede", "velvet", "nylon", "canvas", "down", "shearling"],
-  "formality": ["very-casual", "casual", "smart-casual", "business-casual", "formal", "very-formal"]
+  "types": [
+    {
+      "value": "jumpskirt",
+      "label": "背心裙",
+      "body_part": "dresses",
+      "role": "full_body",
+      "wash_interval": 3
+    },
+    {
+      "value": "slip-dress",
+      "label": "吊带裙",
+      "body_part": "dresses",
+      "role": "full_body",
+      "wash_interval": 2
+    },
+    {
+      "value": "dress",
+      "label": "连衣裙",
+      "body_part": "dresses",
+      "role": "full_body",
+      "wash_interval": 2
+    },
+    {
+      "value": "suit",
+      "label": "套装",
+      "body_part": "dresses",
+      "role": "suit",
+      "wash_interval": 5
+    },
+    {
+      "value": "bag",
+      "label": "包",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "tie",
+      "label": "领带",
+      "body_part": "accessories",
+      "role": "neckwear",
+      "wash_interval": 20
+    },
+    {
+      "value": "hat",
+      "label": "帽子",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "accessories",
+      "label": "其他配饰",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "watch",
+      "label": "手表",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "scarf",
+      "label": "围巾",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 10
+    },
+    {
+      "value": "glasses",
+      "label": "眼镜",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "belt",
+      "label": "腰带",
+      "body_part": "accessories",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "tank-top",
+      "label": "背心",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 1
+    },
+    {
+      "value": "shirt",
+      "label": "衬衫",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 2
+    },
+    {
+      "value": "vest",
+      "label": "马甲",
+      "body_part": "tops",
+      "role": "mid_layer",
+      "wash_interval": 5
+    },
+    {
+      "value": "sweater",
+      "label": "毛衣",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 5
+    },
+    {
+      "value": "bandeau",
+      "label": "抹胸",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 1
+    },
+    {
+      "value": "polo",
+      "label": "Polo衫",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 2
+    },
+    {
+      "value": "top",
+      "label": "其他上衣",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 2
+    },
+    {
+      "value": "t-shirt",
+      "label": "T恤",
+      "body_part": "tops",
+      "role": "base_top",
+      "wash_interval": 1
+    },
+    {
+      "value": "hoodie",
+      "label": "卫衣",
+      "body_part": "tops",
+      "role": "outer_layer",
+      "wash_interval": 4
+    },
+    {
+      "value": "earrings",
+      "label": "耳饰",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "ring",
+      "label": "戒指",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "jewelry",
+      "label": "其他首饰",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "bracelet",
+      "label": "手链",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "bangle",
+      "label": "手镯",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "necklace",
+      "label": "项链",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "brooch",
+      "label": "胸针",
+      "body_part": "jewelry",
+      "role": "accessory",
+      "wash_interval": 20
+    },
+    {
+      "value": "coat",
+      "label": "大衣",
+      "body_part": "outerwear",
+      "role": "outer_layer",
+      "wash_interval": 10
+    },
+    {
+      "value": "trench",
+      "label": "风衣",
+      "body_part": "outerwear",
+      "role": "outer_layer",
+      "wash_interval": 10
+    },
+    {
+      "value": "jacket",
+      "label": "夹克",
+      "body_part": "outerwear",
+      "role": "outer_layer",
+      "wash_interval": 8
+    },
+    {
+      "value": "cardigan",
+      "label": "开衫",
+      "body_part": "outerwear",
+      "role": "mid_layer",
+      "wash_interval": 5
+    },
+    {
+      "value": "blazer",
+      "label": "西装外套",
+      "body_part": "outerwear",
+      "role": "outer_layer",
+      "wash_interval": 5
+    },
+    {
+      "value": "down-jacket",
+      "label": "羽绒服",
+      "body_part": "outerwear",
+      "role": "outer_layer",
+      "wash_interval": 12
+    },
+    {
+      "value": "skirt",
+      "label": "半裙",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 3
+    },
+    {
+      "value": "pants",
+      "label": "长裤",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 4
+    },
+    {
+      "value": "shorts",
+      "label": "短裤",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 3
+    },
+    {
+      "value": "jeans",
+      "label": "牛仔裤",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 6
+    },
+    {
+      "value": "bottom",
+      "label": "其他下装",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 4
+    },
+    {
+      "value": "slacks",
+      "label": "西裤",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 4
+    },
+    {
+      "value": "sweatpants",
+      "label": "运动裤",
+      "body_part": "bottoms",
+      "role": "bottom",
+      "wash_interval": 4
+    },
+    {
+      "value": "heels",
+      "label": "高跟鞋",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    },
+    {
+      "value": "sandals",
+      "label": "凉鞋",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    },
+    {
+      "value": "shoes",
+      "label": "皮鞋",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    },
+    {
+      "value": "slippers",
+      "label": "拖鞋",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    },
+    {
+      "value": "socks",
+      "label": "袜子",
+      "body_part": "footwear",
+      "role": "socks",
+      "wash_interval": 1
+    },
+    {
+      "value": "boots",
+      "label": "靴子",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    },
+    {
+      "value": "sneakers",
+      "label": "运动鞋",
+      "body_part": "footwear",
+      "role": "footwear",
+      "wash_interval": 15
+    }
+  ],
+  "colors": {
+    "families": [
+      {
+        "value": "orange-yellow",
+        "label": "橙黄系"
+      },
+      {
+        "value": "pink",
+        "label": "粉色系"
+      },
+      {
+        "value": "neutral",
+        "label": "黑白灰系"
+      },
+      {
+        "value": "red",
+        "label": "红色系"
+      },
+      {
+        "value": "metallic",
+        "label": "金属系"
+      },
+      {
+        "value": "blue",
+        "label": "蓝色系"
+      },
+      {
+        "value": "green",
+        "label": "绿色系"
+      },
+      {
+        "value": "purple",
+        "label": "紫色系"
+      },
+      {
+        "value": "brown",
+        "label": "棕色系"
+      }
+    ],
+    "values": [
+      {
+        "value": "yellow",
+        "label": "正黄",
+        "family": "orange-yellow",
+        "hex": "#ffd600"
+      },
+      {
+        "value": "lemon",
+        "label": "柠檬黄",
+        "family": "orange-yellow",
+        "hex": "#f2e600"
+      },
+      {
+        "value": "cream",
+        "label": "米黄",
+        "family": "orange-yellow",
+        "hex": "#efe3c2"
+      },
+      {
+        "value": "ginger",
+        "label": "姜黄",
+        "family": "orange-yellow",
+        "hex": "#d29b2e"
+      },
+      {
+        "value": "pumpkin",
+        "label": "南瓜色",
+        "family": "orange-yellow",
+        "hex": "#f79433"
+      },
+      {
+        "value": "orange",
+        "label": "正橙",
+        "family": "orange-yellow",
+        "hex": "#ef6c00"
+      },
+      {
+        "value": "tangerine",
+        "label": "脏橘",
+        "family": "orange-yellow",
+        "hex": "#c26a3e"
+      },
+      {
+        "value": "pink",
+        "label": "正粉",
+        "family": "pink",
+        "hex": "#f06292"
+      },
+      {
+        "value": "sakura",
+        "label": "樱花粉",
+        "family": "pink",
+        "hex": "#f8bbd0"
+      },
+      {
+        "value": "lotus",
+        "label": "藕粉",
+        "family": "pink",
+        "hex": "#d8a7b1"
+      },
+      {
+        "value": "coral",
+        "label": "珊瑚粉",
+        "family": "pink",
+        "hex": "#f08080"
+      },
+      {
+        "value": "rose",
+        "label": "玫红",
+        "family": "pink",
+        "hex": "#c2185b"
+      },
+      {
+        "value": "white",
+        "label": "白",
+        "family": "neutral",
+        "hex": "#f7f7f7"
+      },
+      {
+        "value": "black",
+        "label": "黑",
+        "family": "neutral",
+        "hex": "#1a1a1a"
+      },
+      {
+        "value": "gray",
+        "label": "灰",
+        "family": "neutral",
+        "hex": "#9e9e9e"
+      },
+      {
+        "value": "off-white",
+        "label": "米白",
+        "family": "neutral",
+        "hex": "#f2ede3"
+      },
+      {
+        "value": "light-gray",
+        "label": "浅灰",
+        "family": "neutral",
+        "hex": "#c9c9c9"
+      },
+      {
+        "value": "dark-gray",
+        "label": "深灰",
+        "family": "neutral",
+        "hex": "#5b5b5b"
+      },
+      {
+        "value": "red",
+        "label": "正红",
+        "family": "red",
+        "hex": "#e60012"
+      },
+      {
+        "value": "cherry",
+        "label": "樱桃红",
+        "family": "red",
+        "hex": "#b31c3f"
+      },
+      {
+        "value": "brick",
+        "label": "砖红",
+        "family": "red",
+        "hex": "#a1422f"
+      },
+      {
+        "value": "wine",
+        "label": "酒红",
+        "family": "red",
+        "hex": "#8a2b42"
+      },
+      {
+        "value": "dark-red",
+        "label": "深红",
+        "family": "red",
+        "hex": "#3f0b12"
+      },
+      {
+        "value": "gold",
+        "label": "金",
+        "family": "metallic",
+        "hex": "#d4af37"
+      },
+      {
+        "value": "silver",
+        "label": "银",
+        "family": "metallic",
+        "hex": "#c0c0c0"
+      },
+      {
+        "value": "blue",
+        "label": "正蓝",
+        "family": "blue",
+        "hex": "#1565c0"
+      },
+      {
+        "value": "sky",
+        "label": "天蓝",
+        "family": "blue",
+        "hex": "#64b5f6"
+      },
+      {
+        "value": "misty",
+        "label": "雾霾蓝",
+        "family": "blue",
+        "hex": "#8fa9bf"
+      },
+      {
+        "value": "royal",
+        "label": "宝蓝",
+        "family": "blue",
+        "hex": "#2456a5"
+      },
+      {
+        "value": "denim",
+        "label": "牛仔蓝",
+        "family": "blue",
+        "hex": "#3d5a80"
+      },
+      {
+        "value": "klein",
+        "label": "克莱因蓝",
+        "family": "blue",
+        "hex": "#002fa7"
+      },
+      {
+        "value": "navy",
+        "label": "藏青",
+        "family": "blue",
+        "hex": "#1b2a4a"
+      },
+      {
+        "value": "green",
+        "label": "正绿",
+        "family": "green",
+        "hex": "#2e7d32"
+      },
+      {
+        "value": "mint",
+        "label": "薄荷绿",
+        "family": "green",
+        "hex": "#9adbc8"
+      },
+      {
+        "value": "avocado",
+        "label": "牛油果绿",
+        "family": "green",
+        "hex": "#87a96b"
+      },
+      {
+        "value": "grass",
+        "label": "草绿",
+        "family": "green",
+        "hex": "#7cb342"
+      },
+      {
+        "value": "olive",
+        "label": "橄榄绿",
+        "family": "green",
+        "hex": "#6b7b3a"
+      },
+      {
+        "value": "army",
+        "label": "军绿",
+        "family": "green",
+        "hex": "#4b5320"
+      },
+      {
+        "value": "dark-green",
+        "label": "墨绿",
+        "family": "green",
+        "hex": "#1b4332"
+      },
+      {
+        "value": "purple",
+        "label": "正紫",
+        "family": "purple",
+        "hex": "#6a1b9a"
+      },
+      {
+        "value": "taro",
+        "label": "浅紫",
+        "family": "purple",
+        "hex": "#d2c5ef"
+      },
+      {
+        "value": "lavender",
+        "label": "薰衣草紫",
+        "family": "purple",
+        "hex": "#967bb6"
+      },
+      {
+        "value": "grape",
+        "label": "葡萄紫",
+        "family": "purple",
+        "hex": "#5e35b1"
+      },
+      {
+        "value": "brown",
+        "label": "正棕",
+        "family": "brown",
+        "hex": "#6d4c41"
+      },
+      {
+        "value": "khaki",
+        "label": "卡其",
+        "family": "brown",
+        "hex": "#bfa882"
+      },
+      {
+        "value": "camel",
+        "label": "驼色",
+        "family": "brown",
+        "hex": "#c19a6b"
+      },
+      {
+        "value": "caramel",
+        "label": "焦糖",
+        "family": "brown",
+        "hex": "#a1663b"
+      },
+      {
+        "value": "coffee",
+        "label": "咖啡棕",
+        "family": "brown",
+        "hex": "#4e342e"
+      }
+    ]
+  },
+  "seasons": [
+    {
+      "value": "spring",
+      "label": "春"
+    },
+    {
+      "value": "summer",
+      "label": "夏"
+    },
+    {
+      "value": "fall",
+      "label": "秋"
+    },
+    {
+      "value": "winter",
+      "label": "冬"
+    },
+    {
+      "value": "all-season",
+      "label": "四季"
+    }
+  ],
+  "styles": [
+    {
+      "value": "three-pits",
+      "label": "泛三坑"
+    },
+    {
+      "value": "retro",
+      "label": "复古"
+    },
+    {
+      "value": "goth",
+      "label": "哥特"
+    },
+    {
+      "value": "minimal",
+      "label": "极简"
+    },
+    {
+      "value": "party",
+      "label": "派对"
+    },
+    {
+      "value": "office",
+      "label": "上班"
+    },
+    {
+      "value": "casual",
+      "label": "休闲"
+    },
+    {
+      "value": "alt",
+      "label": "亚比"
+    },
+    {
+      "value": "elegant",
+      "label": "优雅"
+    },
+    {
+      "value": "chinese",
+      "label": "中式"
+    },
+    {
+      "value": "androgynous",
+      "label": "中性"
+    }
+  ],
+  "materials": [
+    "cotton",
+    "denim",
+    "leather",
+    "wool",
+    "polyester",
+    "silk",
+    "linen",
+    "knit",
+    "fleece",
+    "suede",
+    "velvet",
+    "nylon",
+    "canvas",
+    "down",
+    "shearling"
+  ],
+  "formality": [
+    "very-casual",
+    "casual",
+    "smart-casual",
+    "business-casual",
+    "formal",
+    "very-formal"
+  ]
 }
