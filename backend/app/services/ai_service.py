@@ -13,7 +13,16 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from app.config import get_settings
-from app.utils.garment_vocabulary import FORMALITY, MATERIALS, TYPES, render_tagging_prompt
+from app.utils.color_migration import LEGACY_COLOR_ALIASES
+from app.utils.garment_vocabulary import (
+    FORMALITY,
+    MATERIALS,
+    TYPES,
+    COLOR_VALUE_SET,
+    SEASON_VALUES,
+    STYLE_VALUES,
+    render_tagging_prompt,
+)
 from app.utils.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -61,28 +70,7 @@ DESCRIPTION_PROMPT = load_prompt("clothing_description")
 
 # Valid values for validation
 VALID_TYPES = set(TYPES)
-VALID_COLORS = {
-    "black",
-    "white",
-    "gray",
-    "navy",
-    "blue",
-    "light-blue",
-    "red",
-    "burgundy",
-    "pink",
-    "green",
-    "olive",
-    "yellow",
-    "orange",
-    "purple",
-    "brown",
-    "tan",
-    "beige",
-    "cream",
-    "gold",
-    "silver",
-}
+VALID_COLORS = COLOR_VALUE_SET
 VALID_PATTERNS = {
     "solid",
     "striped",
@@ -98,21 +86,10 @@ VALID_PATTERNS = {
 VALID_MATERIALS = set(MATERIALS)
 VALID_FORMALITY = set(FORMALITY)
 VALID_FIT = {"slim", "regular", "relaxed", "oversized", "tailored", "cropped"}
-VALID_STYLES = {
-    "casual",
-    "classic",
-    "sporty",
-    "minimalist",
-    "bohemian",
-    "preppy",
-    "streetwear",
-    "elegant",
-    "athletic",
-    "vintage",
-    "modern",
-    "rugged",
-}
-VALID_SEASONS = {"spring", "summer", "fall", "winter", "all-season"}
+VALID_STYLES = set(STYLE_VALUES)
+VALID_SEASONS = set(SEASON_VALUES)
+
+COLOR_ALIASES = LEGACY_COLOR_ALIASES  # 兼容旧引用名
 
 
 def compute_tag_completeness(tags: "ClothingTags") -> float:
@@ -375,32 +352,29 @@ class AIService:
                                 break
             return None
 
+        # Natural-language color names the model may emit. Targets are vocabulary
+        # slugs; synonyms whose old target was a legacy slug resolve through
+        # LEGACY_COLOR_ALIASES ("sky blue" -> "light-blue" -> "sky"). Plain legacy
+        # slugs ("burgundy") are covered by the layered LEGACY_COLOR_ALIASES below,
+        # which also wins on key collisions ("charcoal" -> "dark-gray").
         COLOR_ALIASES: dict[str, str] = {
-            "grey": "gray",
-            "light grey": "gray",
-            "light gray": "gray",
-            "dark grey": "gray",
-            "dark gray": "gray",
-            "off-white": "cream",
-            "ivory": "cream",
-            "wine": "burgundy",
-            "maroon": "burgundy",
-            "forest green": "green",
-            "dark blue": "navy",
-            "royal blue": "blue",
-            "sky blue": "light-blue",
-            "baby blue": "light-blue",
-            "camel": "tan",
-            "khaki": "tan",
-            "rust": "orange",
-            "coral": "pink",
-            "rose": "pink",
-            "mauve": "purple",
-            "lavender": "purple",
-            "mustard": "yellow",
-            "gold": "yellow",
-            "silver": "gray",
-            "charcoal": "gray",
+            **{
+                "grey": "gray",
+                "light grey": "gray",
+                "light gray": "gray",
+                "dark grey": "gray",
+                "dark gray": "gray",
+                "ivory": "cream",
+                "maroon": "wine",
+                "forest green": "green",
+                "dark blue": "navy",
+                "royal blue": "blue",
+                "sky blue": "sky",
+                "baby blue": "sky",
+                "rust": "orange",
+                "mauve": "purple",
+            },
+            **LEGACY_COLOR_ALIASES,
         }
 
         def validate_value(value: str | None, valid_set: set) -> str | None:

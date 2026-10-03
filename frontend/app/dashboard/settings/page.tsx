@@ -110,7 +110,7 @@ function ColorPicker({
               {isSelected && (
                 <Check
                   className={`h-4 w-4 mx-auto ${
-                    color.value === 'white' || color.value === 'yellow' || color.value === 'beige'
+                    color.value === 'white' || color.value === 'yellow' || color.value === 'cream'
                       ? 'text-black'
                       : 'text-white'
                   }`}

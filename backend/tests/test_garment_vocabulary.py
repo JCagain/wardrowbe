@@ -109,3 +109,23 @@ def test_every_color_slug_is_unique_and_hex_is_lowercase():
     assert len(values) == len(set(values))
     for c in gv.COLOR_VALUES:
         assert c["hex"] == c["hex"].lower()
+
+
+def test_ai_validation_sets_come_from_the_vocabulary():
+    from app.services.ai_service import VALID_COLORS, VALID_SEASONS, VALID_STYLES
+    from app.utils import garment_vocabulary as gv
+
+    assert VALID_COLORS == gv.COLOR_VALUE_SET
+    assert VALID_STYLES == set(gv.STYLE_VALUES)
+    assert VALID_SEASONS == set(gv.SEASON_VALUES)
+
+
+def test_legacy_color_aliases_point_at_new_slugs():
+    from app.services.ai_service import LEGACY_COLOR_ALIASES
+    from app.utils.garment_vocabulary import COLOR_VALUE_SET
+
+    assert set(LEGACY_COLOR_ALIASES.values()) <= COLOR_VALUE_SET
+    assert LEGACY_COLOR_ALIASES["burgundy"] == "wine"
+    assert LEGACY_COLOR_ALIASES["tan"] == "camel"
+    assert LEGACY_COLOR_ALIASES["beige"] == "khaki"
+    assert LEGACY_COLOR_ALIASES["light-blue"] == "sky"

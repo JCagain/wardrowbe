@@ -508,7 +508,7 @@ function PreferencesStep({ onNext, onSkip }: { onNext: () => void; onSkip: () =>
                   {isSelected && (
                     <Check
                       className={`h-5 w-5 mx-auto ${
-                        ['white', 'yellow', 'beige'].includes(color.value)
+                        ['white', 'yellow', 'cream'].includes(color.value)
                           ? 'text-black'
                           : 'text-white'
                       }`}
@@ -546,7 +546,7 @@ function PreferencesStep({ onNext, onSkip }: { onNext: () => void; onSkip: () =>
                   {isSelected && (
                     <span
                       className={`text-lg font-bold ${
-                        ['white', 'yellow', 'beige'].includes(color.value)
+                        ['white', 'yellow', 'cream'].includes(color.value)
                           ? 'text-black'
                           : 'text-white'
                       }`}
