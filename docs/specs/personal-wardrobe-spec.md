@@ -66,7 +66,7 @@
 | `temp_low` / `temp_high` | **新增**，自由数值、可空 |
 | `season[]` | 不变（多选） |
 | `style`（风格） | **复用现有列**（ARRAY），多选、可空；**值域换新词表**（无旧数据，旧 12 风格值不迁移）；值来自风格标签（词表种子 + UI「添加」新建） |
-| `is_archived`（状态） | **复用现有列**：False=在役（默认）、True=**已退役**；`archive_reason`=退役原因（可选）、`archived_at`=退役时间（自动）。网格**沿用现有默认**：只显示在役，筛「已退役」可查看并带角标 |
+| 状态（**三态**） | 新列 `lifecycle`：`active`=**在役**（默认）/ `idle`=**闲置** / `retired`=**已退役**；`is_archived` 保留为兼容视图（= retired）。`archive_reason`=退役原因（可选，仅退役）、`archived_at`=退役时间（自动）。网格默认隐藏**已退役**（**闲置默认可见**，带角标），筛「已退役」可查看 |
 | `purchase_price`（价格） | **复用现有列**，自由数字、**可空**（不设档位，可用于统计） |
 | `purchase_date`（购买时间） | **复用现有列**（Date，存当月代表日）；应用层精度 **年-月**（可只填年、不存日）、**可空**；默认 = **录入日的年月**，可改可清 |
 | `wear_count` | 沿用，语义升级为**随记录自动累计**、可手改，手改后有新纪录则基于手改值继续自动累计 |
@@ -120,7 +120,7 @@
 
 ## 5. 数据模型变更汇总
 
-- `clothing_items`：+ `body_part`、`primary_colors[]`、`secondary_colors[]`、`temp_low`、`temp_high`；**复用现有列** `style`（值域换新词表）、`purchase_price`（=价格）、`purchase_date`（=购买时间，年-月精度）、`is_archived`（=状态，True=已退役）+ `archive_reason`/`archived_at`；− `primary_color`、`colors`（迁移见 §1.5）；`subtype` 列保留（UI 语义 = 备注）
+- `clothing_items`：+ `body_part`、`primary_colors[]`、`secondary_colors[]`、`temp_low`、`temp_high`；**复用现有列** `style`（值域换新词表）、`purchase_price`（=价格）、`purchase_date`（=购买时间，年-月精度）；**状态三态**：新列 `lifecycle`（`item_lifecycle` 枚举：active/idle/retired），`is_archived` 保留为退役兼容视图 + `archive_reason`/`archived_at`（旧数据迁移：is_archived=True→retired、False→active）；− `primary_color`、`colors`（迁移见 §1.5）；`subtype` 列保留（UI 语义 = 备注）
 - 新表 `outfit_photos`（outfit_id, 排序, 图片路径三档）
 - `outfits`：+ `city`（可空）；`season` 语义改为"按日期推导、可手改"；日期沿用现有 `scheduled_for`；`occasion` 现为 NOT NULL——迁移放宽可空（或存空串，实现时定）
 - 沿用不动：`item_images`、`item_history`（**反查**的数据源，记录关联时照旧写入）、`outfit_items`；**穿了几次以 `wear_count` 列为准**（item_history 只做记录明细，不做计数源）
@@ -176,3 +176,9 @@
 14. 「购买时间」精度只有 **年** 或 **年-月** 两档（不存日）；默认取**录入年月**，可置空。
 15. 颜色分布按**主色件次**统计（一件多主色在多条各计 1，**辅色不计**）；类型分布按件数。
 16. 天气预填：过去日期也**拉历史天气**（接口可得就拉，如 Open-Meteo archive）；拉不到才留空手填。
+
+16. **状态三态**：在役/闲置/已退役（`lifecycle` 枚举）；闲置默认可见、已退役默认隐藏；统计三档口径：全部 / 排除退役（在役+闲置）/ 仅在役，默认全部。
+17. **软词表写回细节**：禁用标记 = vocabulary.md 行尾「已停用」+ JSON `"disabled": true`（恢复即两处撤销）；新条目插入位见 vocabulary.md 头部约定（类别/风格=拼音位，颜色=渐变位）；运行时新增类型的 role/wash_interval 按部位推导（`ROLE_BY_PART`/`WASH_BY_PART`）。
+18. **词表进程内快照**：backend/worker 的 AI 校验集与提示词在进程启动时快照，运行时增改**重启容器后**对打标签生效（前端选择器即时生效）。
+19. **词表写回单写者**：JSON+markdown 写回在单 uvicorn 进程内加锁串行，JSON 面原子写（临时文件+rename）；多 worker 部署需换文件锁，本项目按单进程不变量运行。
+20. **部署面**：本项目是单机本地工具，只维护 `docker-compose.yml`(+`.dev`)；上游 `docker-compose.prod.yml`（生产/Pi 变体）按摘不删下线。

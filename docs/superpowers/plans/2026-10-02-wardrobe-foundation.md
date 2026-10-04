@@ -2139,3 +2139,20 @@ git commit -m "docs: reflect vocabulary single-source and product-shell pruning
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
+
+---
+
+## Errata（执行后与实现的差异，2026-10-04）
+
+正文是开工时的文稿；以下裁决改变了实现细节，以 `.superpowers/sdd/2026-10-02-wardrobe-foundation/progress.md` 为准：
+
+- **T11 路径**：不再按仓库根推导（`parents[3]` 在容器布局即断）；JSON 路径取 `garment_vocabulary.VOCABULARY_PATH`，markdown 走 `<backend根>/../docs`（compose 挂 `./docs:/docs`）。
+- **T11 插入位**：颜色不是拼音位，是**渐变位**（hex 明度亮→暗；黑白灰/金属表序垫尾）——spec「颜色插渐变位」优先于本计划片段。
+- **T11 禁用语义**：`"disabled"` 键仅禁用时存在（重编译字节相等）；改名保留备注/hex 格。
+- **T11/T13 类型元数据**：运行时新增类型的 role/wash_interval 按部位推导（`ROLE_BY_PART`/`WASH_BY_PART`，`garment_vocabulary.py` 单源），非 FALLBACK_META 一律 3。
+- **T11 并发**：写回全程锁 + markdown 先写 + JSON 原子写；单进程不变量。
+- **T12**：样式芯片抽 `StyleMultiSelect`；select 型选择器的管理入口=「添加…」选项+选中项旁 ⋯（原生 select 无 hover 位）；`useStyles` 从旧硬编码 5 风格改词表单源。
+- **T9**：`test_notification_workers` 的 registry 用例改钉裁剪后契约（非搬 pruned）。
+- **测试命令**：前端测试/门禁在容器内跑（宿主无 node_modules）：`docker compose exec frontend npm test -- --run` 等。
+- **后续计划**：状态三态（lifecycle）、统计风格分布与三档口径、产品壳入口守卫，见 `docs/superpowers/plans/2026-10-04-reconciliation-and-prune-sweep.md`。
+

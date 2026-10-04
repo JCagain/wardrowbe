@@ -201,11 +201,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 ---
 
-### Task 3: 口径入文档（词表约定 + spec §10 + 旧计划勘误）
+### Task 3: 口径入文档（词表约定 + spec §5/§10 + 旧计划勘误）
 
 **Files:**
 - Modify: `docs/specs/vocabulary.md`（头部说明区）
-- Modify: `docs/specs/personal-wardrobe-spec.md`（§10 解读追加声明）
+- Modify: `docs/specs/personal-wardrobe-spec.md`（§5 状态语义改三态 + §10 解读追加声明）
 - Modify: `docs/superpowers/plans/2026-10-02-wardrobe-foundation.md`（**只追加**文末勘误段，不改正文）
 
 **Interfaces:**
@@ -224,15 +224,24 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 > `docker compose exec backend python scripts/compile_vocabulary.py --check` 验证两面一致。
 ```
 
-- [ ] **Step 2: spec §10 追加四条声明**
+- [ ] **Step 2: spec §5 状态语义改三态、§10 追加声明**
+
+`docs/specs/personal-wardrobe-spec.md` §5 中 `is_archived`（状态）行改为：
+
+```markdown
+- **状态三态**：新列 `lifecycle`（'active'=在役 / 'idle'=闲置 / 'retired'=已退役）；`is_archived` 保留为兼容视图（= lifecycle=='retired'），`archive_reason`/`archived_at` 仅退役时填。列表默认隐藏已退役（闲置默认可见）。旧数据迁移：is_archived=True→retired、False→active。
+```
+
+§10 追加四条声明**（含状态口径）**：
 
 `docs/specs/personal-wardrobe-spec.md` §10 末尾追加：
 
 ```markdown
-16. **软词表写回细节**：禁用标记 = vocabulary.md 行尾「已停用」+ JSON `"disabled": true`（恢复即两处撤销）；新条目插入位见 vocabulary.md 头部约定（类别/风格=拼音位，颜色=渐变位）；运行时新增类型的 role/wash_interval 按部位推导（`ROLE_BY_PART`/`WASH_BY_PART`）。
-17. **词表进程内快照**：backend/worker 的 AI 校验集与提示词在进程启动时快照，运行时增改**重启容器后**对打标签生效（前端选择器即时生效）。
-18. **词表写回单写者**：JSON+markdown 写回在单 uvicorn 进程内加锁串行，JSON 面原子写（临时文件+rename）；多 worker 部署需换文件锁，本项目按单进程不变量运行。
-19. **部署面**：本项目是单机本地工具，只维护 `docker-compose.yml`(+`.dev`)；上游 `docker-compose.prod.yml`（生产/Pi 变体）按摘不删下线。
+16. **状态三态**：在役/闲置/已退役（`lifecycle` 枚举）；闲置默认可见、已退役默认隐藏；统计三档口径：全部 / 排除退役（在役+闲置）/ 仅在役，默认全部。
+17. **软词表写回细节**：禁用标记 = vocabulary.md 行尾「已停用」+ JSON `"disabled": true`（恢复即两处撤销）；新条目插入位见 vocabulary.md 头部约定（类别/风格=拼音位，颜色=渐变位）；运行时新增类型的 role/wash_interval 按部位推导（`ROLE_BY_PART`/`WASH_BY_PART`）。
+18. **词表进程内快照**：backend/worker 的 AI 校验集与提示词在进程启动时快照，运行时增改**重启容器后**对打标签生效（前端选择器即时生效）。
+19. **词表写回单写者**：JSON+markdown 写回在单 uvicorn 进程内加锁串行，JSON 面原子写（临时文件+rename）；多 worker 部署需换文件锁，本项目按单进程不变量运行。
+20. **部署面**：本项目是单机本地工具，只维护 `docker-compose.yml`(+`.dev`)；上游 `docker-compose.prod.yml`（生产/Pi 变体）按摘不删下线。
 ```
 
 - [ ] **Step 3: 旧计划文末追加勘误段（不改正文）**
@@ -275,9 +284,201 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 ---
 
-## 待用户裁决（非任务）
+### Task 4: 状态三态数据层（lifecycle 枚举列）
 
-以下两项是 spec §4 的要求，实现未覆盖，是否立项由用户定：
+**Files:**
+- Create: `backend/migrations/versions/XXXX_lifecycle_status.py`（新增枚举列 + 回填）
+- Modify: `backend/app/models/item.py`（`lifecycle` 列）
+- Modify: `backend/app/schemas/item.py`（`lifecycle` 字段 + `is_archived` 兼容视图）
+- Modify: `backend/app/services/item_service.py`（create/update/list 过滤语义）
+- Test: `backend/tests/test_items.py`
 
-1. **统计页「风格分布」**：spec §4 保留清单里有、现状没有（analytics 只有颜色/类型分布）。加它 = 后端一个 GROUP BY + 前端一张卡。
-2. **「含已退役」开关**：spec §4 口径「默认全算（含已退役），带开关可切仅在役」——现状查询固定 `status == ready` 且无开关。加它 = query 参数 + 开关组件 + 口径测试。
+**Interfaces:**
+- Consumes: 现有 `is_archived`/`archive_reason`/`archived_at` 语义
+- Produces: `ClothingItem.lifecycle: 'active'|'idle'|'retired'`（列名 lifecycle、PG 枚举 `item_lifecycle`）；响应同时给 `lifecycle` 与兼容 `is_archived`（=retired）；入参 `lifecycle` 优先，`is_archived=true/false` 映射 retired/active；列表默认 = 非 retired（闲置可见）。
+
+- [ ] **Step 1: 写失败测试**（`test_items.py` 追加）
+
+```python
+class TestLifecycleStatus:
+    async def test_lifecycle_defaults_and_roundtrip(self, client: AsyncClient, auth_headers):
+        create = await self._create_item(client, auth_headers, {"type": "shirt", "lifecycle": "idle"})
+        assert create.json()["lifecycle"] == "idle"
+        assert create.json()["is_archived"] is False  # 兼容视图：只有 retired 为 True
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": "retired"}, headers=auth_headers
+        )
+        assert patched.json()["lifecycle"] == "retired"
+        assert patched.json()["is_archived"] is True
+
+    async def test_legacy_is_archived_maps_to_lifecycle(self, client: AsyncClient, auth_headers):
+        create = await self._create_item(client, auth_headers, {"type": "shirt", "is_archived": True})
+        assert create.json()["lifecycle"] == "retired"
+        idle = await self._create_item(client, auth_headers, {"type": "shirt", "lifecycle": "idle"})
+        assert idle.json()["is_archived"] is False
+
+    async def test_list_hides_retired_but_keeps_idle(self, client: AsyncClient, auth_headers):
+        active = await self._create_item(client, auth_headers, {"type": "shirt"})
+        idle = await self._create_item(client, auth_headers, {"type": "shirt", "lifecycle": "idle"})
+        retired = await self._create_item(client, auth_headers, {"type": "shirt", "lifecycle": "retired"})
+        listing = await client.get("/api/v1/items", headers=auth_headers)
+        ids = {i["id"] for i in listing.json()["items"]}
+        assert {active.json()["id"], idle.json()["id"]} <= ids
+        assert retired.json()["id"] not in ids
+        only_retired = await client.get(
+            "/api/v1/items", params={"lifecycle": "retired"}, headers=auth_headers
+        )
+        assert only_retired.json()["items"][0]["id"] == retired.json()["id"]
+```
+
+（沿用该类已有的 `_create_item` multipart 辅助；`lifecycle` 走表单字段，与其它新字段同款。）
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `docker compose exec backend python -m pytest tests/test_items.py -q -k Lifecycle`
+Expected: FAIL（字段不存在/422）。
+
+- [ ] **Step 3: 迁移与模型**
+
+迁移（沿用 `e7f8a9b0c1d2` 头部风格）：`sa.Enum("active","idle","retired", name="item_lifecycle")` 新列 `clothing_items.lifecycle`，`nullable=False, server_default="active"`，随后
+
+```sql
+UPDATE clothing_items SET lifecycle = 'retired' WHERE is_archived = TRUE;
+```
+
+模型加列；schema：`ItemCreate/ItemUpdate.lifecycle: Literal['active','idle','retired'] | None`，`ItemResponse.lifecycle` + `is_archived` 改 computed（`self.lifecycle == 'retired'`，读侧不破坏旧消费者）；`item_service` 写侧：`lifecycle` 优先、`is_archived` 映射（True→retired，False→active）；列表过滤：显式 `lifecycle=` 精确筛，否则非 retired。
+
+- [ ] **Step 4: 跑测试确认通过 + 全量**
+
+Run: `docker compose exec backend python -m pytest tests/ -q`
+Expected: PASS（含既有 is_archived 用例——兼容视图不破坏它们）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add backend/migrations backend/app/models/item.py backend/app/schemas/item.py backend/app/services/item_service.py backend/tests/test_items.py
+git commit -m "feat(db): add lifecycle status (active/idle/retired) with is_archived compat
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: 统计页风格分布 + 三档口径
+
+**Files:**
+- Modify: `backend/app/api/analytics.py`（`style_distribution`、`scope` 参数）
+- Modify: `frontend/lib/hooks/use-analytics.ts`、`frontend/app/dashboard/analytics/page.tsx`
+- Test: `backend/tests/test_analytics.py`
+
+**Interfaces:**
+- Consumes: Task 4 的 `lifecycle`
+- Produces: `GET /api/v1/analytics?scope=all|no_retired|active_only`（默认 `all`）；响应新增 `style_distribution: [{style,count,percentage}]`；分布/排名查询按 scope 过滤 lifecycle（all=不过滤、no_retired=排除 retired、active_only=仅 active）。
+
+- [ ] **Step 1: 写失败测试**（`test_analytics.py` 追加）
+
+```python
+    @pytest.mark.asyncio
+    async def test_style_distribution_and_scope(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User
+    ):
+        db_session.add(_make_item(test_user.id, style=["casual", "y2k"]))
+        db_session.add(_make_item(test_user.id, style=["casual"]))
+        retired = _make_item(test_user.id, style=["casual"])
+        retired.lifecycle = "retired"
+        db_session.add(retired)
+        await db_session.flush()
+
+        all_scope = await client.get("/api/v1/analytics", headers=auth_headers)
+        styles = {row["style"]: row["count"] for row in all_scope.json()["style_distribution"]}
+        assert styles == {"casual": 3, "y2k": 1}
+
+        active = await client.get("/api/v1/analytics", params={"scope": "active_only"}, headers=auth_headers)
+        styles = {row["style"]: row["count"] for row in active.json()["style_distribution"]}
+        assert styles == {"casual": 2, "y2k": 1}
+```
+
+（多主色件次口径沿用；style 分布按件计数，一件多风格各计 1。）
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `docker compose exec backend python -m pytest tests/test_analytics.py -q -k style_and_scope`
+Expected: FAIL（无 style_distribution 字段）。
+
+- [ ] **Step 3: 实现后端 + 前端**
+
+后端：`scope: Literal["all","no_retired","active_only"] = Query("all")`，helper `_lifecycle_clause(scope)` 挂进各查询；style 分布 = `func.unnest(ClothingItem.style)` 同款件计数。前端：`AnalyticsData` 加 `style_distribution`；统计页在颜色/类型分布旁加「风格分布」卡（复用类型分布的 Progress 行）；页首加三档选择（全部/排除退役/仅在役，`useAnalytics(scope)` 传参）。i18n 键 `analytics.statsScope.*` en+zh-CN 各三条。
+
+- [ ] **Step 4: 跑测试与门禁**
+
+Run: `docker compose exec backend python -m pytest tests/ -q && docker compose exec frontend npm test -- --run && docker compose exec frontend npx tsc --noEmit && docker compose exec frontend npm run i18n:check`
+Expected: 全 PASS。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add backend/app/api/analytics.py backend/tests/test_analytics.py frontend/lib/hooks/use-analytics.ts frontend/app/dashboard/analytics/page.tsx frontend/messages
+git commit -m "feat(stats): style distribution and the three-tier lifecycle scope
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: 三态状态 UI（详情/筛选/标注）+ 前端测试
+
+**Files:**
+- Modify: `frontend/components/item-detail-dialog.tsx`（状态控件两档→三档）
+- Modify: `frontend/app/dashboard/wardrobe/page.tsx`（筛选与卡片标注）
+- Modify: `frontend/lib/types.ts`（`Item.lifecycle` + 兼容 `is_archived`）
+- Modify: `frontend/messages/en/wardrobe.json`、`frontend/messages/zh-CN/wardrobe.json`
+- Test: `frontend/tests/item-edit-form.test.tsx`（状态映射用例）
+
+**Interfaces:**
+- Consumes: Task 4 的 API 契约（`lifecycle` 优先、`is_archived` 兼容）
+- Produces: 详情状态控件三档「在役/闲置/已退役」（选退役才显示原因输入）；网格筛选状态 chips 三档；闲置件卡片标注「闲置」；en/zh-CN 各加 `status.idle`。
+
+- [ ] **Step 1: 写失败测试**（`item-edit-form.test.tsx` 追加）
+
+```ts
+describe('lifecycle edit form', () => {
+  it('maps the three states onto the edit form', () => {
+    const base = { /* 同既有 baseItem */ };
+    expect(editFormFromItem({ ...base, lifecycle: 'idle', is_archived: false } as unknown as Item).lifecycle).toBe('idle');
+    expect(editFormFromItem({ ...base, lifecycle: 'retired', is_archived: true } as unknown as Item).lifecycle).toBe('retired');
+  });
+});
+```
+
+（`EditForm` 加 `lifecycle: 'active' | 'idle' | 'retired'`；`editFormFromItem` 取 `item.lifecycle ?? (item.is_archived ? 'retired' : 'active')`。）
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `docker compose exec frontend npx vitest run tests/item-edit-form.test.tsx`
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 UI**
+
+详情：`is_archived` Switch 换三档 Select（在役/闲置/已退役），仅退役显示 `archive_reason`；保存提交 `lifecycle`。wardrobe 页：状态筛选 chips 加「闲置」；卡片 badge 显示闲置/已退役标注（已退役沿用现有样式）。`types.ts` 的 `Item` 加 `lifecycle`。i18n：`wardrobe.itemDetail.status.*` 三值 + 筛选键。
+
+- [ ] **Step 4: 门禁**
+
+Run: `docker compose exec frontend npm test -- --run && docker compose exec frontend npx tsc --noEmit && docker compose exec frontend npm run i18n:check && docker compose exec frontend npx vitest run tests/pruned-entry-guard.test.ts`
+Expected: 全 PASS（守卫不误伤）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add frontend/components/item-detail-dialog.tsx frontend/app/dashboard/wardrobe/page.tsx frontend/lib/types.ts frontend/lib/item-edit-form.ts frontend/messages frontend/tests/item-edit-form.test.tsx
+git commit -m "feat(ui): three-state lifecycle status (active/idle/retired)
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>"
+```
+
+---
+
+## 执行顺序
+
+Task 1→2→3 先行（收口既有欠账）；Task 4（数据层）→ Task 5（统计）→ Task 6（UI）。
+Task 3 的 spec §5 状态语义文本与 Task 4 的实现必须一致（先改 spec 再实现或反之，同一提交序内完成）。
