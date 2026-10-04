@@ -73,7 +73,8 @@ import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { ColorEyedropper } from '@/components/color-eyedropper';
-import { GeneratePairingsDialog } from '@/components/generate-pairings-dialog';
+// 摘不删（spec §7）：配搭生成对话框已归档至 components/dormant/，入口下线。
+// import { GeneratePairingsDialog } from '@/components/dormant/generate-pairings-dialog';
 import { useFeatures } from '@/lib/hooks/use-features';
 import { useTranslations } from 'next-intl';
 
@@ -100,7 +101,8 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const formalityLabel = useFormalityLabel();
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showPairingsDialog, setShowPairingsDialog] = useState(false);
+  // 摘不删（spec §7）：配搭/建议入口已下线（suggest/pairings 休眠）。
+  // const [showPairingsDialog, setShowPairingsDialog] = useState(false);
   const [imageKey, setImageKey] = useState(0);
   const [editForm, setEditForm] = useState<EditForm>({
     name: '',
@@ -341,27 +343,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     }`}
                   />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowPairingsDialog(true)}
-                  disabled={item.status !== 'ready'}
-                  title={t('titles.findMatchingOutfits')}
-                >
-                  <Layers className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    onOpenChange(false);
-                    router.push(`/dashboard/suggest?item=${item.id}`);
-                  }}
-                  disabled={item.status !== 'ready'}
-                  title={t('titles.suggestOutfit')}
-                >
-                  <Sparkles className="h-5 w-5 text-primary" />
-                </Button>
+                {/* 摘不删（spec §7）：「找搭配 / 建议搭配」入口已下线——suggest/pairings 休眠。 */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1233,12 +1215,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Generate Pairings Dialog */}
-      <GeneratePairingsDialog
-        item={item}
-        open={showPairingsDialog}
-        onOpenChange={setShowPairingsDialog}
-      />
+      {/* 摘不删（spec §7）：GeneratePairingsDialog 渲染已下线，组件归档于 components/dormant/。 */}
 
       <VocabAddDialog
         kind={vocab.addKind ?? 'styles'}

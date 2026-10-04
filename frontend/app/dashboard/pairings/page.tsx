@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { usePairings } from '@/lib/hooks/use-pairings';
 import { useItemTypes } from '@/lib/hooks/use-items';
-import { PairingCard } from '@/components/pairing-card';
+import { PairingCard } from '@/components/dormant/pairing-card';
 import { FeedbackDialog } from '@/components/feedback-dialog';
 import { OutfitPreviewDialog } from '@/components/outfit-preview-dialog';
 import { Pairing } from '@/lib/types';

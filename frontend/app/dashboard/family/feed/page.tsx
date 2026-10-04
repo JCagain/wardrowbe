@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFamily } from '@/lib/hooks/use-family';
 import { useFamilyOutfits, type Outfit, type OutfitSource } from '@/lib/hooks/use-outfits';
-import { FamilyRatingForm, FamilyRatingsDisplay } from '@/components/family-ratings';
+import { FamilyRatingForm, FamilyRatingsDisplay } from '@/components/dormant/family-ratings';
 import { OutfitPreviewDialog } from '@/components/outfit-preview-dialog';
 import Image from 'next/image';
 import Link from 'next/link';

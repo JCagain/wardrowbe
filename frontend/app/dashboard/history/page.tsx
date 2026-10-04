@@ -30,9 +30,7 @@ function EmptyHistory({ t }: { t: (key: string) => string }) {
       <p className="text-muted-foreground mb-6 max-w-sm">
         {t('empty.description')}
       </p>
-      <Button variant="outline" asChild>
-        <a href="/dashboard/suggest">{t('empty.getFirstSuggestion')}</a>
-      </Button>
+      {/* 摘不删（spec §7）：指向休眠 suggest 的空态 CTA 已下线。 */}
     </div>
   );
 }

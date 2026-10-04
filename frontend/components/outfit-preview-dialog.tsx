@@ -11,9 +11,10 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { type Outfit } from '@/lib/hooks/use-outfits';
-import { useFamily } from '@/lib/hooks/use-family';
+// 摘不删（spec §7）：家庭评分已下线（/families/*、家庭评分属产品壳），组件归档于 components/dormant/。
+// import { useFamily } from '@/lib/hooks/use-family';
 import { useRotateImage } from '@/lib/hooks/use-items';
-import { FamilyRatingForm, FamilyRatingsDisplay } from '@/components/family-ratings';
+// import { FamilyRatingForm, FamilyRatingsDisplay } from '@/components/dormant/family-ratings';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
@@ -37,13 +38,15 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
   const items = outfit.items;
   const rotateImage = useRotateImage();
   const { data: session } = useSession();
-  const { data: family } = useFamily();
+  // 摘不删（spec §7）：家庭评分接线已下线。
+  // const { data: family } = useFamily();
 
   const currentEmail = session?.user?.email;
-  const currentMember = family?.members.find((m) => m.email === currentEmail);
-  const isInFamily = !!family && !!currentMember;
-  const canRate = isInFamily && !isOwner;
-  const myRating = outfit.family_ratings?.find((r) => r.user_id === currentMember?.id);
+  // 摘不删（spec §7）：家庭评分接线已下线。
+  // const currentMember = family?.members.find((m) => m.email === currentEmail);
+  // const isInFamily = !!family && !!currentMember;
+  // const canRate = isInFamily && !isOwner;
+  // const myRating = outfit.family_ratings?.find((r) => r.user_id === currentMember?.id);
 
   const currentItem = items[currentIndex];
 
@@ -267,65 +270,7 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
             </div>
           )}
 
-          {/* Family ratings section */}
-          {isInFamily && (
-            <div className="border-t p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  {t('familyRatings.title')}
-                  {outfit.family_rating_count != null && outfit.family_rating_count > 0 && (
-                    <span className="text-muted-foreground font-normal">
-                      {t.rich('familyRatings.average', {
-                        rating: outfit.family_rating_average?.toFixed(1) ?? '',
-                        star: () => (
-                          <Star className="h-3 w-3 inline fill-yellow-400 text-yellow-400" />
-                        ),
-                      })}
-                    </span>
-                  )}
-                </h3>
-                {canRate && !showRatingForm && !myRating && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowRatingForm(true)}
-                    className="h-7 text-xs"
-                  >
-                    <Star className="h-3 w-3 mr-1" />
-                    {t('familyRatings.rate')}
-                  </Button>
-                )}
-              </div>
-
-              {canRate && (showRatingForm || myRating) && (
-                <FamilyRatingForm
-                  outfitId={outfit.id}
-                  existingRating={myRating ?? undefined}
-                  onSuccess={() => setShowRatingForm(false)}
-                />
-              )}
-
-              {outfit.family_ratings && outfit.family_ratings.length > 0 && (
-                <FamilyRatingsDisplay
-                  ratings={outfit.family_ratings}
-                  outfitId={outfit.id}
-                  currentUserId={canRate ? currentMember?.id : undefined}
-                />
-              )}
-
-              {(!outfit.family_ratings || outfit.family_ratings.length === 0) && !canRate && (
-                <p className="text-xs text-muted-foreground">
-                  {t('familyRatings.noRatings')}
-                </p>
-              )}
-              {(!outfit.family_ratings || outfit.family_ratings.length === 0) && canRate && !showRatingForm && !myRating && (
-                <p className="text-xs text-muted-foreground">
-                  {t('familyRatings.noRatingsPrompt')}
-                </p>
-              )}
-            </div>
-          )}
+          {/* 摘不删（spec §7）：家庭评分区块已下线，归档于 components/dormant/family-ratings.tsx。 */}
         </div>
 
         {/* Close button at bottom - always visible */}
