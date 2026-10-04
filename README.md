@@ -314,15 +314,10 @@ AI_TEXT_MODEL=llama3.2-vision:11b  # Same model for both tasks
 
 ## Deployment
 
-### Docker Compose (Production)
-
-See [docker-compose.prod.yml](docker-compose.prod.yml) for production configuration. Like the default stack, it pulls pre-built images from GHCR rather than building on the host.
-
-```bash
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
-docker compose exec backend alembic upgrade head
-```
+This is a single-machine local tool: `docker compose up -d` (with the dev overlay
+when developing) is the supported shape. `docker-compose.prod.yml` — upstream's
+production/Raspberry Pi variant — is **de-listed** (摘不删: kept in the tree, not
+maintained or supported).
 
 Images are tagged `backend-latest` / `frontend-latest`, and each release also
 publishes `backend-<version>` / `frontend-<version>` (e.g. `backend-1.3.0`). To

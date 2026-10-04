@@ -1,5 +1,8 @@
-# Production Docker Compose for Raspberry Pi (ARM64)
-# Production Docker Compose
+# 摘不删（spec §7）：上游的生产/Pi 部署变体，已下线。
+# 本项目是单机本地工具，只用 docker-compose.yml（+ .dev）两份跑法；
+# 此文件保留备查，不维护、不支持、不在文档的部署路径内。
+#
+# Original header: Production Docker Compose for Raspberry Pi (ARM64)
 
 services:
   # PostgreSQL Database
