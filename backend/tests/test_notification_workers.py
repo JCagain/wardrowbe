@@ -359,20 +359,15 @@ class TestProcessScheduledNotification:
 
 
 class TestWorkerFunctionRegistry:
-    def test_process_scheduled_notification_is_registered(self):
-        func_names = [f.__name__ for f in WorkerSettings.functions]
-        assert "process_scheduled_notification" in func_names
+    """spec §7: product-shell jobs (notifications/learning/wash) are deregistered —
+    only tagging and stale-recovery stay active. The functions themselves remain
+    in app.workers.notifications (摘不删); this pins the registry so they cannot
+    quietly creep back onto the queue."""
 
-    def test_all_enqueued_functions_are_registered(self):
-        func_names = {f.__name__ for f in WorkerSettings.functions}
-        required = {
-            "tag_item_image",
-            "send_notification",
-            "process_scheduled_notification",
-            "retry_failed_notifications",
-            "check_scheduled_notifications",
-            "check_wash_reminders",
-            "update_learning_profiles",
-        }
-        missing = required - func_names
-        assert not missing, f"Functions enqueued but not registered in WorkerSettings: {missing}"
+    def test_registry_holds_only_tagging(self):
+        assert [f.__name__ for f in WorkerSettings.functions] == ["tag_item_image"]
+
+    def test_cron_jobs_hold_only_stale_recovery(self):
+        assert [c.coroutine.__name__ for c in WorkerSettings.cron_jobs] == [
+            "recover_stale_processing_items"
+        ]

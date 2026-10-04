@@ -1947,3 +1947,25 @@ class TestPersonalWardrobeFields:
         assert data["purchase_date"].startswith("2024-01")
         assert data["purchase_date_precision"] == "year"
         assert data["style"] == ["casual"]
+
+
+class TestPrunedRoutes:
+    """spec §7 摘不删: product-shell routes are unmounted, code kept."""
+
+    @pytest.mark.asyncio
+    async def test_families_notifications_learning_are_unmounted(self, client, auth_headers):
+        for path in ("/api/v1/families", "/api/v1/notifications", "/api/v1/learning"):
+            resp = await client.get(path, headers=auth_headers)
+            assert resp.status_code == 404, path
+
+    @pytest.mark.asyncio
+    async def test_wash_endpoints_are_unmounted(self, client, auth_headers):
+        resp = await client.post("/api/v1/items/some-id/wash", headers=auth_headers)
+        assert resp.status_code == 404
+        resp = await client.get("/api/v1/items/some-id/wash-history", headers=auth_headers)
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_pairings_stays_mounted_but_dormant(self, client, auth_headers):
+        resp = await client.get("/api/v1/pairings", headers=auth_headers)
+        assert resp.status_code != 404

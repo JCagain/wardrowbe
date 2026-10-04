@@ -9,14 +9,15 @@ from app.config import get_settings
 from app.models.item import ClothingItem, ItemStatus
 from app.services.ai_service import AIService
 from app.workers.db import close_db, get_db_session, init_db
-from app.workers.notifications import (
-    check_scheduled_notifications,
-    check_wash_reminders,
-    process_scheduled_notification,
-    retry_failed_notifications,
-    send_notification,
-    update_learning_profiles,
-)
+# 摘不删（spec §7）：通知/学习/洗护任务已注销，模块保留备查。
+# from app.workers.notifications import (
+#     check_scheduled_notifications,
+#     check_wash_reminders,
+#     process_scheduled_notification,
+#     retry_failed_notifications,
+#     send_notification,
+#     update_learning_profiles,
+# )
 from app.workers.queues import IMAGE_PROCESSING_KINDS, TAGGING_QUEUE, queue_for_kind
 from app.workers.settings import get_redis_settings
 from app.workers.tagging import TAGGING_MAX_TRIES, tag_item_image, worker_job_timeout_seconds
@@ -120,19 +121,9 @@ async def shutdown(ctx: dict) -> None:
 class WorkerSettings:
     functions = [
         tag_item_image,
-        send_notification,
-        retry_failed_notifications,
-        check_scheduled_notifications,
-        process_scheduled_notification,
-        check_wash_reminders,
-        update_learning_profiles,
     ]
 
     cron_jobs = [
-        cron(retry_failed_notifications, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
-        cron(check_scheduled_notifications, minute=None),
-        cron(check_wash_reminders, minute=15, hour={0, 6, 12, 18}),
-        cron(update_learning_profiles, minute=30, hour=None),
         cron(recover_stale_processing_items, minute={0, 15, 30, 45}),
     ]
 

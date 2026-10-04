@@ -1467,7 +1467,7 @@ async def get_item_wear_stats(
     return await item_service.get_wear_stats(item, current_user.timezone or "UTC")
 
 
-@router.post("/{item_id}/wash", response_model=ItemResponse)
+# 摘不删（spec §7）：洗衣跟踪入口已下线，函数保留备查。
 async def log_item_wash(
     item_id: UUID,
     request: LogWashRequest,
@@ -1510,7 +1510,7 @@ async def log_item_wash(
     return ItemResponse.model_validate(item)
 
 
-@router.get("/{item_id}/wash-history", response_model=list[WashHistoryResponse])
+# 摘不删（spec §7）：洗衣跟踪入口已下线，函数保留备查。
 async def get_item_wash_history(
     item_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
