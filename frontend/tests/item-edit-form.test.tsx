@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
-import { partTypeChangeHandlers } from '@/lib/item-edit-form';
+import { editFormFromItem, partTypeChangeHandlers } from '@/lib/item-edit-form';
+import type { Item } from '@/lib/types';
 import {
   BODY_PART_LABELS,
   BODY_PART_VALUES,
@@ -54,5 +55,48 @@ describe('PartTypeSelect-driven edit form state', () => {
     render(<Harness initial={{ name: 'coat', body_part: 'bottoms', type: '' }} />);
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'jeans' } });
     expect(readForm()).toEqual({ name: 'coat', body_part: 'bottoms', type: 'jeans' });
+  });
+});
+
+describe('editFormFromItem purchase date', () => {
+  // The detail dialog used to back-fill the raw wire value ("2024-01"), so the
+  // first unrelated save rewrote a year-only purchase date to month precision.
+  // The form must refill from the precision marker.
+  const baseItem = {
+    name: null,
+    type: 'shirt',
+    body_part: 'tops',
+    subtype: null,
+    brand: null,
+    primary_colors: [],
+    secondary_colors: [],
+    style: [],
+    tags: {},
+    temp_low: null,
+    temp_high: null,
+    purchase_price: null,
+    is_archived: false,
+    archive_reason: null,
+    notes: null,
+    favorite: false,
+    wash_interval: null,
+  };
+
+  it('refills year-only dates as YYYY', () => {
+    const form = editFormFromItem({
+      ...baseItem,
+      purchase_date: '2024-01',
+      purchase_date_precision: 'year',
+    } as unknown as Item);
+    expect(form.purchase_date).toBe('2024');
+  });
+
+  it('refills month dates as YYYY-MM', () => {
+    const form = editFormFromItem({
+      ...baseItem,
+      purchase_date: '2024-01',
+      purchase_date_precision: 'month',
+    } as unknown as Item);
+    expect(form.purchase_date).toBe('2024-01');
   });
 });

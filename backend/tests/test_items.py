@@ -1779,6 +1779,73 @@ class TestPersonalWardrobeFields:
         assert db_item.purchase_date_precision == "year"
 
     @pytest.mark.asyncio
+    async def test_purchase_date_precision_survives_patch(
+        self, client: AsyncClient, auth_headers
+    ):
+        create = await self._create_item(
+            client, auth_headers, {"type": "shirt", "purchase_date": "2023"}
+        )
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        # An unrelated edit must leave the precision marker alone.
+        renamed = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"name": "renamed"},
+            headers=auth_headers,
+        )
+        assert renamed.status_code == 200, renamed.text
+        assert renamed.json()["purchase_date"] == "2023-01"
+        assert renamed.json()["purchase_date_precision"] == "year"
+
+        # Sending the year-only value again keeps it year-precision.
+        again = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"purchase_date": "2023"},
+            headers=auth_headers,
+        )
+        assert again.json()["purchase_date_precision"] == "year"
+
+        # Entering a month upgrades the marker.
+        upgraded = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"purchase_date": "2023-07"},
+            headers=auth_headers,
+        )
+        assert upgraded.json()["purchase_date"] == "2023-07"
+        assert upgraded.json()["purchase_date_precision"] == "month"
+
+    @pytest.mark.asyncio
+    async def test_purchase_date_rejects_impossible_months(
+        self, client: AsyncClient, auth_headers
+    ):
+        # The pattern alone lets these through; they must be 422, not a 500
+        # from date() deep in the service layer.
+        for bad in ("2024-13", "2024-00"):
+            resp = await self._create_item(
+                client, auth_headers, {"type": "shirt", "purchase_date": bad}
+            )
+            assert resp.status_code == 422, f"{bad} -> {resp.status_code}"
+
+    @pytest.mark.asyncio
+    async def test_purchase_date_rejects_year_zero_and_bad_patch(
+        self, client: AsyncClient, auth_headers
+    ):
+        resp = await self._create_item(
+            client, auth_headers, {"type": "shirt", "purchase_date": "0000"}
+        )
+        assert resp.status_code == 422
+
+        create = await self._create_item(client, auth_headers, {"type": "shirt"})
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"purchase_date": "2024-13"},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_list_hides_retired_by_default(self, client: AsyncClient, auth_headers):
         create = await self._create_item(client, auth_headers, {"type": "shirt"})
         assert create.status_code in (200, 201), create.text

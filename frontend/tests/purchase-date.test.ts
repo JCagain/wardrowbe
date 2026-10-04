@@ -17,3 +17,15 @@ describe('purchase date', () => {
     expect(formatPurchaseDate(null, null)).toBe('');
   });
 });
+
+describe('purchase date validation', () => {
+  it('rejects months outside 01-12', () => {
+    expect(() => normalizePurchaseDate('2024-13')).toThrow();
+    expect(() => normalizePurchaseDate('2024-00')).toThrow();
+  });
+
+  it('rejects year zero', () => {
+    expect(() => normalizePurchaseDate('0000')).toThrow();
+    expect(() => normalizePurchaseDate('0000-05')).toThrow();
+  });
+});

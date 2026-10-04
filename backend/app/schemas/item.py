@@ -31,6 +31,26 @@ class ItemTags(BaseModel):
     fit: str | None = None
 
 
+def _check_purchase_date(v: str | None) -> str | None:
+    """"YYYY" | "YYYY-MM" with a real month and year.
+
+    The pattern alone admits "2024-13" and "0000"; the service's date()
+    then blew up with an unhandled ValueError (HTTP 500). Reject here so
+    the API answers 422 like any other bad field.
+    """
+    if not v:
+        return v
+    if "-" in v:
+        year_s, month_s = v.split("-")
+        if not (1 <= int(month_s) <= 12):
+            raise ValueError(f"invalid purchase month: {v}")
+    else:
+        year_s = v
+    if int(year_s) < 1:
+        raise ValueError(f"invalid purchase year: {v}")
+    return v
+
+
 class ItemBase(BaseModel):
     type: str = Field(default="unknown", max_length=50)  # Default to unknown, AI will detect
     subtype: str | None = Field(None, max_length=50)
@@ -47,6 +67,11 @@ class ItemBase(BaseModel):
         # Wire format is a JSON number (frontend Item.purchase_price is typed
         # number); Decimal's default JSON rendering is a string.
         return float(value) if value is not None else None
+
+    @field_validator("purchase_date")
+    @classmethod
+    def _validate_purchase_date(cls, v: str | None) -> str | None:
+        return _check_purchase_date(v)
     body_part: str | None = None
     primary_colors: list[str] = Field(default_factory=list)
     secondary_colors: list[str] = Field(default_factory=list)
@@ -73,6 +98,11 @@ class ItemUpdate(BaseModel):
     purchase_date: str | None = Field(default=None, pattern=r"^\d{4}(-\d{2})?$")
     purchase_price: Decimal | None = Field(None, ge=0)
     favorite: bool | None = None
+
+    @field_validator("purchase_date")
+    @classmethod
+    def _validate_purchase_date(cls, v: str | None) -> str | None:
+        return _check_purchase_date(v)
     tags: ItemTags | None = None
     body_part: str | None = None
     primary_colors: list[str] = Field(default_factory=list)

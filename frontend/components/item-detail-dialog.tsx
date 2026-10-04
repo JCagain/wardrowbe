@@ -68,6 +68,7 @@ import {
   TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
+import { editFormFromItem, type EditForm } from '@/lib/item-edit-form';
 import { partTypeChangeHandlers } from '@/lib/item-edit-form';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
@@ -83,52 +84,6 @@ interface ItemDetailDialogProps {
 }
 
 // Images now use signed URLs from backend (item.image_url, item.thumbnail_url)
-
-interface EditForm {
-  name: string;
-  type: string;
-  body_part: string;
-  subtype: string;
-  brand: string;
-  primary_colors: string[];
-  secondary_colors: string[];
-  style: string[];
-  temp_low: number | undefined;
-  temp_high: number | undefined;
-  purchase_date: string;
-  purchase_price: number | undefined;
-  is_archived: boolean;
-  archive_reason: string;
-  notes: string;
-  favorite: boolean;
-  wash_interval: number | undefined;
-}
-
-function editFormFromItem(item: Item): EditForm {
-  return {
-    name: item.name || '',
-    type: item.type,
-    // Derive the part from the type when the item predates the body_part column.
-    body_part:
-      item.body_part || TYPE_ENTRIES.find((e) => e.value === item.type)?.body_part || '',
-    // Pre-fill a rejected AI type as the subtype so picking the nearest
-    // supported type doesn't lose what the model actually saw.
-    subtype: item.subtype || (item.type === 'unknown' && item.ai_unrecognized_type) || '',
-    brand: item.brand || '',
-    primary_colors: item.primary_colors ?? [],
-    secondary_colors: item.secondary_colors ?? [],
-    style: item.tags.style ?? [],
-    temp_low: item.temp_low ?? undefined,
-    temp_high: item.temp_high ?? undefined,
-    purchase_date: item.purchase_date || '',
-    purchase_price: item.purchase_price ?? undefined,
-    is_archived: item.is_archived,
-    archive_reason: item.archive_reason || '',
-    notes: item.notes || '',
-    favorite: item.favorite,
-    wash_interval: item.wash_interval ?? undefined,
-  };
-}
 
 export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogProps) {
   const t = useTranslations('wardrobe.itemDetail');
