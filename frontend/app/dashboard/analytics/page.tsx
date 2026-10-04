@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Shirt,
   Sparkles,
@@ -12,7 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { useAnalytics } from '@/lib/hooks/use-analytics';
+import { Button } from '@/components/ui/button';
+import { useAnalytics, type AnalyticsScope } from '@/lib/hooks/use-analytics';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -201,7 +203,8 @@ function AcceptanceTrendChart({ data }: { data: { period: string; rate: number; 
 
 export default function AnalyticsPage() {
   const t = useTranslations('analytics');
-  const { data, isLoading, isError } = useAnalytics();
+  const [scope, setScope] = useState<AnalyticsScope>('all');
+  const { data, isLoading, isError } = useAnalytics(scope);
 
   if (isLoading) {
     return (
@@ -223,13 +226,27 @@ export default function AnalyticsPage() {
     );
   }
 
-  const { wardrobe, color_distribution, type_distribution, most_worn, least_worn, never_worn } = data;
+  const { wardrobe, color_distribution, type_distribution, style_distribution, most_worn, least_worn, never_worn } = data;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="text-muted-foreground">{t('subtitle')}</p>
+      </div>
+
+      {/* Lifecycle scope（spec §10.16 三档口径） */}
+      <div className="flex items-center gap-2" role="group" aria-label={t('statsScope.all')}>
+        {(['all', 'no_retired', 'active_only'] as const).map((value) => (
+          <Button
+            key={value}
+            size="sm"
+            variant={scope === value ? 'default' : 'outline'}
+            onClick={() => setScope(value)}
+          >
+            {t(`statsScope.${value === 'no_retired' ? 'noRetired' : value === 'active_only' ? 'activeOnly' : 'all'}`)}
+          </Button>
+        ))}
       </div>
 
       {/* Stats Cards */}
@@ -254,7 +271,7 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {/* Color Distribution */}
         <Card>
           <CardHeader>
@@ -271,6 +288,36 @@ export default function AnalyticsPage() {
               <div className="space-y-3">
                 {color_distribution.slice(0, 8).map((color) => (
                   <ColorBar key={color.color} color={color.color} percentage={color.percentage} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Style Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart className="h-5 w-5" />
+              {t('insights.styleDistribution.title')}
+            </CardTitle>
+            <CardDescription>{t('insights.styleDistribution.description')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {style_distribution.length === 0 ? (
+              <p className="text-muted-foreground text-sm">{t('insights.styleDistribution.noData')}</p>
+            ) : (
+              <div className="space-y-3">
+                {style_distribution.map((style) => (
+                  <div key={style.style} className="flex items-center justify-between">
+                    <span className="capitalize">{style.style}</span>
+                    <div className="flex items-center gap-2">
+                      <Progress value={style.percentage} className="w-24 h-2" />
+                      <span className="text-sm text-muted-foreground w-12 text-right">
+                        {style.count}
+                      </span>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

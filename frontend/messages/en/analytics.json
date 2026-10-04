@@ -29,7 +29,12 @@
       "noData": "All items have been worn!",
       "title": "Never Worn"
     },
-    "title": "Insights"
+    "title": "Insights",
+    "styleDistribution": {
+      "title": "Style distribution",
+      "description": "How your styles split (an item with several styles counts in each)",
+      "noData": "No styles recorded yet"
+    }
   },
   "loadError": "Failed to load analytics. Please try again.",
   "percent": "{value}%",
@@ -55,5 +60,10 @@
   },
   "subtitle": "Your wardrobe insights and statistics",
   "title": "Analytics",
-  "wearCount": "{count}x"
+  "wearCount": "{count}x",
+  "statsScope": {
+    "all": "All",
+    "noRetired": "Without retired",
+    "activeOnly": "Only active"
+  }
 }

@@ -22,6 +22,14 @@ export interface TypeDistribution {
   percentage: number;
 }
 
+export interface StyleDistribution {
+  style: string;
+  count: number;
+  percentage: number;
+}
+
+export type AnalyticsScope = 'all' | 'no_retired' | 'active_only';
+
 export interface WearStats {
   id: string;
   name: string | null;
@@ -46,18 +54,19 @@ export interface AnalyticsData {
   wardrobe: WardrobeStats;
   color_distribution: ColorDistribution[];
   type_distribution: TypeDistribution[];
+  style_distribution: StyleDistribution[];
   most_worn: WearStats[];
   least_worn: WearStats[];
   never_worn: WearStats[];
 }
 
-export function useAnalytics() {
+export function useAnalytics(scope: AnalyticsScope = 'all') {
   const { status } = useSession();
   useSetTokenIfAvailable();
 
   return useQuery({
-    queryKey: ['analytics'],
-    queryFn: () => api.get<AnalyticsData>('/analytics'),
+    queryKey: ['analytics', scope],
+    queryFn: () => api.get<AnalyticsData>('/analytics', { params: { scope } }),
     enabled: status !== 'loading',
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

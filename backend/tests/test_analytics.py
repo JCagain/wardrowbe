@@ -45,6 +45,7 @@ class TestAnalyticsEndpoint:
             "wardrobe",
             "color_distribution",
             "type_distribution",
+            "style_distribution",
             "most_worn",
             "least_worn",
             "never_worn",
@@ -92,3 +93,41 @@ class TestAnalyticsEndpoint:
         # Legacy singular shape: the lead primary, not the raw list.
         assert data["most_worn"][0]["primary_color"] == "army"
         assert data["never_worn"][0]["primary_color"] == "wine"
+
+
+class TestStyleDistributionAndScope:
+    @pytest.mark.asyncio
+    async def test_style_distribution_counts_each_style_once(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User
+    ):
+        db_session.add(_make_item(test_user.id, style=["casual", "y2k"]))
+        db_session.add(_make_item(test_user.id, style=["casual"]))
+        retired = _make_item(test_user.id, style=["casual"], lifecycle="retired")
+        db_session.add(retired)
+        await db_session.flush()
+
+        all_scope = await client.get("/api/v1/analytics", headers=auth_headers)
+        assert all_scope.status_code == 200, all_scope.text
+        styles = {row["style"]: row["count"] for row in all_scope.json()["style_distribution"]}
+        assert styles == {"casual": 3, "y2k": 1}
+
+    @pytest.mark.asyncio
+    async def test_scope_filters_lifecycle(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User
+    ):
+        db_session.add(_make_item(test_user.id, style=["casual"], lifecycle="active"))
+        db_session.add(_make_item(test_user.id, style=["casual"], lifecycle="idle"))
+        db_session.add(_make_item(test_user.id, style=["casual"], lifecycle="retired"))
+        await db_session.flush()
+
+        active = await client.get(
+            "/api/v1/analytics", params={"scope": "active_only"}, headers=auth_headers
+        )
+        styles = {row["style"]: row["count"] for row in active.json()["style_distribution"]}
+        assert styles == {"casual": 1}
+
+        no_retired = await client.get(
+            "/api/v1/analytics", params={"scope": "no_retired"}, headers=auth_headers
+        )
+        styles = {row["style"]: row["count"] for row in no_retired.json()["style_distribution"]}
+        assert styles == {"casual": 2}

@@ -29,7 +29,12 @@
       "noData": "所有单品都穿过了！",
       "title": "从未穿过"
     },
-    "title": "洞察"
+    "title": "洞察",
+    "styleDistribution": {
+      "title": "风格分布",
+      "description": "风格构成（一件多风格在多条各计 1）",
+      "noData": "还没有风格数据"
+    }
   },
   "loadError": "加载分析数据失败，请重试。",
   "percent": "{value}%",
@@ -55,5 +60,10 @@
   },
   "subtitle": "你的衣柜洞察与统计",
   "title": "数据分析",
-  "wearCount": "{count}次"
+  "wearCount": "{count}次",
+  "statsScope": {
+    "all": "全部",
+    "noRetired": "排除退役",
+    "activeOnly": "仅在役"
+  }
 }

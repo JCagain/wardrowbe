@@ -1,8 +1,8 @@
 from datetime import date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, computed_field
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,12 @@ class ColorDistribution(BaseModel):
 
 class TypeDistribution(BaseModel):
     type: str
+    count: int
+    percentage: float
+
+
+class StyleDistribution(BaseModel):
+    style: str
     count: int
     percentage: float
 
@@ -60,6 +66,7 @@ class AnalyticsResponse(BaseModel):
     wardrobe: WardrobeStats
     color_distribution: list[ColorDistribution]
     type_distribution: list[TypeDistribution]
+    style_distribution: list[StyleDistribution]
     most_worn: list[WearStats]
     least_worn: list[WearStats]
     never_worn: list[WearStats]
@@ -88,6 +95,23 @@ def composition_insights(c: WardrobeComposition) -> list[str]:
     return []
 
 
+Scope = Literal["all", "no_retired", "active_only"]
+
+
+def _scope_clause(scope: Scope):
+    """统计三档口径（spec §10.16）：全部 / 排除退役 / 仅在役。
+
+    Unfinished pipeline states (processing/error) never count, whatever the
+    scope; the scope axis is the lifecycle column.
+    """
+    unfinished = ClothingItem.status.in_([ItemStatus.processing, ItemStatus.error])
+    if scope == "active_only":
+        return and_(ClothingItem.lifecycle == "active", ~unfinished)
+    if scope == "no_retired":
+        return and_(ClothingItem.lifecycle != "retired", ~unfinished)
+    return ~unfinished
+
+
 def _wear_stats(item: ClothingItem) -> WearStats:
     return WearStats(
         id=item.id,
@@ -104,6 +128,7 @@ def _wear_stats(item: ClothingItem) -> WearStats:
 async def get_analytics(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    scope: Scope = Query("all", description="lifecycle scope: all / no_retired / active_only"),
 ) -> AnalyticsResponse:
     # Calculate date ranges
     now = datetime.utcnow()
@@ -168,7 +193,7 @@ async def get_analytics(
         .where(
             and_(
                 ClothingItem.user_id == current_user.id,
-                ClothingItem.status == ItemStatus.ready,
+                _scope_clause(scope),
             )
         )
         .group_by("color")
@@ -196,7 +221,7 @@ async def get_analytics(
         .where(
             and_(
                 ClothingItem.user_id == current_user.id,
-                ClothingItem.status == ItemStatus.ready,
+                _scope_clause(scope),
             )
         )
         .group_by(ClothingItem.type)
@@ -214,12 +239,43 @@ async def get_analytics(
         for row in type_rows
     ]
 
+    # === Style Distribution ===
+    # 件计数：一件多风格在多条各计 1（与颜色件次同理，按 style 数组展开）。
+    style_query = (
+        select(
+            func.unnest(ClothingItem.style).label("style"),
+            func.count().label("count"),
+        )
+        .where(
+            and_(
+                ClothingItem.user_id == current_user.id,
+                _scope_clause(scope),
+            )
+        )
+        # Group by the unnest expression: a bare "style" label would bind the
+        # same-named input column and group by the whole array instead.
+        .group_by(func.unnest(ClothingItem.style))
+        .order_by(func.count().desc())
+    )
+    style_result = await db.execute(style_query)
+    style_rows = style_result.all()
+    scoped_items = sum(row.count for row in style_rows)
+
+    style_distribution = [
+        StyleDistribution(
+            style=row.style,
+            count=row.count,
+            percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
+        )
+        for row in style_rows
+    ]
+
     # === Most/Least/Never Worn ===
     def wear_stats_query(order_desc: bool, limit: int, never_worn: bool = False):
         q = select(ClothingItem).where(
             and_(
                 ClothingItem.user_id == current_user.id,
-                ClothingItem.status == ItemStatus.ready,
+                _scope_clause(scope),
             )
         )
         if never_worn:
@@ -248,6 +304,7 @@ async def get_analytics(
         wardrobe=wardrobe_stats,
         color_distribution=color_distribution,
         type_distribution=type_distribution,
+        style_distribution=style_distribution,
         most_worn=most_worn,
         least_worn=least_worn,
         never_worn=never_worn,
