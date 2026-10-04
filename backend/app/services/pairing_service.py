@@ -11,7 +11,7 @@ from app.models.item import ClothingItem, ItemStatus
 from app.models.outfit import FamilyOutfitRating, Outfit, OutfitItem, OutfitSource, OutfitStatus
 from app.models.user import User
 from app.services.ai_service import AIResponseTruncatedError, AIService, require_internal_ai
-from app.utils.clothing import deduplicate_by_body_slot
+from app.utils.clothing import deduplicate_by_body_slot, first_primary
 from app.utils.prompts import load_prompt
 from app.utils.timezone import get_user_today
 
@@ -71,11 +71,15 @@ class PairingService:
         else:
             parts.append(item_type)
 
-        # Colors
-        if item.colors and len(item.colors) > 1:
-            parts.append(f"colors: {', '.join(item.colors)}")
-        elif item.primary_color:
-            parts.append(item.primary_color)
+        # Colors (primary + secondary; the prompt wants every color on the item).
+        # `or []` keeps the formatter total for freshly built items whose array
+        # columns only get their default at INSERT.
+        primary = first_primary(item.primary_colors)
+        colors = list(dict.fromkeys([*(item.primary_colors or []), *(item.secondary_colors or [])]))
+        if len(colors) > 1:
+            parts.append(f"colors: {', '.join(colors)}")
+        elif primary:
+            parts.append(primary)
 
         # Pattern
         if item.pattern and item.pattern != "solid":

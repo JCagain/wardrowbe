@@ -480,30 +480,20 @@ function WeeklySummaryCard() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-2xl font-bold">{wardrobe.outfits_this_week}</p>
-            <p className="text-xs text-muted-foreground">{t('weeklySummary.outfits')}</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold">
-              {wardrobe.acceptance_rate ? `${wardrobe.acceptance_rate}%` : '-'}
-            </p>
-            <p className="text-xs text-muted-foreground">{t('weeklySummary.accepted')}</p>
-          </div>
+        <div>
+          <p className="text-2xl font-bold">{wardrobe.outfits_this_week}</p>
+          <p className="text-xs text-muted-foreground">{t('weeklySummary.outfits')}</p>
         </div>
-        {wardrobe.average_rating && (
-          <p className="text-xs text-muted-foreground mt-2">
-            {t('weeklySummary.avgRatingValue', { rating: wardrobe.average_rating })}
-          </p>
-        )}
       </CardContent>
     </Card>
   );
 }
 
+// 摘不删（spec §7）：insights 搭配建议卡已从首页下线，组件保留备查。
+// 指标已随 insights 从 AnalyticsData 摘除，这里用本地旧契约类型以便重挂。
 function InsightsCard() {
   const { data: analytics, isLoading } = useAnalytics();
+  const legacy = analytics as { insights?: string[] } | undefined;
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
 
@@ -526,7 +516,7 @@ function InsightsCard() {
     );
   }
 
-  const insights = analytics?.insights || [];
+  const insights = legacy?.insights || [];
 
   return (
     <Card>
@@ -656,10 +646,9 @@ export default function DashboardPage() {
         <NotificationStatusCard />
       </div>
 
-      {/* Third row - Quick Actions + Insights */}
+      {/* Third row - Quick Actions（insights 卡已下线，见 InsightsCard 注释） */}
       <div className="grid gap-4 md:grid-cols-2">
         <QuickActionsCard />
-        <InsightsCard />
       </div>
 
       {/* Family feed card */}

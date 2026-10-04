@@ -32,7 +32,7 @@ from app.models.learning import (
 )
 from app.models.outfit import Outfit, OutfitItem, OutfitStatus, UserFeedback
 from app.models.preference import UserPreference
-from app.utils.clothing import ITEM_ROLE
+from app.utils.clothing import ITEM_ROLE, first_primary
 from app.utils.signed_urls import sign_image_url
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ class LearningService:
 
         for outfit_item in outfit.items:
             item = outfit_item.item
-            color = item.primary_colors[0] if item.primary_colors else None
+            color = first_primary(item.primary_colors)
             if color:
                 color_composition["primary_colors"].append(color)
 
@@ -579,7 +579,7 @@ class LearningService:
                 item = oi.item
 
                 # Color signals
-                color = item.primary_colors[0] if item.primary_colors else None
+                color = first_primary(item.primary_colors)
                 if color:
                     if color not in color_scores:
                         color_scores[color] = []
@@ -606,7 +606,7 @@ class LearningService:
 
             # Track colors per occasion
             for oi in outfit.items:
-                color = oi.item.primary_colors[0] if oi.item.primary_colors else None
+                color = first_primary(oi.item.primary_colors)
                 if color:
                     if color not in occasion_patterns[occasion]["colors"]:
                         occasion_patterns[occasion]["colors"][color] = 0
@@ -750,7 +750,7 @@ class LearningService:
 
         new_color_scores = dict(profile.learned_color_scores or {})
         for oi in outfit.items:
-            color = oi.item.primary_colors[0] if oi.item.primary_colors else None
+            color = first_primary(oi.item.primary_colors)
             if color:
                 old = new_color_scores.get(color, 0.0)
                 new_color_scores[color] = round(old * (1 - alpha) + signal * alpha, 3)
@@ -771,7 +771,7 @@ class LearningService:
 
         occ_colors = dict(occ_data.get("colors", occ_data.get("preferred_colors_scores", {})))
         for oi in outfit.items:
-            color = oi.item.primary_colors[0] if oi.item.primary_colors else None
+            color = first_primary(oi.item.primary_colors)
             if color and signal > 0:
                 occ_colors[color] = occ_colors.get(color, 0) + 1
 
@@ -1092,7 +1092,7 @@ class LearningService:
                     "id": str(p.item1.id),
                     "type": p.item1.type,
                     "name": p.item1.name,
-                    "primary_color": p.item1.primary_colors[0] if p.item1.primary_colors else None,
+                    "primary_color": first_primary(p.item1.primary_colors),
                     "thumbnail_path": p.item1.thumbnail_path,
                     "thumbnail_url": sign_image_url(p.item1.thumbnail_path)
                     if p.item1.thumbnail_path
@@ -1102,7 +1102,7 @@ class LearningService:
                     "id": str(p.item2.id),
                     "type": p.item2.type,
                     "name": p.item2.name,
-                    "primary_color": p.item2.primary_colors[0] if p.item2.primary_colors else None,
+                    "primary_color": first_primary(p.item2.primary_colors),
                     "thumbnail_path": p.item2.thumbnail_path,
                     "thumbnail_url": sign_image_url(p.item2.thumbnail_path)
                     if p.item2.thumbnail_path

@@ -1,10 +1,20 @@
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
 from app.utils.garment_vocabulary import ITEM_ROLE
 
 logger = logging.getLogger(__name__)
+
+
+def first_primary(primary_colors: Sequence[str] | None) -> str | None:
+    """Lead primary color, or None when there is none.
+
+    Single access point for the adapters that still speak the old singular
+    primary_color shape (pairings/learning/outfits responses, AI prompts).
+    """
+    return primary_colors[0] if primary_colors else None
 
 # A suit takes its own slot rather than outer_layer so an overcoat can still go over it.
 ROLE_SLOTS: dict[str, frozenset[str]] = {

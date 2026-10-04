@@ -33,22 +33,12 @@ export interface WearStats {
   last_worn_at: string | null;
 }
 
-export interface AcceptanceRateTrend {
-  period: string;
-  total: number;
-  accepted: number;
-  rejected: number;
-  rate: number;
-}
-
 export interface WardrobeStats {
   total_items: number;
   items_by_status: Record<string, number>;
   total_outfits: number;
   outfits_this_week: number;
   outfits_this_month: number;
-  acceptance_rate: number | null;
-  average_rating: number | null;
   total_wears: number;
 }
 
@@ -59,19 +49,15 @@ export interface AnalyticsData {
   most_worn: WearStats[];
   least_worn: WearStats[];
   never_worn: WearStats[];
-  acceptance_trend: AcceptanceRateTrend[];
-  insights: string[];
 }
 
-export function useAnalytics(days = 30) {
+export function useAnalytics() {
   const { status } = useSession();
   useSetTokenIfAvailable();
 
   return useQuery({
-    queryKey: ['analytics', days],
-    queryFn: () => api.get<AnalyticsData>('/analytics', {
-      params: { days: String(days) },
-    }),
+    queryKey: ['analytics'],
+    queryFn: () => api.get<AnalyticsData>('/analytics'),
     enabled: status !== 'loading',
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

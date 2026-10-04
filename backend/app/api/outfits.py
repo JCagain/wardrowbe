@@ -42,6 +42,7 @@ from app.services.studio_service import (
 from app.services.suggestion_cache import clear_suggestions
 from app.services.weather_service import WeatherData
 from app.utils.auth import get_current_user
+from app.utils.clothing import first_primary
 from app.utils.rate_limit import rate_limit_by_user
 from app.utils.signed_urls import sign_image_url
 
@@ -357,7 +358,7 @@ def outfit_to_response(
                 name=item.name,
                 # Legacy response shape kept: primary_color = first primary,
                 # colors = primary + secondary union.
-                primary_color=item.primary_colors[0] if item.primary_colors else None,
+                primary_color=first_primary(item.primary_colors),
                 colors=[*item.primary_colors, *item.secondary_colors],
                 image_path=item.image_path,
                 thumbnail_path=item.thumbnail_path,

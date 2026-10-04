@@ -7,6 +7,7 @@ from app.utils.clothing import (
     canonical_item_order,
     count_composition,
     deduplicate_by_body_slot,
+    first_primary,
 )
 
 
@@ -350,3 +351,12 @@ def test_count_composition_covers_every_role_in_item_role():
     assert c.layers == roles.count("mid_layer")
     assert c.bottoms == roles.count("bottom")
     assert c.full_body == roles.count("full_body")
+
+
+def test_first_primary_takes_the_lead_color():
+    assert first_primary(["army", "black"]) == "army"
+
+
+def test_first_primary_is_none_without_colors():
+    assert first_primary([]) is None
+    assert first_primary(None) is None

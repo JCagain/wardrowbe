@@ -31,7 +31,7 @@ from app.services.weather_service import (
     WeatherService,
     WeatherServiceError,
 )
-from app.utils.clothing import canonical_item_order, deduplicate_by_body_slot
+from app.utils.clothing import canonical_item_order, deduplicate_by_body_slot, first_primary
 from app.utils.prompts import load_prompt
 from app.utils.timezone import get_user_today
 
@@ -250,7 +250,7 @@ class RecommendationService:
             if all_colors and len(all_colors) > 1:
                 parts.append(f"colors: {', '.join(all_colors)}")
             elif item.primary_colors:
-                parts.append(item.primary_colors[0])
+                parts.append(first_primary(item.primary_colors))
 
             if item.pattern and item.pattern != "solid":
                 parts.append(item.pattern)

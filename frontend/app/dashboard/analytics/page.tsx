@@ -5,7 +5,6 @@ import {
   Sparkles,
   TrendingUp,
   Activity,
-  Lightbulb,
   PieChart,
   BarChart,
 } from 'lucide-react';
@@ -52,8 +51,8 @@ function StatCard({
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
           <Card key={i}>
             <CardHeader className="pb-2">
               <Skeleton className="h-4 w-24" />
@@ -198,9 +197,11 @@ function AcceptanceTrendChart({ data }: { data: { period: string; rate: number; 
   );
 }
 
+// 摘不删（spec §7）：AI 接受趋势图已从统计页下线，组件保留备查。
+
 export default function AnalyticsPage() {
   const t = useTranslations('analytics');
-  const { data, isLoading, isError } = useAnalytics(60);
+  const { data, isLoading, isError } = useAnalytics();
 
   if (isLoading) {
     return (
@@ -222,7 +223,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  const { wardrobe, color_distribution, type_distribution, most_worn, least_worn, never_worn, acceptance_trend, insights } = data;
+  const { wardrobe, color_distribution, type_distribution, most_worn, least_worn, never_worn } = data;
 
   return (
     <div className="space-y-6">
@@ -232,7 +233,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title={t('stats.totalItems.title')}
           value={wardrobe.total_items}
@@ -246,41 +247,12 @@ export default function AnalyticsPage() {
           icon={Sparkles}
         />
         <StatCard
-          title={t('stats.acceptanceRate.title')}
-          value={wardrobe.acceptance_rate ? t('percent', { value: wardrobe.acceptance_rate }) : '-'}
-          description={wardrobe.acceptance_rate ? t('stats.acceptanceRate.description') : t('stats.totalWears.noData')}
-          icon={TrendingUp}
-          trend={wardrobe.acceptance_rate && wardrobe.acceptance_rate > 50 ? 'up' : undefined}
-        />
-        <StatCard
           title={t('stats.totalWears.title')}
           value={wardrobe.total_wears}
-          description={wardrobe.average_rating ? t('stats.avgRating', { rating: wardrobe.average_rating }) : t('stats.totalWears.description')}
+          description={t('stats.totalWears.description')}
           icon={Activity}
         />
       </div>
-
-      {/* Insights */}
-      {insights.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="h-5 w-5" />
-              {t('insights.title')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {insights.map((insight, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                  <span>{insight}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* Color Distribution */}
@@ -394,19 +366,6 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Acceptance Trend */}
-      {acceptance_trend.length > 0 && acceptance_trend.some((t) => t.total > 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('insights.acceptanceTrend.title')}</CardTitle>
-            <CardDescription>{t('insights.acceptanceTrend.description')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AcceptanceTrendChart data={acceptance_trend} />
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

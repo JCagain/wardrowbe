@@ -6,7 +6,7 @@ from uuid import UUID
 from app.models.item import ClothingItem
 from app.models.preference import UserPreference
 from app.services.weather_service import WeatherData
-from app.utils.clothing import ITEM_ROLE
+from app.utils.clothing import ITEM_ROLE, first_primary
 from app.utils.garment_vocabulary import FORMALITY
 
 OCCASION_FORMALITY = {
@@ -280,7 +280,7 @@ def _preference_score(
     learned: dict | None,
 ) -> float:
     score = 1.0
-    color = ((item.primary_colors[0] if item.primary_colors else None) or "").lower()
+    color = (first_primary(item.primary_colors) or "").lower()
 
     if preferences:
         fav_colors = [c.lower() for c in (preferences.color_favorites or [])]

@@ -15,6 +15,7 @@ from app.models.learning import UserLearningProfile
 from app.models.user import User
 from app.services.learning_service import LearningService
 from app.utils.auth import get_current_user
+from app.utils.clothing import first_primary
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,7 @@ async def get_item_pair_suggestions(
                 "id": str(item.id),
                 "type": item.type,
                 "name": item.name,
-                "primary_color": item.primary_color,
+                "primary_color": first_primary(item.primary_colors),
                 "thumbnail_path": item.thumbnail_path,
             },
             "compatibility_score": score,

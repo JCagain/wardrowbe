@@ -22,6 +22,7 @@ from app.services.pairing_service import (
 )
 from app.services.studio_service import ItemOwnershipError
 from app.utils.auth import get_current_user
+from app.utils.clothing import first_primary
 from app.utils.rate_limit import rate_limit_by_user
 from app.utils.signed_urls import sign_image_url
 
@@ -143,7 +144,7 @@ def pairing_to_response(outfit: Outfit) -> PairingResponse:
                 type=item.type,
                 subtype=item.subtype,
                 name=item.name,
-                primary_color=item.primary_colors[0] if item.primary_colors else None,
+                primary_color=first_primary(item.primary_colors),
                 colors=[*item.primary_colors, *item.secondary_colors],
                 image_path=item.image_path,
                 thumbnail_path=item.thumbnail_path,
@@ -160,7 +161,7 @@ def pairing_to_response(outfit: Outfit) -> PairingResponse:
             type=outfit.source_item.type,
             subtype=outfit.source_item.subtype,
             name=outfit.source_item.name,
-            primary_color=outfit.source_item.primary_colors[0] if outfit.source_item.primary_colors else None,
+            primary_color=first_primary(outfit.source_item.primary_colors),
             image_path=outfit.source_item.image_path,
             thumbnail_path=outfit.source_item.thumbnail_path,
         )

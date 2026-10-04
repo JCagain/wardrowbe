@@ -393,3 +393,31 @@ class TestDeletePairing:
 
         response = await client.delete(f"/api/v1/pairings/{pairing.id}", headers=auth_headers)
         assert response.status_code == 404
+
+
+class TestFormatItemDescription:
+    """The AI prompt text for one item. Arrays replaced the dropped singular
+    columns; before the fix this raised AttributeError and generate_pairings
+    could never run."""
+
+    def test_lists_all_colors(self):
+        from app.services.pairing_service import PairingService
+
+        item = _make_item(uuid4(), primary_colors=["army", "black"], secondary_colors=["white"])
+        text = PairingService(None)._format_item_description(item)
+        assert "colors: army, black, white" in text
+
+    def test_single_color_is_a_bare_name(self):
+        from app.services.pairing_service import PairingService
+
+        item = _make_item(uuid4(), primary_colors=["wine"])
+        text = PairingService(None)._format_item_description(item)
+        assert "wine" in text
+        assert "colors:" not in text
+
+    def test_colorless_item_still_formats(self):
+        from app.services.pairing_service import PairingService
+
+        item = _make_item(uuid4())
+        text = PairingService(None)._format_item_description(item)
+        assert "shirt" in text
