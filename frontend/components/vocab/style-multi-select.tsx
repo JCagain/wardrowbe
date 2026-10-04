@@ -1,9 +1,9 @@
 'use client';
 
-import type { ColorEntry } from '@/lib/types';
+import type { VocabEntry } from '@/lib/types';
 import { VocabAddChip, VocabManagedChip, type VocabEntryHandlers } from './vocab-managed-chip';
 
-export function ColorMultiSelect({
+export function StyleMultiSelect({
   values,
   options,
   onChange,
@@ -11,36 +11,35 @@ export function ColorMultiSelect({
   onAddEntry,
 }: {
   values: string[];
-  options: ColorEntry[];
+  options: VocabEntry[];
   onChange: (next: string[]) => void;
   entryHandlers?: VocabEntryHandlers;
   onAddEntry?: () => void;
 }) {
   // Disabled entries stay selectable for items that already carry them.
-  const visible = options.filter((c) => !c.disabled || values.includes(c.value));
+  const visible = options.filter((o) => !o.disabled || values.includes(o.value));
   return (
     <div className="flex flex-wrap gap-2">
-      {visible.map((c) => {
-        const active = values.includes(c.value);
+      {visible.map((s) => {
+        const active = values.includes(s.value);
         return (
           <VocabManagedChip
-            key={c.value}
-            value={c.value}
-            label={c.label}
+            key={s.value}
+            value={s.value}
+            label={s.label}
             handlers={entryHandlers}
             active={active}
             onToggle={() =>
               onChange(
-                active ? values.filter((v) => v !== c.value) : [...values, c.value],
+                active ? values.filter((v) => v !== s.value) : [...values, s.value],
               )
             }
           >
-            <span className="block h-6 w-6 rounded" style={{ backgroundColor: c.hex }} />
-            <span className="text-xs">{c.label}</span>
+            <span className="px-2 py-1 text-sm">{s.label}</span>
           </VocabManagedChip>
         );
       })}
-      {onAddEntry && <VocabAddChip kindLabel="color" onClick={onAddEntry} />}
+      {onAddEntry && <VocabAddChip kindLabel="style" onClick={onAddEntry} />}
     </div>
   );
 }

@@ -3,30 +3,36 @@
 import { useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import {
-  CLOTHING_TYPES,
-  CLOTHING_COLORS,
   OCCASIONS,
+  TypeEntry,
   VocabEntry,
 } from '@/lib/types';
-import { BODY_PART_LABELS, BODY_PART_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
+import {
+  BODY_PART_LABELS,
+  BODY_PART_VALUES,
+  COLOR_VALUES,
+  STYLE_LABELS,
+  TYPE_ENTRIES,
+} from '@/lib/generated/garment-vocabulary';
+import { useVocabulary } from '@/lib/hooks/use-vocabulary';
 
-const STYLE_VALUES = ['bold', 'casual', 'formal', 'minimalist', 'sporty'] as const;
 const WEATHER_CONDITION_VALUES = ['clear', 'cloudy', 'rain', 'snow'] as const;
 
-// Type and color labels come from the vocabulary itself (single source), so they are
-// no longer routed through constants.types / constants.colors translations.
-export function useClothingTypes() {
-  return useMemo(() => CLOTHING_TYPES.map((ct) => {
-    const entry = TYPE_ENTRIES.find((e) => e.value === ct.value);
-    return {
-      ...ct,
-      label: entry?.label ?? ct.value,
-    };
-  }), []);
+// Type/color/style labels come from the vocabulary itself (single source) and are
+// never routed through constants.* translations. The runtime vocabulary wins;
+// the generated export is the offline fallback while it loads.
+export function useClothingTypes(): TypeEntry[] {
+  const { data } = useVocabulary();
+  return useMemo(() => data?.types ?? [...TYPE_ENTRIES], [data]);
 }
 
 export function useClothingColors() {
-  return useMemo(() => CLOTHING_COLORS, []);
+  const { data } = useVocabulary();
+  // Full ColorEntry (pickers) plus a `name` alias for the older consumers.
+  return useMemo(() => {
+    const values = data?.colors.values ?? [...COLOR_VALUES];
+    return values.map((c) => ({ ...c, name: c.label }));
+  }, [data]);
 }
 
 // Body-part labels live in the vocabulary itself (single source), like type and color labels.
@@ -46,13 +52,12 @@ export function useOccasions() {
   })), [t]);
 }
 
-export function useStyles() {
-  const t = useTranslations('constants.styles');
-
-  return useMemo(() => STYLE_VALUES.map((value) => ({
-    value,
-    label: t(value),
-  })), [t]);
+export function useStyles(): VocabEntry[] {
+  const { data } = useVocabulary();
+  return useMemo(() => {
+    if (data) return data.styles;
+    return Object.entries(STYLE_LABELS).map(([value, label]) => ({ value, label }));
+  }, [data]);
 }
 
 export function useWeatherConditions() {

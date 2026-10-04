@@ -29,13 +29,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useCreateItem, useBulkCreateItems, BulkUploadResponse } from '@/lib/hooks/use-items';
-import { useBodyParts } from '@/lib/hooks/use-translated-constants';
 import {
-  COLOR_VALUES,
-  STYLE_LABELS,
-  STYLE_VALUES,
-  TYPE_ENTRIES,
-} from '@/lib/generated/garment-vocabulary';
+  useBodyParts,
+  useClothingColors,
+  useClothingTypes,
+  useStyles,
+} from '@/lib/hooks/use-translated-constants';
+import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
+import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
+import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
 import type { ColorEntry, TypeEntry } from '@/lib/types';
 import { normalizePurchaseDate } from '@/lib/purchase-date';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
@@ -57,6 +59,10 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   const t = useTranslations('wardrobe.addItem');
   const tc = useTranslations('common');
   const bodyParts = useBodyParts();
+  const typeEntries = useClothingTypes();
+  const colorOptions = useClothingColors();
+  const styleOptions = useStyles();
+  const vocab = useVocabManagement();
   // Single upload state
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -352,11 +358,13 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   <Label>{t('typeLabel')}</Label>
                   <PartTypeSelect
                     parts={bodyParts}
-                    entries={[...TYPE_ENTRIES]}
+                    entries={typeEntries}
                     bodyPart={bodyPart}
                     type={type}
                     onBodyPartChange={setBodyPart}
                     onTypeChange={setType}
+                    entryHandlers={vocab.handlersFor('types')}
+                    onAddEntry={() => vocab.openAdd('types')}
                   />
                 </div>
 
@@ -398,8 +406,10 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   <Label>{t('primaryColors')}</Label>
                   <ColorMultiSelect
                     values={primaryColors}
-                    options={[...COLOR_VALUES]}
+                    options={colorOptions}
                     onChange={setPrimaryColors}
+                    entryHandlers={vocab.handlersFor('colors')}
+                    onAddEntry={() => vocab.openAdd('colors')}
                   />
                 </div>
 
@@ -407,31 +417,22 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   <Label>{t('secondaryColors')}</Label>
                   <ColorMultiSelect
                     values={secondaryColors}
-                    options={[...COLOR_VALUES]}
+                    options={colorOptions}
                     onChange={setSecondaryColors}
+                    entryHandlers={vocab.handlersFor('colors')}
+                    onAddEntry={() => vocab.openAdd('colors')}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label>{t('style')}</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {STYLE_VALUES.map((value) => {
-                      const active = style.includes(value);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() =>
-                            setStyle(active ? style.filter((v) => v !== value) : [...style, value])
-                          }
-                          className={`rounded-full border px-2 py-0.5 text-xs ${active ? 'ring-2 ring-primary' : ''}`}
-                        >
-                          {STYLE_LABELS[value]}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <StyleMultiSelect
+                    values={style}
+                    options={styleOptions}
+                    onChange={setStyle}
+                    entryHandlers={vocab.handlersFor('styles')}
+                    onAddEntry={() => vocab.openAdd('styles')}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -732,6 +733,12 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+      <VocabAddDialog
+        kind={vocab.addKind ?? 'styles'}
+        open={vocab.addKind !== null}
+        onOpenChange={vocab.closeAdd}
+        family={vocab.addKind === 'types' ? bodyPart || undefined : undefined}
+      />
     </>
   );
 }

@@ -299,5 +299,35 @@
     "daysAgo": "Worn {days}d ago",
     "today": "Worn today",
     "yesterday": "Worn yesterday"
+  },
+  "vocabAdd": {
+    "title": {
+      "styles": "Add style",
+      "types": "Add type",
+      "colors": "Add color"
+    },
+    "family": "Color family",
+    "familyPlaceholder": "Pick a family",
+    "bodyPart": "Body part",
+    "bodyPartPlaceholder": "Pick a body part",
+    "label": "Display name",
+    "slug": "Slug",
+    "slugPlaceholder": "lowercase-with-hyphens",
+    "hex": "Hex",
+    "cancel": "Cancel",
+    "submit": "Add",
+    "invalid": "Enter a display name and a lowercase slug (a-z, 0-9, -).",
+    "slugExists": "That slug is already in the vocabulary.",
+    "failed": "Could not save the vocabulary entry."
+  },
+  "vocabManage": {
+    "menu": "Entry actions",
+    "rename": "Rename",
+    "disable": "Disable",
+    "label": "Display name",
+    "cancel": "Cancel",
+    "save": "Save",
+    "invalid": "Enter a display name.",
+    "addEntry": "Add {kind}…"
   }
 }

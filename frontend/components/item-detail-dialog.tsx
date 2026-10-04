@@ -57,6 +57,9 @@ import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemo
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
+  useClothingColors,
+  useClothingTypes,
+  useStyles,
   useFormalityLabel,
   useMaterialLabel,
   useSubtypeLabel,
@@ -64,12 +67,13 @@ import {
 import {
   COLOR_VALUES,
   STYLE_LABELS,
-  STYLE_VALUES,
   TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
-import { editFormFromItem, type EditForm } from '@/lib/item-edit-form';
-import { partTypeChangeHandlers } from '@/lib/item-edit-form';
+import { editFormFromItem, partTypeChangeHandlers, type EditForm } from '@/lib/item-edit-form';
+import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
+import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
+import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { ColorEyedropper } from '@/components/color-eyedropper';
@@ -91,6 +95,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const tw = useTranslations('wardrobe');
   const router = useRouter();
   const bodyParts = useBodyParts();
+  const typeEntries = useClothingTypes();
+  const colorOptions = useClothingColors();
+  const styleOptions = useStyles();
+  const vocab = useVocabManagement();
   const subtypeLabel = useSubtypeLabel();
   const materialLabel = useMaterialLabel();
   const formalityLabel = useFormalityLabel();
@@ -628,10 +636,12 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     )}
                     <PartTypeSelect
                       parts={bodyParts}
-                      entries={[...TYPE_ENTRIES]}
+                      entries={typeEntries}
                       bodyPart={editForm.body_part}
                       type={editForm.type}
                       {...partTypeChangeHandlers(setEditForm)}
+                      entryHandlers={vocab.handlersFor('types')}
+                      onAddEntry={() => vocab.openAdd('types')}
                     />
                   </div>
                   <div className="space-y-2">
@@ -675,43 +685,31 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     </div>
                     <ColorMultiSelect
                       values={editForm.primary_colors}
-                      options={[...COLOR_VALUES]}
+                      options={colorOptions}
                       onChange={(next) => setEditForm({ ...editForm, primary_colors: next })}
+                      entryHandlers={vocab.handlersFor('colors')}
+                      onAddEntry={() => vocab.openAdd('colors')}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>{t('secondaryColors')}</Label>
                     <ColorMultiSelect
                       values={editForm.secondary_colors}
-                      options={[...COLOR_VALUES]}
+                      options={colorOptions}
                       onChange={(next) => setEditForm({ ...editForm, secondary_colors: next })}
+                      entryHandlers={vocab.handlersFor('colors')}
+                      onAddEntry={() => vocab.openAdd('colors')}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>{t('style')}</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {STYLE_VALUES.map((value) => {
-                        const active = editForm.style.includes(value);
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            aria-pressed={active}
-                            onClick={() =>
-                              setEditForm({
-                                ...editForm,
-                                style: active
-                                  ? editForm.style.filter((v) => v !== value)
-                                  : [...editForm.style, value],
-                              })
-                            }
-                            className={`rounded-full border px-2 py-0.5 text-xs ${active ? 'ring-2 ring-primary' : ''}`}
-                          >
-                            {STYLE_LABELS[value]}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <StyleMultiSelect
+                      values={editForm.style}
+                      options={styleOptions}
+                      onChange={(next) => setEditForm({ ...editForm, style: next })}
+                      entryHandlers={vocab.handlersFor('styles')}
+                      onAddEntry={() => vocab.openAdd('styles')}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
@@ -1272,6 +1270,13 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
         item={item}
         open={showPairingsDialog}
         onOpenChange={setShowPairingsDialog}
+      />
+
+      <VocabAddDialog
+        kind={vocab.addKind ?? 'styles'}
+        open={vocab.addKind !== null}
+        onOpenChange={vocab.closeAdd}
+        family={vocab.addKind === 'types' ? editForm.body_part || undefined : undefined}
       />
     </>
   );

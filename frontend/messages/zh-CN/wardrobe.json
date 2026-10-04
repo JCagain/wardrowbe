@@ -299,5 +299,35 @@
     "daysAgo": "{days}天前穿过",
     "today": "今天穿过",
     "yesterday": "昨天穿过"
+  },
+  "vocabAdd": {
+    "title": {
+      "styles": "添加风格",
+      "types": "添加类别",
+      "colors": "添加颜色"
+    },
+    "family": "色系",
+    "familyPlaceholder": "选择色系",
+    "bodyPart": "部位",
+    "bodyPartPlaceholder": "选择部位",
+    "label": "显示名",
+    "slug": "slug",
+    "slugPlaceholder": "小写字母/数字/连字符",
+    "hex": "色值",
+    "cancel": "取消",
+    "submit": "添加",
+    "invalid": "请填写显示名和小写 slug（a-z、0-9、-）。",
+    "slugExists": "该 slug 已在词表中。",
+    "failed": "词表写入失败。"
+  },
+  "vocabManage": {
+    "menu": "词条操作",
+    "rename": "改名",
+    "disable": "停用",
+    "label": "显示名",
+    "cancel": "取消",
+    "save": "保存",
+    "invalid": "请填写显示名。",
+    "addEntry": "添加{kind}…"
   }
 }
