@@ -18,7 +18,8 @@
   "empty": {
     "description": "Your outfit recommendation history will appear here once you start receiving suggestions.",
     "getFirstSuggestion": "Get Your First Suggestion",
-    "title": "No recommendation history"
+    "title": "No recommendation history",
+    "goToWardrobe": "Go to wardrobe"
   },
   "filters": {
     "allOccasions": "All occasions",

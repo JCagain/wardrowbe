@@ -87,12 +87,15 @@ class ItemService:
                 )
             )
 
-        # Lifecycle filter: an explicit lifecycle wins; the is_archived view
-        # otherwise keeps the default (hide retired, keep idle).
+        # Lifecycle is the authority: an explicit lifecycle filters exactly;
+        # otherwise the legacy is_archived view maps onto it (default = hide
+        # retired, keep idle) so a desynced boolean cannot hide a row.
         if filters.lifecycle:
             query = query.where(ClothingItem.lifecycle == filters.lifecycle)
+        elif filters.is_archived:
+            query = query.where(ClothingItem.lifecycle == "retired")
         else:
-            query = query.where(ClothingItem.is_archived == filters.is_archived)
+            query = query.where(ClothingItem.lifecycle != "retired")
 
         # Needs wash filter
         if filters.needs_wash is not None:
@@ -153,8 +156,10 @@ class ItemService:
 
         if lifecycle:
             query = query.where(ClothingItem.lifecycle == lifecycle)
+        elif is_archived:
+            query = query.where(ClothingItem.lifecycle == "retired")
         else:
-            query = query.where(ClothingItem.is_archived == is_archived)
+            query = query.where(ClothingItem.lifecycle != "retired")
 
         if search:
             search_term = f"%{search}%"
@@ -293,10 +298,19 @@ class ItemService:
             update_data["purchase_date_precision"] = purchase_date_precision
 
         # lifecycle is authoritative; the boolean is the retired compat view.
-        if "lifecycle" in update_data and update_data["lifecycle"] is not None:
+        # An explicit null is "no change" here (both columns are NOT NULL).
+        if update_data.get("lifecycle") is None:
+            update_data.pop("lifecycle", None)
+        if update_data.get("is_archived") is None:
+            update_data.pop("is_archived", None)
+        if "lifecycle" in update_data:
             update_data["is_archived"] = update_data["lifecycle"] == "retired"
-        elif "is_archived" in update_data and update_data["is_archived"] is not None:
-            update_data["lifecycle"] = "retired" if update_data["is_archived"] else "active"
+        elif "is_archived" in update_data:
+            if update_data["is_archived"]:
+                update_data["lifecycle"] = "retired"
+            elif item.lifecycle == "retired":
+                update_data["lifecycle"] = "active"
+            # is_archived=False on an idle item means "not retired": keep idle.
 
         # Flipping the retired axis keeps the same side effects as the
         # dedicated archive/restore endpoints (status + archived_at).
@@ -310,6 +324,8 @@ class ItemService:
 
         for field, value in update_data.items():
             setattr(item, field, value)
+        if "lifecycle" in update_data:
+            item.is_archived = update_data["lifecycle"] == "retired"
 
         if "tags" in update_data:
             attributes.flag_modified(item, "tags")
@@ -484,6 +500,7 @@ class ItemService:
         item: ClothingItem,
         reason: str | None = None,
     ) -> ClothingItem:
+        item.lifecycle = "retired"
         item.is_archived = True
         item.archived_at = datetime.now(UTC)
         item.archive_reason = reason
@@ -494,6 +511,7 @@ class ItemService:
         return result  # type: ignore[return-value]
 
     async def restore(self, item: ClothingItem) -> ClothingItem:
+        item.lifecycle = "active"
         item.is_archived = False
         item.archived_at = None
         item.archive_reason = None

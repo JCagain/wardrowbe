@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Shirt,
-  Sparkles,
   Plus,
   TrendingUp,
   Cloud,
@@ -17,15 +15,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   Clock,
-  Bell,
-  BellOff,
-  Calendar,
   CheckCircle2,
-  XCircle,
-  Lightbulb,
-  ChevronRight,
-  HeartHandshake,
-  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';

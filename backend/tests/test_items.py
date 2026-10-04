@@ -1990,6 +1990,40 @@ class TestLifecycleStatus:
         assert idle.json()["is_archived"] is False
 
     @pytest.mark.asyncio
+    async def test_archive_and_restore_move_lifecycle(self, client: AsyncClient, auth_headers):
+        create = await self._create(client, auth_headers, {"type": "shirt"}, seed=4)
+        item_id = create.json()["id"]
+        archived = await client.post(
+            f"/api/v1/items/{item_id}/archive", json={"reason": "donated"}, headers=auth_headers
+        )
+        assert archived.status_code in (200, 201), archived.text
+        assert archived.json()["lifecycle"] == "retired"
+        assert archived.json()["is_archived"] is True
+        restored = await client.post(f"/api/v1/items/{item_id}/restore", headers=auth_headers)
+        assert restored.json()["lifecycle"] == "active"
+        assert restored.json()["is_archived"] is False
+
+    @pytest.mark.asyncio
+    async def test_explicit_null_lifecycle_is_a_no_op(self, client: AsyncClient, auth_headers):
+        create = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"}, seed=5)
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": None}, headers=auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["lifecycle"] == "idle"
+
+    @pytest.mark.asyncio
+    async def test_legacy_false_does_not_demote_idle(self, client: AsyncClient, auth_headers):
+        create = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"}, seed=6)
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"is_archived": False}, headers=auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["lifecycle"] == "idle"
+
+    @pytest.mark.asyncio
     async def test_list_hides_retired_but_keeps_idle(self, client: AsyncClient, auth_headers):
         active = await self._create(client, auth_headers, {"type": "shirt"}, seed=1)
         idle = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"}, seed=2)

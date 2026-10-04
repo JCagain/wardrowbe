@@ -30,7 +30,9 @@ function EmptyHistory({ t }: { t: (key: string) => string }) {
       <p className="text-muted-foreground mb-6 max-w-sm">
         {t('empty.description')}
       </p>
-      {/* 摘不删（spec §7）：指向休眠 suggest 的空态 CTA 已下线。 */}
+      <Button variant="outline" asChild>
+        <a href="/dashboard/wardrobe">{t('empty.goToWardrobe')}</a>
+      </Button>
     </div>
   );
 }

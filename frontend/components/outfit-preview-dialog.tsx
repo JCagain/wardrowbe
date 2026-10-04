@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
 import { CalendarDays, ChevronLeft, ChevronRight, X, RotateCcw, RotateCw, Loader2, Users, Star, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,14 +33,11 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
   const subtypeLabel = useSubtypeLabel();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [imageKey, setImageKey] = useState(0); // Force image reload after rotation
-  const [showRatingForm, setShowRatingForm] = useState(false);
   const items = outfit.items;
   const rotateImage = useRotateImage();
-  const { data: session } = useSession();
   // 摘不删（spec §7）：家庭评分接线已下线。
   // const { data: family } = useFamily();
 
-  const currentEmail = session?.user?.email;
   // 摘不删（spec §7）：家庭评分接线已下线。
   // const currentMember = family?.members.find((m) => m.email === currentEmail);
   // const isInFamily = !!family && !!currentMember;

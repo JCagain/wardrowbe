@@ -190,11 +190,17 @@ class ItemResponse(ItemBase):
     additional_images: list["ItemImageResponse"] = Field(default_factory=list)
     purchase_date_precision: str | None = None
     lifecycle: Literal["active", "idle", "retired"] = "active"
-    is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def is_archived(self) -> bool:
+        # Compat view (spec §5): derived, never authoritative — the boolean
+        # column cannot drift what the API reports.
+        return self.lifecycle == "retired"
 
     @computed_field
     @property
@@ -427,6 +433,13 @@ class ItemImageResponse(BaseModel):
     medium_path: str | None = None
     position: int
     created_at: datetime
+
+    @computed_field
+    @property
+    def is_archived(self) -> bool:
+        # Compat view (spec §5): derived, never authoritative — the boolean
+        # column cannot drift what the API reports.
+        return self.lifecycle == "retired"
 
     @computed_field
     @property

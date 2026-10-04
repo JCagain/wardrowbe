@@ -18,7 +18,8 @@
   "empty": {
     "description": "开始获取穿搭建议后，推荐记录将显示在这里。",
     "getFirstSuggestion": "获取你的第一个建议",
-    "title": "暂无推荐记录"
+    "title": "暂无推荐记录",
+    "goToWardrobe": "去衣橱"
   },
   "filters": {
     "allOccasions": "所有场合",

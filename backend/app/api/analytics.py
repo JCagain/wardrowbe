@@ -179,7 +179,13 @@ async def get_analytics(
         total_wears=total_wears,
     )
 
-    ready_items = items_by_status["ready"]
+    # Denominator for distribution percentages: the items the scope admits.
+    scoped_count_result = await db.execute(
+        select(func.count(ClothingItem.id)).where(
+            and_(ClothingItem.user_id == current_user.id, _scope_clause(scope))
+        )
+    )
+    scoped_items = scoped_count_result.scalar() or 0
 
     # === Color Distribution ===
     # Per spec §10.15: count by 件次 over primary colors only — an item with two
@@ -207,7 +213,7 @@ async def get_analytics(
         ColorDistribution(
             color=row.color,
             count=row.count,
-            percentage=round(row.count / ready_items * 100, 1) if ready_items > 0 else 0,
+            percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
         )
         for row in color_rows
     ]
@@ -234,7 +240,7 @@ async def get_analytics(
         TypeDistribution(
             type=row.type,
             count=row.count,
-            percentage=round(row.count / ready_items * 100, 1) if ready_items > 0 else 0,
+            percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
         )
         for row in type_rows
     ]
@@ -259,7 +265,6 @@ async def get_analytics(
     )
     style_result = await db.execute(style_query)
     style_rows = style_result.all()
-    scoped_items = sum(row.count for row in style_rows)
 
     style_distribution = [
         StyleDistribution(
