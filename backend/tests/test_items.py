@@ -1990,6 +1990,31 @@ class TestLifecycleStatus:
         assert idle.json()["is_archived"] is False
 
     @pytest.mark.asyncio
+    async def test_item_with_gallery_images_serializes(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user
+    ):
+        # Regression: the computed is_archived once landed on ItemImageResponse
+        # too (no lifecycle there) and every item with gallery images 500'd on
+        # read — no test in the suite built an ItemImage row.
+        from app.models.item import ItemImage
+
+        create = await self._create(client, auth_headers, {"type": "shirt"}, seed=7)
+        item_id = create.json()["id"]
+        db_session.add(
+            ItemImage(
+                item_id=UUID(item_id),
+                image_path=f"gallery/{uuid4()}.jpg",
+                position=1,
+            )
+        )
+        await db_session.flush()
+        listing = await client.get("/api/v1/items", headers=auth_headers)
+        assert listing.status_code == 200, listing.text
+        detail = await client.get(f"/api/v1/items/{item_id}", headers=auth_headers)
+        assert detail.status_code == 200, detail.text
+        assert len(detail.json()["additional_images"]) == 1
+
+    @pytest.mark.asyncio
     async def test_archive_and_restore_move_lifecycle(self, client: AsyncClient, auth_headers):
         create = await self._create(client, auth_headers, {"type": "shirt"}, seed=4)
         item_id = create.json()["id"]

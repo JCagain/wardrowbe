@@ -436,13 +436,6 @@ class ItemImageResponse(BaseModel):
 
     @computed_field
     @property
-    def is_archived(self) -> bool:
-        # Compat view (spec §5): derived, never authoritative — the boolean
-        # column cannot drift what the API reports.
-        return self.lifecycle == "retired"
-
-    @computed_field
-    @property
     def image_url(self) -> str:
         return sign_image_url(self.image_path)
 

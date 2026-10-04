@@ -103,3 +103,17 @@ describe('locale catalogs', () => {
     });
   }
 });
+
+describe('mergeMessages', () => {
+  // Frozen locales shadow nested objects under a shallow spread — the deep
+  // merge is what makes the English fallback promise true for nested keys.
+  it('falls back to the base for nested keys the locale lacks', async () => {
+    const { mergeMessages } = await import('@/i18n/merge-messages');
+    const merged = mergeMessages(
+      { empty: { description: 'No records yet', goToWardrobe: 'Go to wardrobe' } },
+      { empty: { description: 'Noch keine Einträge' } },
+    ) as { empty: Record<string, string> };
+    expect(merged.empty.goToWardrobe).toBe('Go to wardrobe');
+    expect(merged.empty.description).toBe('Noch keine Einträge');
+  });
+});

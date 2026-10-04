@@ -1,4 +1,5 @@
 import { cookies, headers } from 'next/headers';
+import { mergeMessages } from './merge-messages';
 import { getRequestConfig } from 'next-intl/server';
 import {
   DEFAULT_LOCALE,
@@ -33,7 +34,7 @@ async function loadMessages(locale: SupportedLocale): Promise<Messages> {
     try {
       // English underlies every namespace so a key still awaiting translation renders its
       // English text rather than a raw key path.
-      messages[namespace] = { ...english, ...(await loadNamespace(locale, namespace)) };
+      messages[namespace] = mergeMessages(english, await loadNamespace(locale, namespace));
     } catch {
       messages[namespace] = english;
     }

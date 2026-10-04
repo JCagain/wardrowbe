@@ -312,20 +312,18 @@ class ItemService:
                 update_data["lifecycle"] = "active"
             # is_archived=False on an idle item means "not retired": keep idle.
 
-        # Flipping the retired axis keeps the same side effects as the
-        # dedicated archive/restore endpoints (status + archived_at).
-        if "is_archived" in update_data and update_data["is_archived"] is not None:
-            if update_data["is_archived"] and not item.is_archived:
-                update_data["archived_at"] = datetime.now(UTC)
-                update_data["status"] = ItemStatus.archived
-            elif not update_data["is_archived"] and item.is_archived:
-                update_data["archived_at"] = None
-                update_data["status"] = ItemStatus.ready
+        # Crossing the retired boundary keeps the same side effects as the
+        # dedicated archive/restore endpoints (status + archived_at). The
+        # trigger is the lifecycle axis — a desynced boolean must not skip it.
+        if update_data.get("lifecycle") == "retired" and item.lifecycle != "retired":
+            update_data["archived_at"] = datetime.now(UTC)
+            update_data["status"] = ItemStatus.archived
+        elif update_data.get("lifecycle") == "active" and item.lifecycle == "retired":
+            update_data["archived_at"] = None
+            update_data["status"] = ItemStatus.ready
 
         for field, value in update_data.items():
             setattr(item, field, value)
-        if "lifecycle" in update_data:
-            item.is_archived = update_data["lifecycle"] == "retired"
 
         if "tags" in update_data:
             attributes.flag_modified(item, "tags")

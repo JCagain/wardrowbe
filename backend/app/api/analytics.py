@@ -179,18 +179,43 @@ async def get_analytics(
         total_wears=total_wears,
     )
 
-    # Denominator for distribution percentages: the items the scope admits.
-    scoped_count_result = await db.execute(
-        select(func.count(ClothingItem.id)).where(
-            and_(ClothingItem.user_id == current_user.id, _scope_clause(scope))
+
+    # === Type Distribution ===
+    type_query = (
+        select(
+            ClothingItem.type,
+            func.count(ClothingItem.id).label("count"),
         )
+        .where(
+            and_(
+                ClothingItem.user_id == current_user.id,
+                _scope_clause(scope),
+            )
+        )
+        .group_by(ClothingItem.type)
+        .order_by(func.count(ClothingItem.id).desc())
     )
-    scoped_items = scoped_count_result.scalar() or 0
+    type_result = await db.execute(type_query)
+    type_rows = type_result.all()
+
+    # Denominator for the distribution percentages: every item has a type, so
+    # the per-type counts partition exactly the scope-admitted set.
+    scoped_items = sum(row.count for row in type_rows)
+
+    type_distribution = [
+        TypeDistribution(
+            type=row.type,
+            count=row.count,
+            percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
+        )
+        for row in type_rows
+    ]
 
     # === Color Distribution ===
     # Per spec §10.15: count by 件次 over primary colors only — an item with two
-    # primaries counts once in each, secondaries never count. Percentages stay a
-    # share of ready items, so the sum can exceed 100% for multi-primary closets.
+    # primaries counts once in each, secondaries never count. Percentages are a
+    # share of the scope-admitted items (same denominator as the type/style
+    # cards), so the sum can exceed 100% for multi-primary closets.
     color_query = (
         select(
             func.unnest(ClothingItem.primary_colors).label("color"),
@@ -216,33 +241,6 @@ async def get_analytics(
             percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
         )
         for row in color_rows
-    ]
-
-    # === Type Distribution ===
-    type_query = (
-        select(
-            ClothingItem.type,
-            func.count(ClothingItem.id).label("count"),
-        )
-        .where(
-            and_(
-                ClothingItem.user_id == current_user.id,
-                _scope_clause(scope),
-            )
-        )
-        .group_by(ClothingItem.type)
-        .order_by(func.count(ClothingItem.id).desc())
-    )
-    type_result = await db.execute(type_query)
-    type_rows = type_result.all()
-
-    type_distribution = [
-        TypeDistribution(
-            type=row.type,
-            count=row.count,
-            percentage=round(row.count / scoped_items * 100, 1) if scoped_items > 0 else 0,
-        )
-        for row in type_rows
     ]
 
     # === Style Distribution ===
