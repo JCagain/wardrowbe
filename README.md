@@ -44,10 +44,12 @@ Self-hosted wardrobe management with AI-powered outfit recommendations. Take pho
 
 - **Photo-based wardrobe** - Upload photos, AI extracts clothing details automatically
 - **Smart recommendations** - Outfits matched to weather, occasion, and your preferences
-- **Scheduled notifications** - Daily outfit suggestions via ntfy/Mattermost/email
-- **Family support** - Manage wardrobes for household members
-- **Wear tracking** - History, ratings, and outfit feedback
-- **Analytics** - See what you wear, what you don't, color distribution
+- **Wear tracking** - History and outfit feedback
+- **Statistics** - What you wear, what you don't, color and type distribution
+- **Soft vocabulary** - Add/rename/disable types, colors and styles from the pickers (writes back to the vocabulary)
+
+Product-shell features from upstream are de-listed but kept in the code (摘不删): family/notifications/
+learning/wash tracking are unmounted, AI suggestions and pairings are dormant (see `docs/specs/personal-wardrobe-spec.md` §7).
 - **Fully self-hosted** - Your data stays on your hardware
 - **Works with any AI** - OpenAI, Ollama, LocalAI, or any OpenAI-compatible API
 - **8 languages** - English, Chinese (Simplified & Traditional), Korean, Japanese, French, German, Italian
@@ -178,15 +180,26 @@ To build the images from source instead of pulling them, use the development sta
 For hot reloading during development (auto-rebuilds on code changes):
 
 ```bash
-# Start in dev mode
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Start in dev mode (COMPOSE_FILE in .env already selects both files)
+docker compose up -d
 
 # Run migrations (first time only)
 docker compose exec backend alembic upgrade head
 
+# Tests
+docker compose exec backend python -m pytest tests/ -q
+docker compose exec frontend npm test -- --run
+
 # View logs
 docker compose logs -f frontend backend
 ```
+
+### Garment vocabulary
+
+Edit `docs/specs/vocabulary.md`, then `docker compose exec backend python scripts/compile_vocabulary.py`
+and `cd frontend && npm run vocab:gen`. Runtime additions through the UI write back to both files on
+their own. Back up `backend/app/data/garment_vocabulary.json` together with the database dump and the
+`storage_path` volume — it now carries your runtime additions.
 
 ## AI Configuration
 

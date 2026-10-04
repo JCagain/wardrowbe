@@ -67,6 +67,8 @@ services:
       MATTERMOST_WEBHOOK_URL: ${MATTERMOST_WEBHOOK_URL:-}
     volumes:
       - wardrobe_data:/data/wardrobe
+      # Soft vocabulary: runtime edits must survive a rebuild (T13).
+      - ./backend/app/data:/app/app/data
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

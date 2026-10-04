@@ -208,12 +208,20 @@ list to `backend/app/utils/locale.py`, and create `frontend/messages/<locale>/`.
 
 ### Garment vocabulary
 
-Clothing types, their outfit role and default wash interval, the tagging materials and the
-formality scale live in one file, `backend/app/data/garment_vocabulary.json`. The tagging prompt,
-the backend lists and `frontend/lib/generated/garment-vocabulary.ts` are all derived from it. After
-editing it, run `cd frontend && npm run vocab:gen`, add the labels under `constants.types`,
-`constants.materials`, `constants.formalities` and `constants.roles` in every locale, and commit the
-generated file. `npm run vocab:check` fails CI when the generated file is stale.
+The single source is `docs/specs/vocabulary.md` — the human-edited face. Compile it into the
+runtime document with `docker compose exec backend python scripts/compile_vocabulary.py` (writes
+`backend/app/data/garment_vocabulary.json`), then project the frontend copy with
+`cd frontend && npm run vocab:gen` and commit both. Materials and the formality scale are closed
+and defined in the compiler.
+
+The vocabulary is soft at runtime: the pickers'「添加 / 改名 / 停用」actions write back to the JSON
+*and* to the markdown table at the same position (`POST/PATCH /api/v1/vocabulary`), so the two
+faces never drift and a recompile stays a no-op. Entries are disabled, never deleted. Restart the
+backend/worker containers after a vocabulary change so their in-process copies pick it up.
+
+Two guards pin the chain: `docker compose exec backend python scripts/compile_vocabulary.py --check`
+(json vs markdown) and `cd frontend && npm run vocab:check` (generated TS vs json). Both must pass
+before you commit.
 
 ## Project Structure
 
