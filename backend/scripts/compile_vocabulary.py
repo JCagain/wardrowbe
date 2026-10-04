@@ -11,6 +11,10 @@ import re
 import sys
 from pathlib import Path
 
+# scripts/ runs standalone: bring the backend root on the path for the shared maps.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.utils.garment_vocabulary import ROLE_BY_PART, WASH_BY_PART  # noqa: E402
+
 # Anchor to the backend tree, which sits at the same place in a source checkout
 # and in the container (mounted at /app). vocabulary.md lives beside the backend
 # tree — <repo>/docs on the host, /docs in the container (compose mounts
@@ -29,8 +33,9 @@ FORMALITY = [
 
 # value: (role, wash_interval) — 48 seed types. Slugs surviving from the v1 JSON keep
 # their v1 role/wash_interval verbatim (the scorer/slot semantics stay unchanged);
-# genuinely new slugs take these seed defaults. Runtime-added types fall back to
-# FALLBACK_META (Task 11 adds types through the API, not through this script).
+# genuinely new slugs take these seed defaults. Types without a seed entry —
+# including ones the runtime API adds — inherit role/wash from their body part
+# via ROLE_BY_PART/WASH_BY_PART (shared with the API in garment_vocabulary).
 SEED_TYPE_META = {
     "tank-top": ("base_top", 1), "shirt": ("base_top", 2), "vest": ("mid_layer", 5),
     "sweater": ("base_top", 5), "bandeau": ("base_top", 1), "polo": ("base_top", 2),
@@ -55,17 +60,6 @@ SEED_TYPE_META = {
     "brooch": ("accessory", 20),
 }
 FALLBACK_META = ("accessory", 3)
-# Types without a seed entry inherit role/wash from their body part. Keep
-# accessories/jewelry at 3 so the pre-seeded fallback types compile byte-identically.
-ROLE_BY_PART = {
-    "tops": "base_top", "bottoms": "bottom", "dresses": "full_body",
-    "outerwear": "outer_layer", "footwear": "footwear",
-    "accessories": "accessory", "jewelry": "accessory",
-}
-WASH_BY_PART = {
-    "tops": 2, "bottoms": 4, "dresses": 3, "outerwear": 8,
-    "footwear": 15, "accessories": 3, "jewelry": 3,
-}
 
 SEASON_SEED = [("spring", "春"), ("summer", "夏"), ("fall", "秋"),
                ("winter", "冬"), ("all-season", "四季")]

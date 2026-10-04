@@ -29,12 +29,14 @@ function useSetTokenIfAvailable() {
 }
 
 export function useVocabulary() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   useSetTokenIfAvailable();
   return useQuery({
     queryKey: ['vocabulary'],
     queryFn: () => api.get<Vocabulary>('/vocabulary'),
-    enabled: status !== 'loading',
+    // Only fetch on a session that actually carries a token: a bare request
+    // 401s into a stuck-error state. The generated export covers the gap.
+    enabled: status === 'authenticated' && !!session?.accessToken,
     staleTime: 5 * 60 * 1000,
   });
 }

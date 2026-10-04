@@ -156,16 +156,6 @@ class TestVocabularyApi:
         assert resp.status_code in (404, 405)
 
 
-def test_runtime_type_meta_matches_compiler():
-    # The API derives role/wash from body part on add; the compiler must derive
-    # the same values on recompile or the two faces drift on --check.
-    from app.api.vocabulary import ROLE_BY_PART, WASH_BY_PART
-    from scripts.compile_vocabulary import ROLE_BY_PART as C_ROLE, WASH_BY_PART as C_WASH
-
-    assert ROLE_BY_PART == C_ROLE
-    assert WASH_BY_PART == C_WASH
-
-
 class TestTypeMeta:
     @pytest.mark.asyncio
     async def test_added_type_role_follows_body_part(self, client, auth_headers, vocab_snapshot):

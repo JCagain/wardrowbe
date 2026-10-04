@@ -22,6 +22,18 @@ TYPES_BY_PART: dict[str, tuple[str, ...]] = {
     for part in _DATA["body_parts"]
 }
 TYPE_LABELS: dict[str, str] = {t["value"]: t["label"] for t in _DATA["types"]}
+# Types without a seed entry (runtime additions) inherit role/wash from their
+# body part. Single source for both the runtime API and the compiler — the
+# pre-seeded fallback types in accessories/jewelry keep (accessory, 3).
+ROLE_BY_PART: dict[str, str] = {
+    "tops": "base_top", "bottoms": "bottom", "dresses": "full_body",
+    "outerwear": "outer_layer", "footwear": "footwear",
+    "accessories": "accessory", "jewelry": "accessory",
+}
+WASH_BY_PART: dict[str, int] = {
+    "tops": 2, "bottoms": 4, "dresses": 3, "outerwear": 8,
+    "footwear": 15, "accessories": 3, "jewelry": 3,
+}
 COLOR_FAMILIES: tuple[dict, ...] = tuple(_DATA["colors"]["families"])
 COLOR_VALUES: tuple[dict, ...] = tuple(_DATA["colors"]["values"])
 COLOR_VALUE_SET: set[str] = {c["value"] for c in _DATA["colors"]["values"]}

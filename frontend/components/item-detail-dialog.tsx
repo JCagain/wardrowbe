@@ -53,7 +53,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useLogWash, useWashHistory, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
+import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
@@ -64,11 +64,7 @@ import {
   useMaterialLabel,
   useSubtypeLabel,
 } from '@/lib/hooks/use-translated-constants';
-import {
-  COLOR_VALUES,
-  STYLE_LABELS,
-  TYPE_ENTRIES,
-} from '@/lib/generated/garment-vocabulary';
+
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
 import { editFormFromItem, partTypeChangeHandlers, type EditForm } from '@/lib/item-edit-form';
 import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
@@ -125,7 +121,6 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     favorite: false,
     wash_interval: undefined,
   });
-  const [showWashHistory, setShowWashHistory] = useState(false);
   const [showWearHistory, setShowWearHistory] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
@@ -915,7 +910,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         <div className="flex flex-wrap gap-1.5">
                           {item.tags.style.map((s) => (
                             <Badge key={s} variant="secondary" className="text-xs">
-                              {STYLE_LABELS[s as keyof typeof STYLE_LABELS] ?? s}
+                              {styleOptions.find((o) => o.value === s)?.label ?? s}
                             </Badge>
                           ))}
                         </div>

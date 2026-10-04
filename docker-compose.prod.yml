@@ -77,6 +77,9 @@ services:
       OIDC_SKIP_SSL_VERIFY: ${OIDC_SKIP_SSL_VERIFY:-false}
     volumes:
       - uploads_data:/data/uploads
+      # Soft vocabulary: both write-back faces must be mounted (T13).
+      - ./backend/app/data:/app/app/data
+      - ./docs:/docs
     dns:
       - ${LOCAL_DNS:-8.8.8.8}
       - 8.8.8.8
@@ -126,6 +129,8 @@ services:
       APP_URL: ${APP_URL:-https://localhost:3000}
     volumes:
       - uploads_data:/data/uploads
+      # Workers tag against the live vocabulary (after a restart).
+      - ./backend/app/data:/app/app/data
     dns:
       - ${LOCAL_DNS:-8.8.8.8}
       - 8.8.8.8
@@ -160,6 +165,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - uploads_data:/data/uploads
+      # Workers tag against the live vocabulary (after a restart).
+      - ./backend/app/data:/app/app/data
     dns:
       - ${LOCAL_DNS:-8.8.8.8}
       - 8.8.8.8

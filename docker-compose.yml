@@ -129,7 +129,8 @@ services:
       STORAGE_PATH: /data/wardrobe
     volumes:
       - wardrobe_data:/data/wardrobe
-      # Workers tag against the live vocabulary (runtime additions included).
+      # Workers tag against the live vocabulary — additions apply after a
+      # container restart (the module snapshots the JSON at import).
       - ./backend/app/data:/app/app/data
     depends_on:
       postgres:
@@ -159,7 +160,8 @@ services:
       STORAGE_PATH: /data/wardrobe
     volumes:
       - wardrobe_data:/data/wardrobe
-      # Workers tag against the live vocabulary (runtime additions included).
+      # Workers tag against the live vocabulary — additions apply after a
+      # container restart (the module snapshots the JSON at import).
       - ./backend/app/data:/app/app/data
     depends_on:
       postgres:

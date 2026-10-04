@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.utils.auth import get_current_user
-from app.utils.garment_vocabulary import VOCABULARY_PATH
+from app.utils.garment_vocabulary import ROLE_BY_PART, VOCABULARY_PATH, WASH_BY_PART
 from app.utils.vocabulary_md import (
     MD_PATH,
     entry_sort_key,
@@ -27,23 +27,14 @@ from app.utils.vocabulary_md import (
 router = APIRouter(prefix="/vocabulary", tags=["vocabulary"])
 
 BODY_PART_VALUES = {"dresses", "accessories", "tops", "jewelry", "outerwear", "bottoms", "footwear"}
-# Role/wash for a runtime-added type derive from its body part; must match
-# scripts/compile_vocabulary.{ROLE,WASH}_BY_PART (pinned by test) or a recompile
-# drifts from the runtime JSON.
-ROLE_BY_PART = {
-    "tops": "base_top", "bottoms": "bottom", "dresses": "full_body",
-    "outerwear": "outer_layer", "footwear": "footwear",
-    "accessories": "accessory", "jewelry": "accessory",
-}
-WASH_BY_PART = {
-    "tops": 2, "bottoms": 4, "dresses": 3, "outerwear": 8,
-    "footwear": 15, "accessories": 3, "jewelry": 3,
-}
 
 # The load-modify-save of the JSON plus its markdown write is one critical
 # section: without it, interleaved requests drop each other's edits. Markdown
 # is written first so a crash between the two leaves the healable direction
 # (recompile rebuilds the JSON; JSON-ahead drift would be permanent).
+# This lock serializes one process — the deployment invariant is a single
+# uvicorn worker serving these files (a multi-worker setup would need an
+# OS-level file lock instead).
 _WRITE_LOCK = threading.Lock()
 
 
@@ -76,9 +67,13 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     # Same rendering as scripts/compile_vocabulary.main — byte-identical faces.
-    VOCABULARY_PATH.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    # Write via a temp file + os.replace so a crash mid-write can never leave a
+    # truncated JSON behind (the markdown-first ordering then really is healable
+    # by a recompile).
+    rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    tmp = VOCABULARY_PATH.with_suffix(".json.tmp")
+    tmp.write_text(rendered, encoding="utf-8")
+    tmp.replace(VOCABULARY_PATH)
 
 
 def _insert_entry(entries: list[dict], entry: dict, kind: str, family: str | None) -> None:
