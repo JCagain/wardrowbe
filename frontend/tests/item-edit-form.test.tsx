@@ -100,3 +100,47 @@ describe('editFormFromItem purchase date', () => {
     expect(form.purchase_date).toBe('2024-01');
   });
 });
+
+describe('lifecycle edit form', () => {
+  // 状态三态（spec §5/§10.16）：表单以 lifecycle 为权威，is_archived 只是兼容视图。
+  const baseItem = {
+    name: null,
+    type: 'shirt',
+    body_part: 'tops',
+    subtype: null,
+    brand: null,
+    primary_colors: [],
+    secondary_colors: [],
+    style: [],
+    tags: {},
+    temp_low: null,
+    temp_high: null,
+    purchase_date: null,
+    purchase_date_precision: null,
+    purchase_price: null,
+    archive_reason: null,
+    notes: null,
+    favorite: false,
+    wash_interval: null,
+  };
+
+  it('maps the three states onto the edit form', () => {
+    expect(
+      editFormFromItem({ ...baseItem, lifecycle: 'idle', is_archived: false } as unknown as Item)
+        .lifecycle,
+    ).toBe('idle');
+    expect(
+      editFormFromItem({ ...baseItem, lifecycle: 'retired', is_archived: true } as unknown as Item)
+        .lifecycle,
+    ).toBe('retired');
+  });
+
+  it('falls back to the compat view for rows without lifecycle', () => {
+    expect(
+      editFormFromItem({ ...baseItem, is_archived: true } as unknown as Item).lifecycle,
+    ).toBe('retired');
+    expect(
+      editFormFromItem({ ...baseItem, is_archived: false } as unknown as Item).lifecycle,
+    ).toBe('active');
+  });
+});

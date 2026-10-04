@@ -117,6 +117,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     temp_high: undefined,
     purchase_date: '',
     purchase_price: undefined,
+    lifecycle: 'active',
     is_archived: false,
     archive_reason: '',
     notes: '',
@@ -180,8 +181,9 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
           temp_high: editForm.temp_high ?? null,
           purchase_date: purchaseDate,
           purchase_price: editForm.purchase_price ?? null,
-          is_archived: editForm.is_archived,
-          archive_reason: editForm.is_archived ? editForm.archive_reason.trim() || null : null,
+          lifecycle: editForm.lifecycle,
+          is_archived: editForm.lifecycle === 'retired',
+          archive_reason: editForm.lifecycle === 'retired' ? editForm.archive_reason.trim() || null : null,
           notes: editForm.notes || undefined,
           favorite: editForm.favorite,
           wash_interval: editForm.wash_interval,
@@ -751,27 +753,23 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                   <div className="space-y-2">
                     <Label>{t('status')}</Label>
                     <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={editForm.is_archived ? 'outline' : 'default'}
-                        aria-pressed={!editForm.is_archived}
-                        onClick={() => setEditForm({ ...editForm, is_archived: false })}
-                      >
-                        {t('statusActive')}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={editForm.is_archived ? 'default' : 'outline'}
-                        aria-pressed={editForm.is_archived}
-                        onClick={() => setEditForm({ ...editForm, is_archived: true })}
-                      >
-                        {t('statusRetired')}
-                      </Button>
+                      {([['active', t('statusActive')], ['idle', t('statusIdle')], ['retired', t('statusRetired')]] as const).map(
+                        ([value, label]) => (
+                          <Button
+                            key={value}
+                            type="button"
+                            size="sm"
+                            variant={editForm.lifecycle === value ? 'default' : 'outline'}
+                            aria-pressed={editForm.lifecycle === value}
+                            onClick={() => setEditForm({ ...editForm, lifecycle: value })}
+                          >
+                            {label}
+                          </Button>
+                        ),
+                      )}
                     </div>
                   </div>
-                  {editForm.is_archived && (
+                  {editForm.lifecycle === 'retired' && (
                     <div className="space-y-2">
                       <Label htmlFor="item-archive-reason">{t('archiveReason')}</Label>
                       <Input

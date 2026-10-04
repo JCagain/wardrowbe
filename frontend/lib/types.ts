@@ -88,6 +88,8 @@ export interface Item {
   needs_wash: boolean;
   effective_wash_interval: number;
   additional_images: ItemImage[];
+  // 三态状态（spec §5）：lifecycle 为权威；is_archived 是退役兼容视图。
+  lifecycle: 'active' | 'idle' | 'retired';
   is_archived: boolean;
   archived_at?: string;
   archive_reason?: string | null;
@@ -156,6 +158,7 @@ export interface ItemFilter {
   favorite?: boolean;
   needs_wash?: boolean;
   is_archived?: boolean;
+  lifecycle?: 'active' | 'idle' | 'retired';
   search?: string;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';

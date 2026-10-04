@@ -141,6 +141,7 @@ class ItemService:
         type_filter: str | None = None,
         search: str | None = None,
         is_archived: bool = False,
+        lifecycle: str | None = None,
         excluded_ids: list[UUID] | None = None,
         after_id: UUID | None = None,
         limit: int | None = None,
@@ -150,7 +151,10 @@ class ItemService:
         if type_filter:
             query = query.where(ClothingItem.type == type_filter)
 
-        query = query.where(ClothingItem.is_archived == is_archived)
+        if lifecycle:
+            query = query.where(ClothingItem.lifecycle == lifecycle)
+        else:
+            query = query.where(ClothingItem.is_archived == is_archived)
 
         if search:
             search_term = f"%{search}%"

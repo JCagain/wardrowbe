@@ -139,6 +139,16 @@ function ItemCard({
             </div>
           </div>
         )}
+        {(item.lifecycle === 'idle' || item.lifecycle === 'retired') && (
+          <div className="absolute bottom-2 left-2 z-10">
+            <Badge
+              variant={item.lifecycle === 'retired' ? 'destructive' : 'secondary'}
+              className="text-xs"
+            >
+              {t(`lifecycleFilter.${item.lifecycle}`)}
+            </Badge>
+          </div>
+        )}
         {isProcessing && (
           <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2">
             <Loader2 className="h-6 w-6 text-white animate-spin" />
@@ -343,6 +353,9 @@ export default function WardrobePage() {
   const [needsWash, setNeedsWash] = useState<boolean | undefined>(() =>
     searchParams.get('needsWash') === 'true' ? true : undefined
   );
+  const [lifecycleFilter, setLifecycleFilter] = useState<'active' | 'idle' | 'retired' | ''>(() =>
+    (searchParams.get('lifecycle') as 'active' | 'idle' | 'retired' | null) || ''
+  );
   const [favoriteFilter, setFavoriteFilter] = useState<boolean | undefined>(() =>
     searchParams.get('favorite') === 'true' ? true : undefined
   );
@@ -393,6 +406,7 @@ export default function WardrobePage() {
     if (sortIndex !== 0) params.set('sort', String(sortIndex)); else params.delete('sort');
     if (needsWash) params.set('needsWash', 'true'); else params.delete('needsWash');
     if (favoriteFilter) params.set('favorite', 'true'); else params.delete('favorite');
+    if (lifecycleFilter) params.set('lifecycle', lifecycleFilter); else params.delete('lifecycle');
     if (page !== 1) params.set('page', String(page)); else params.delete('page');
     if (pageSize !== 20) params.set('pageSize', String(pageSize)); else params.delete('pageSize');
 
@@ -400,7 +414,7 @@ export default function WardrobePage() {
     if (next !== searchParams.toString()) {
       router.replace(next ? `/dashboard/wardrobe?${next}` : '/dashboard/wardrobe', { scroll: false });
     }
-  }, [search, typeFilter, sortIndex, needsWash, favoriteFilter, page, pageSize, searchParams, router]);
+  }, [search, typeFilter, sortIndex, needsWash, favoriteFilter, lifecycleFilter, page, pageSize, searchParams, router]);
 
   const sortOption = SORT_OPTIONS[sortIndex];
 
@@ -409,6 +423,7 @@ export default function WardrobePage() {
     type: typeFilter !== 'all' ? typeFilter : undefined,
     needs_wash: needsWash,
     favorite: favoriteFilter,
+    lifecycle: lifecycleFilter || undefined,
     is_archived: false,
     sort_by: sortOption.value,
     sort_order: sortOption.order,
@@ -418,6 +433,7 @@ export default function WardrobePage() {
     needsWash !== undefined,
     favoriteFilter !== undefined,
     typeFilter !== 'all',
+    lifecycleFilter !== '',
   ].filter(Boolean).length;
 
   // Fetch items with automatic polling (faster when items are processing)
@@ -544,6 +560,7 @@ export default function WardrobePage() {
           needs_wash: needsWash,
           favorite: favoriteFilter,
           is_archived: false,
+          lifecycle: lifecycleFilter || undefined,
         },
       };
     } else {
@@ -838,6 +855,22 @@ export default function WardrobePage() {
               {t('favorites')}
             </Button>
 
+            {(['active', 'idle', 'retired'] as const).map((value) => (
+              <Button
+                key={value}
+                variant={lifecycleFilter === value ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 text-xs"
+                aria-pressed={lifecycleFilter === value}
+                onClick={() => {
+                  setLifecycleFilter(lifecycleFilter === value ? '' : value);
+                  setPage(1);
+                }}
+              >
+                {t(`lifecycleFilter.${value}`)}
+              </Button>
+            ))}
+
             {activeFilterCount > 0 && (
               <Button
                 variant="ghost"
@@ -847,6 +880,7 @@ export default function WardrobePage() {
                   setTypeFilter('all');
                   setNeedsWash(undefined);
                   setFavoriteFilter(undefined);
+                  setLifecycleFilter('');
                   setPage(1);
                 }}
               >
@@ -891,6 +925,7 @@ export default function WardrobePage() {
                 setTypeFilter('all');
                 setNeedsWash(undefined);
                 setFavoriteFilter(undefined);
+                setLifecycleFilter('');
                 setPage(1);
               }}
             >

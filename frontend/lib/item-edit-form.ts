@@ -30,6 +30,7 @@ export interface EditForm {
   temp_high: number | undefined;
   purchase_date: string;
   purchase_price: number | undefined;
+  lifecycle: 'active' | 'idle' | 'retired';
   is_archived: boolean;
   archive_reason: string;
   notes: string;
@@ -58,6 +59,8 @@ export function editFormFromItem(item: Item): EditForm {
     // month precision on the first unrelated save.
     purchase_date: formatPurchaseDate(item.purchase_date, item.purchase_date_precision),
     purchase_price: item.purchase_price ?? undefined,
+    // lifecycle is the authority; fall back to the compat view for older rows.
+    lifecycle: item.lifecycle ?? (item.is_archived ? 'retired' : 'active'),
     is_archived: item.is_archived,
     archive_reason: item.archive_reason || '',
     notes: item.notes || '',

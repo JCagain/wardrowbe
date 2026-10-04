@@ -321,6 +321,7 @@ class BulkFilters(BaseModel):
     type: str | None = None
     search: str | None = None
     is_archived: bool | None = None
+    lifecycle: Literal["active", "idle", "retired"] | None = None
 
 
 class BulkSelectionRequest(BaseModel):

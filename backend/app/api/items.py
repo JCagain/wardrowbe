@@ -109,6 +109,7 @@ async def _resolve_bulk_item_ids(
         type_filter=filters.type if filters else None,
         search=filters.search if filters else None,
         is_archived=filters.is_archived if filters and filters.is_archived is not None else False,
+        lifecycle=filters.lifecycle if filters else None,
         excluded_ids=list(request.excluded_ids) if request.excluded_ids else None,
         after_id=request.after_id,
         limit=limit + 1,

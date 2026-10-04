@@ -258,7 +258,8 @@
       "wearsSinceWash": "Wears since wash: {current}/{max}",
       "wornCount": "{count, plural, one {Worn # time} other {Worn # times}}"
     },
-    "washInterval": "Wash Interval"
+    "washInterval": "Wash Interval",
+    "statusIdle": "Idle"
   },
   "lightbox": {
     "openInWardrobe": "Open in Wardrobe"
@@ -329,5 +330,10 @@
     "save": "Save",
     "invalid": "Enter a display name.",
     "addEntry": "Add {kind}…"
+  },
+  "lifecycleFilter": {
+    "active": "Active",
+    "idle": "Idle",
+    "retired": "Retired"
   }
 }

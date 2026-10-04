@@ -635,6 +635,7 @@ export interface BulkOperationParams {
     needs_wash?: boolean;
     favorite?: boolean;
     is_archived?: boolean;
+    lifecycle?: 'active' | 'idle' | 'retired';
   };
 }
 
