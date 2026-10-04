@@ -89,8 +89,6 @@ VALID_FIT = {"slim", "regular", "relaxed", "oversized", "tailored", "cropped"}
 VALID_STYLES = set(STYLE_VALUES)
 VALID_SEASONS = set(SEASON_VALUES)
 
-COLOR_ALIASES = LEGACY_COLOR_ALIASES  # 兼容旧引用名
-
 
 def compute_tag_completeness(tags: "ClothingTags") -> float:
     score = 0.0
@@ -388,10 +386,19 @@ class AIService:
                 return alias
             return None
 
-        def validate_list(values: list, valid_set: set) -> list:
+        def validate_list(values: list, valid_set: set, aliases: dict[str, str] | None = None) -> list:
             if not values:
                 return []
-            return [v.lower().strip() for v in values if v and v.lower().strip() in valid_set]
+            out = []
+            for v in values:
+                if not isinstance(v, str):
+                    continue
+                value = v.lower().strip()
+                if value not in valid_set and aliases:
+                    value = aliases.get(value, value)
+                if value in valid_set:
+                    out.append(value)
+            return out
 
         data = extract_json(response_text)
         if not data:
@@ -416,7 +423,9 @@ class AIService:
 
         tags.subtype = data.get("subtype") if data.get("subtype") else None
         tags.primary_color = validate_value(data.get("primary_color"), VALID_COLORS)
-        tags.colors = validate_list(data.get("colors", []), VALID_COLORS)
+        # The color list goes through the same alias table as the single value —
+        # ["burgundy", "sky blue"] must not silently lose everything but "navy".
+        tags.colors = validate_list(data.get("colors", []), VALID_COLORS, aliases=COLOR_ALIASES)
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)
         tags.material = validate_value(data.get("material"), VALID_MATERIALS)
         tags.formality = validate_value(data.get("formality"), VALID_FORMALITY)

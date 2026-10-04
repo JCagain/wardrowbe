@@ -686,3 +686,28 @@ class TestReasoningEffort:
                 await service.generate_text("suggest an outfit")
 
         assert mock_post.call_count == 1
+
+
+class TestColorAliases:
+    """AI/legacy colors map through the alias table first, then drop what the
+    vocabulary does not contain — unknown values never reach the columns."""
+
+    def test_colors_list_maps_aliases_and_drops_unknown(self):
+        service = AIService()
+        response = """
+        {
+            "type": "shirt",
+            "primary_color": "burgundy",
+            "colors": ["burgundy", "sky blue", "navy", "glitter"]
+        }
+        """
+        tags = service._parse_tags_from_response(response)
+        assert tags.primary_color == "wine"
+        assert tags.colors == ["wine", "sky", "navy"]
+
+    def test_primary_color_alias_is_mapped_not_dropped(self):
+        service = AIService()
+        response = '{"type": "shirt", "primary_color": "army-green", "colors": ["dark-brown"]}'
+        tags = service._parse_tags_from_response(response)
+        assert tags.primary_color == "army"
+        assert tags.colors == ["coffee"]

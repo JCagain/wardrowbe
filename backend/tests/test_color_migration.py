@@ -14,7 +14,10 @@ from app.utils.color_migration import body_part_case_sql, migrate_legacy_colors
         ("red", ["blue", "white"], ["red"], ["blue", "white"]),
         ("burgundy", ["tan"], ["wine"], ["camel"]),
         ("red", ["red", "blue", "blue"], ["red"], ["blue"]),
-        ("unknown-slug", ["weird"], ["unknown-slug"], ["weird"]),
+        ("unknown-slug", ["weird"], [], []),
+        ("army-green", ["dark-brown"], ["army"], ["coffee"]),
+        ("red", ["blue", "mystery"], ["red"], ["blue"]),
+        (" Burgundy ", [], ["wine"], []),
     ],
 )
 def test_migrate_legacy_colors(primary, colors, expected_primary, expected_secondary):

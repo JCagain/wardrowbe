@@ -11,16 +11,25 @@ LEGACY_COLOR_ALIASES = {
     "mustard": "ginger",
     "lavender": "taro",
     "chocolate": "coffee",
+    "army-green": "army",
+    "dark-brown": "coffee",
 }
 
-from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
+from app.utils.garment_vocabulary import BODY_PART_BY_TYPE, COLOR_VALUE_SET
 
 
 def _normalize(value: str | None) -> str | None:
+    """Map a legacy/AI color onto the vocabulary — or drop it.
+
+    Policy (spec §1.4): alias first; if the result is not a vocabulary color
+    the value is discarded rather than written through, so unknown slugs never
+    reach the color columns.
+    """
     if not value:
         return None
     value = value.strip().lower()
-    return LEGACY_COLOR_ALIASES.get(value, value)
+    value = LEGACY_COLOR_ALIASES.get(value, value)
+    return value if value in COLOR_VALUE_SET else None
 
 
 def migrate_legacy_colors(
