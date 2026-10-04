@@ -67,8 +67,11 @@ services:
       MATTERMOST_WEBHOOK_URL: ${MATTERMOST_WEBHOOK_URL:-}
     volumes:
       - wardrobe_data:/data/wardrobe
-      # Soft vocabulary: runtime edits must survive a rebuild (T13).
+      # Soft vocabulary: runtime edits must survive a rebuild (T13). The
+      # markdown lives beside the backend tree and must appear at /docs —
+      # every POST/PATCH /api/v1/vocabulary writes both faces.
       - ./backend/app/data:/app/app/data
+      - ./docs:/docs
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -126,6 +129,8 @@ services:
       STORAGE_PATH: /data/wardrobe
     volumes:
       - wardrobe_data:/data/wardrobe
+      # Workers tag against the live vocabulary (runtime additions included).
+      - ./backend/app/data:/app/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,6 +159,8 @@ services:
       STORAGE_PATH: /data/wardrobe
     volumes:
       - wardrobe_data:/data/wardrobe
+      # Workers tag against the live vocabulary (runtime additions included).
+      - ./backend/app/data:/app/app/data
     depends_on:
       postgres:
         condition: service_healthy

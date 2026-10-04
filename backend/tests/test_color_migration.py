@@ -31,3 +31,18 @@ def test_body_part_case_sql_covers_every_seed_type():
     for value in TYPES:
         assert f"'{value}'" in sql
     assert sql.strip().startswith("CASE") and sql.strip().endswith("END")
+
+
+def test_live_vocabulary_colors_are_never_alias_rewritten():
+    # "lavender" is a live color *and* a legacy alias for "taro": a direct hit
+    # must win, or every re-tag rewrites the user's lavender items to taro.
+    assert migrate_legacy_colors("lavender", []) == (["lavender"], [])
+
+
+def test_alias_keys_that_are_live_colors_round_trip():
+    from app.utils.color_migration import LEGACY_COLOR_ALIASES
+    from app.utils.garment_vocabulary import COLOR_VALUE_SET
+
+    for key in LEGACY_COLOR_ALIASES:
+        if key in COLOR_VALUE_SET:
+            assert migrate_legacy_colors(key, []) == ([key], [])

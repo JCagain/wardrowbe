@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, setAccessToken } from '@/lib/api';
 import type { ColorEntry, TypeEntry, VocabEntry } from '@/lib/types';
 
 export type { ColorEntry, TypeEntry, VocabEntry };
@@ -18,10 +19,22 @@ export interface Vocabulary {
   formality: string[];
 }
 
+// Same gate as every sibling hook: hold the fetch until the session resolves
+// and carry the token, or the first request 401s and the query sticks in error.
+function useSetTokenIfAvailable() {
+  const { data: session } = useSession();
+  if (session?.accessToken) {
+    setAccessToken(session.accessToken as string);
+  }
+}
+
 export function useVocabulary() {
+  const { status } = useSession();
+  useSetTokenIfAvailable();
   return useQuery({
     queryKey: ['vocabulary'],
     queryFn: () => api.get<Vocabulary>('/vocabulary'),
+    enabled: status !== 'loading',
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -32,6 +45,7 @@ function useInvalidate() {
 }
 
 export function useAddStyle() {
+  useSetTokenIfAvailable();
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: { value: string; label: string }) => api.post('/vocabulary/styles', body),
@@ -40,6 +54,7 @@ export function useAddStyle() {
 }
 
 export function useAddColorValue() {
+  useSetTokenIfAvailable();
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: { value: string; label: string; family: string; hex: string }) =>
@@ -49,6 +64,7 @@ export function useAddColorValue() {
 }
 
 export function useAddType() {
+  useSetTokenIfAvailable();
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: { value: string; label: string; body_part: string }) =>
@@ -58,6 +74,7 @@ export function useAddType() {
 }
 
 export function usePatchVocabulary() {
+  useSetTokenIfAvailable();
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (args: {

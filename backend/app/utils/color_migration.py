@@ -21,13 +21,16 @@ from app.utils.garment_vocabulary import BODY_PART_BY_TYPE, COLOR_VALUE_SET
 def _normalize(value: str | None) -> str | None:
     """Map a legacy/AI color onto the vocabulary — or drop it.
 
-    Policy (spec §1.4): alias first; if the result is not a vocabulary color
-    the value is discarded rather than written through, so unknown slugs never
-    reach the color columns.
+    Policy (spec §1.4): a direct vocabulary hit always wins (a live color must
+    never be alias-rewritten — "lavender" is both a live color and a legacy
+    alias for "taro"), then the alias table; what is still outside the
+    vocabulary is discarded rather than written through.
     """
     if not value:
         return None
     value = value.strip().lower()
+    if value in COLOR_VALUE_SET:
+        return value
     value = LEGACY_COLOR_ALIASES.get(value, value)
     return value if value in COLOR_VALUE_SET else None
 

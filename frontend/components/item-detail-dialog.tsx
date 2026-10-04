@@ -138,8 +138,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const replaceImage = useReplaceItemImage();
   const replaceImageInputRef = useRef<HTMLInputElement>(null);
   const { data: features } = useFeatures();
-  const logWash = useLogWash();
-  const { data: washHistory } = useWashHistory(item?.id || '');
+  // 摘不删（spec §7）：洗衣跟踪入口已下线（POST /items/{id}/wash 与
+  // /wash-history 均已摘挂），hooks 保留在 use-items 里备查。
+  // const logWash = useLogWash();
+  // const { data: washHistory } = useWashHistory(item?.id || '');
   const { data: wearStats } = useItemWearStats(item?.id || '');
   const { data: wearHistory } = useItemWearHistory(item?.id || '', 20);
   const addImage = useAddItemImage();
@@ -196,15 +198,16 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     }
   };
 
-  const handleMarkWashed = async () => {
-    try {
-      await logWash.mutateAsync({ id: item.id });
-      toast.success(t('actions.washed'));
-    } catch (error) {
-      console.error('Failed to log wash:', error);
-      toast.error(t('actions.washError'));
-    }
-  };
+  // 摘不删（spec §7）：与上面的 hooks 一并下线。
+  // const handleMarkWashed = async () => {
+  //   try {
+  //     await logWash.mutateAsync({ id: item.id });
+  //     toast.success(t('actions.washed'));
+  //   } catch (error) {
+  //     console.error('Failed to log wash:', error);
+  //     toast.error(t('actions.washError'));
+  //   }
+  // };
 
   const handleDelete = async () => {
     try {
@@ -294,8 +297,8 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
 
   // Use signed URL from backend for better quality in detail view
   const imageUrl = item.image_url || item.image_path;
-  const typeInfo = TYPE_ENTRIES.find((entry) => entry.value === item.type);
-  const colorLabel = (value: string) => COLOR_VALUES.find((c) => c.value === value);
+  const typeInfo = typeEntries.find((entry) => entry.value === item.type);
+  const colorLabel = (value: string) => colorOptions.find((c) => c.value === value);
   const primaryColorInfo = (item.primary_colors ?? []).map(colorLabel);
   const secondaryColorInfo = (item.secondary_colors ?? []).map(colorLabel);
   const unrecognizedType = item.type === 'unknown' ? item.ai_unrecognized_type : null;
@@ -974,20 +977,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         <Droplets className={`h-4 w-4 ${item.needs_wash ? 'text-amber-500' : 'text-muted-foreground'}`} />
                         {t('view.washStatus')}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={handleMarkWashed}
-                        disabled={logWash.isPending}
-                      >
-                        {logWash.isPending ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : (
-                          <Droplets className="h-3 w-3 mr-1" />
-                        )}
-                        {t('actions.markWashed')}
-                      </Button>
+                      {/* 摘不删（spec §7）：「标记已洗」按钮已下线，后端端点已摘挂。 */}
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs text-muted-foreground">
@@ -1007,24 +997,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                       )}
                     </div>
 
-                    {/* Wash History */}
-                    {washHistory && washHistory.length > 0 && (
-                      <Collapsible open={showWashHistory} onOpenChange={setShowWashHistory}>
-                        <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                          <ChevronDown className={`h-3 w-3 transition-transform ${showWashHistory ? 'rotate-180' : ''}`} />
-                          {t('view.washHistory', { count: washHistory.length })}
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="mt-1.5 space-y-1">
-                          {washHistory.map((wash) => (
-                            <div key={wash.id} className="text-xs text-muted-foreground flex items-center gap-2">
-                              <span>{new Date(wash.washed_at).toLocaleDateString()}</span>
-                              {wash.method && <Badge variant="outline" className="text-[10px] h-4">{wash.method}</Badge>}
-                              {wash.notes && <span className="truncate">{wash.notes}</span>}
-                            </div>
-                          ))}
-                        </CollapsibleContent>
-                      </Collapsible>
-                    )}
+                    {/* 摘不删（spec §7）：洗护历史折叠区已下线，端点已摘挂。 */}
                   </div>
 
                   {/* Wear History */}

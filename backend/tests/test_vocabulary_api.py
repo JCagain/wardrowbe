@@ -156,8 +156,25 @@ class TestVocabularyApi:
         assert resp.status_code in (404, 405)
 
 
-def test_runtime_type_fallback_matches_compiler():
-    from app.api.vocabulary import RUNTIME_TYPE_FALLBACK
-    from scripts.compile_vocabulary import FALLBACK_META
+def test_runtime_type_meta_matches_compiler():
+    # The API derives role/wash from body part on add; the compiler must derive
+    # the same values on recompile or the two faces drift on --check.
+    from app.api.vocabulary import ROLE_BY_PART, WASH_BY_PART
+    from scripts.compile_vocabulary import ROLE_BY_PART as C_ROLE, WASH_BY_PART as C_WASH
 
-    assert RUNTIME_TYPE_FALLBACK == FALLBACK_META
+    assert ROLE_BY_PART == C_ROLE
+    assert WASH_BY_PART == C_WASH
+
+
+class TestTypeMeta:
+    @pytest.mark.asyncio
+    async def test_added_type_role_follows_body_part(self, client, auth_headers, vocab_snapshot):
+        resp = await client.post(
+            "/api/v1/vocabulary/types",
+            json={"value": "hoodie-dress", "label": "卫衣裙", "body_part": "dresses"},
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 201), resp.text
+        entry = resp.json()
+        assert entry["role"] == "full_body"
+        assert _compile_md() == json.loads(VOCABULARY_PATH.read_text(encoding="utf-8"))

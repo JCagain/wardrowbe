@@ -55,6 +55,17 @@ SEED_TYPE_META = {
     "brooch": ("accessory", 20),
 }
 FALLBACK_META = ("accessory", 3)
+# Types without a seed entry inherit role/wash from their body part. Keep
+# accessories/jewelry at 3 so the pre-seeded fallback types compile byte-identically.
+ROLE_BY_PART = {
+    "tops": "base_top", "bottoms": "bottom", "dresses": "full_body",
+    "outerwear": "outer_layer", "footwear": "footwear",
+    "accessories": "accessory", "jewelry": "accessory",
+}
+WASH_BY_PART = {
+    "tops": 2, "bottoms": 4, "dresses": 3, "outerwear": 8,
+    "footwear": 15, "accessories": 3, "jewelry": 3,
+}
 
 SEASON_SEED = [("spring", "春"), ("summer", "夏"), ("fall", "秋"),
                ("winter", "冬"), ("all-season", "四季")]
@@ -145,7 +156,10 @@ def compile_vocabulary(md_text: str) -> dict:
             for line in rows:
                 value, type_label = _data_row(line, section)
                 _remember(seen_types, value, line, section)
-                role, wash = SEED_TYPE_META.get(value, FALLBACK_META)
+                role, wash = SEED_TYPE_META.get(value) or (
+                    ROLE_BY_PART.get(section, FALLBACK_META[0]),
+                    WASH_BY_PART.get(section, FALLBACK_META[1]),
+                )
                 types.append({
                     "value": value, "label": type_label, "body_part": section,
                     "role": role, "wash_interval": wash,

@@ -258,6 +258,7 @@ function PendingOutfitsCard() {
   );
 }
 
+// 摘不删（spec §7）：通知排期卡已从首页下线（/notifications/schedules 已摘挂），组件保留备查。
 function NextScheduledCard() {
   const { data: schedules, isLoading } = useSchedules();
   const t = useTranslations('dashboard');
@@ -363,6 +364,7 @@ function NextScheduledCard() {
   );
 }
 
+// 摘不删（spec §7）：通知状态卡已从首页下线（/notifications/settings 已摘挂），组件保留备查。
 function NotificationStatusCard() {
   const { data: settings, isLoading } = useNotificationSettings();
   const t = useTranslations('dashboard');
@@ -553,6 +555,7 @@ function InsightsCard() {
   );
 }
 
+// 摘不删（spec §7）：家庭动态卡已从首页下线（/families/me 已摘挂），组件保留备查。
 function FamilyFeedCard() {
   const { data: family, isLoading } = useFamily();
   const t = useTranslations('dashboard');
@@ -607,12 +610,7 @@ function QuickActionsCard() {
             {t('quickActions.addNewItem')}
           </Link>
         </Button>
-        <Button asChild variant="outline" className="w-full justify-start">
-          <Link href="/dashboard/suggest">
-            <Sparkles className="mr-2 h-4 w-4" />
-            {t('quickActions.getOutfitSuggestion')}
-          </Link>
-        </Button>
+        {/* 摘不删（spec §7）：AI 推荐休眠不进导航，入口已下线。 */}
       </CardContent>
     </Card>
   );
@@ -633,17 +631,15 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Top row - Weather + Pending + Next Scheduled */}
+      {/* Top row - Weather + Pending（通知排期卡已下线，见 NextScheduledCard 注释） */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <WeatherCard />
         <PendingOutfitsCard />
-        <NextScheduledCard />
       </div>
 
-      {/* Second row - Weekly Summary + Notification Status */}
+      {/* Second row - Weekly Summary（通知状态卡已下线，见 NotificationStatusCard 注释） */}
       <div className="grid gap-4 md:grid-cols-2">
         <WeeklySummaryCard />
-        <NotificationStatusCard />
       </div>
 
       {/* Third row - Quick Actions（insights 卡已下线，见 InsightsCard 注释） */}
@@ -651,8 +647,7 @@ export default function DashboardPage() {
         <QuickActionsCard />
       </div>
 
-      {/* Family feed card */}
-      <FamilyFeedCard />
+      {/* 家庭动态卡已下线，见 FamilyFeedCard 注释 */}
     </div>
   );
 }
