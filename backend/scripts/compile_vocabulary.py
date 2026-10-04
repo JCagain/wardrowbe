@@ -11,9 +11,13 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-MD_PATH = ROOT / "docs" / "specs" / "vocabulary.md"
-JSON_PATH = ROOT / "backend" / "app" / "data" / "garment_vocabulary.json"
+# Anchor to the backend tree, which sits at the same place in a source checkout
+# and in the container (mounted at /app). vocabulary.md lives beside the backend
+# tree — <repo>/docs on the host, /docs in the container (compose mounts
+# ./docs:/docs) — so MD_PATH keeps the "sibling of the backend root" anchor.
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+MD_PATH = BACKEND_ROOT.parent / "docs" / "specs" / "vocabulary.md"
+JSON_PATH = BACKEND_ROOT / "app" / "data" / "garment_vocabulary.json"
 
 MATERIALS = [
     "cotton", "denim", "leather", "wool", "polyester", "silk", "linen", "knit",

@@ -8,8 +8,10 @@ import pytest
 
 from scripts.compile_vocabulary import compile_vocabulary
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPILE = ROOT / "backend" / "scripts" / "compile_vocabulary.py"
+# Backend-tree-relative so the CLI resolves in both layouts (source checkout and
+# the container, where the backend tree is mounted at /app).
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+COMPILE = BACKEND_ROOT / "scripts" / "compile_vocabulary.py"
 
 EXPECTED_COUNTS = {
     "body_parts": 7,

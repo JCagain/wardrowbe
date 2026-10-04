@@ -36,6 +36,10 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
+      # vocabulary.md is the compiler's human-edited source and lives beside the
+      # backend tree; the compiler resolves it as <backend-root-parent>/docs/...,
+      # so it must appear at /docs inside the container (backend root = /app).
+      - ./docs:/docs
       - wardrobe_data:/data/wardrobe
     environment:
       DEBUG: "true"
