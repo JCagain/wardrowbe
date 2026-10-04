@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -77,6 +77,8 @@ class ItemBase(BaseModel):
     secondary_colors: list[str] = Field(default_factory=list)
     temp_low: float | None = None
     temp_high: float | None = None
+    # 三态状态（spec §5）：lifecycle 为权威；is_archived 输入仅作退役兼容映射。
+    lifecycle: Literal["active", "idle", "retired"] | None = None
 
 
 class ItemCreate(ItemBase):
@@ -109,6 +111,8 @@ class ItemUpdate(BaseModel):
     secondary_colors: list[str] = Field(default_factory=list)
     temp_low: float | None = None
     temp_high: float | None = None
+    # 三态状态（spec §5）：lifecycle 为权威；is_archived 输入仅作退役兼容映射。
+    lifecycle: Literal["active", "idle", "retired"] | None = None
     is_archived: bool | None = None
     archive_reason: str | None = Field(None, max_length=50)
     wash_interval: int | None = None
@@ -185,6 +189,7 @@ class ItemResponse(ItemBase):
     needs_wash: bool = False
     additional_images: list["ItemImageResponse"] = Field(default_factory=list)
     purchase_date_precision: str | None = None
+    lifecycle: Literal["active", "idle", "retired"] = "active"
     is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
@@ -280,6 +285,7 @@ class ItemFilter(BaseModel):
     favorite: bool | None = None
     needs_wash: bool | None = None
     is_archived: bool = False
+    lifecycle: Literal["active", "idle", "retired"] | None = None
     search: str | None = None
     sort_by: str | None = None
     sort_order: str = "desc"

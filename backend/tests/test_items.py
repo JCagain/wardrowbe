@@ -17,9 +17,16 @@ from app.services.item_service import ItemService
 from app.workers.tagging import update_item_status_to_error
 
 
-def _make_test_image_bytes() -> bytes:
+def _make_test_image_bytes(seed: int = 0) -> bytes:
+    # Perceptual-hash noise: flat fills collide under phash (identical DCT
+    # low-frequency structure), so each image gets seeded static.
+    from random import Random
+
+    rng = Random(seed)
+    img = Image.new("RGB", (50, 50))
+    img.putdata([(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(50 * 50)])
     buf = BytesIO()
-    Image.new("RGB", (50, 50), (100, 150, 200)).save(buf, format="JPEG")
+    img.save(buf, format="JPEG")
     return buf.getvalue()
 
 
@@ -1947,6 +1954,57 @@ class TestPersonalWardrobeFields:
         assert data["purchase_date"].startswith("2024-01")
         assert data["purchase_date_precision"] == "year"
         assert data["style"] == ["casual"]
+
+
+
+class TestLifecycleStatus:
+    """状态三态（spec §5/§10.16）：lifecycle 枚举为权威，is_archived 是退役兼容视图。"""
+
+    async def _create(self, client: AsyncClient, auth_headers, data: dict, seed=0):
+        return await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(seed), "image/jpeg")},
+            data={**data, "skip_ai": "true"},
+            headers=auth_headers,
+        )
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_defaults_and_roundtrip(self, client: AsyncClient, auth_headers):
+        create = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"})
+        assert create.status_code in (200, 201), create.text
+        assert create.json()["lifecycle"] == "idle"
+        assert create.json()["is_archived"] is False  # 兼容视图：只有 retired 为 True
+        item_id = create.json()["id"]
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": "retired"}, headers=auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["lifecycle"] == "retired"
+        assert patched.json()["is_archived"] is True
+
+    @pytest.mark.asyncio
+    async def test_legacy_is_archived_maps_to_lifecycle(self, client: AsyncClient, auth_headers):
+        retired = await self._create(client, auth_headers, {"type": "shirt", "is_archived": "true"})
+        assert retired.json()["lifecycle"] == "retired"
+        idle = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"})
+        assert idle.json()["is_archived"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_hides_retired_but_keeps_idle(self, client: AsyncClient, auth_headers):
+        active = await self._create(client, auth_headers, {"type": "shirt"}, seed=1)
+        idle = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "idle"}, seed=2)
+        retired = await self._create(client, auth_headers, {"type": "shirt", "lifecycle": "retired"}, seed=3)
+        assert active.status_code in (200, 201), active.text
+        assert idle.status_code in (200, 201), idle.text
+        assert retired.status_code in (200, 201), retired.text
+        listing = await client.get("/api/v1/items", headers=auth_headers)
+        ids = {i["id"] for i in listing.json()["items"]}
+        assert {active.json()["id"], idle.json()["id"]} <= ids
+        assert retired.json()["id"] not in ids
+        only_retired = await client.get(
+            "/api/v1/items", params={"lifecycle": "retired"}, headers=auth_headers
+        )
+        assert [i["id"] for i in only_retired.json()["items"]] == [retired.json()["id"]]
 
 
 class TestPrunedRoutes:

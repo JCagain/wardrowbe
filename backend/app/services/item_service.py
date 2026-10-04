@@ -87,8 +87,12 @@ class ItemService:
                 )
             )
 
-        # Archive filter
-        query = query.where(ClothingItem.is_archived == filters.is_archived)
+        # Lifecycle filter: an explicit lifecycle wins; the is_archived view
+        # otherwise keeps the default (hide retired, keep idle).
+        if filters.lifecycle:
+            query = query.where(ClothingItem.lifecycle == filters.lifecycle)
+        else:
+            query = query.where(ClothingItem.is_archived == filters.is_archived)
 
         # Needs wash filter
         if filters.needs_wash is not None:
@@ -227,6 +231,8 @@ class ItemService:
             tags = item_data.tags.model_dump(exclude_none=True)
 
         purchase_date, purchase_date_precision = parse_purchase_date(item_data.purchase_date)
+        # lifecycle is authoritative; the boolean is the retired compat view.
+        lifecycle = item_data.lifecycle or ("retired" if item_data.is_archived else "active")
 
         # Create item
         item = ClothingItem(
@@ -253,9 +259,10 @@ class ItemService:
             purchase_date_precision=purchase_date_precision,
             purchase_price=item_data.purchase_price,
             favorite=item_data.favorite,
-            is_archived=item_data.is_archived,
+            lifecycle=lifecycle,
+            is_archived=lifecycle == "retired",
             archive_reason=item_data.archive_reason,
-            archived_at=datetime.now(UTC) if item_data.is_archived else None,
+            archived_at=datetime.now(UTC) if lifecycle == "retired" else None,
         )
 
         self.db.add(item)
@@ -281,7 +288,13 @@ class ItemService:
             update_data["purchase_date"] = purchase_date
             update_data["purchase_date_precision"] = purchase_date_precision
 
-        # Flipping is_archived keeps the same lifecycle side effects as the
+        # lifecycle is authoritative; the boolean is the retired compat view.
+        if "lifecycle" in update_data and update_data["lifecycle"] is not None:
+            update_data["is_archived"] = update_data["lifecycle"] == "retired"
+        elif "is_archived" in update_data and update_data["is_archived"] is not None:
+            update_data["lifecycle"] = "retired" if update_data["is_archived"] else "active"
+
+        # Flipping the retired axis keeps the same side effects as the
         # dedicated archive/restore endpoints (status + archived_at).
         if "is_archived" in update_data and update_data["is_archived"] is not None:
             if update_data["is_archived"] and not item.is_archived:

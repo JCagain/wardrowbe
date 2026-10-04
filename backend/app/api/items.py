@@ -135,6 +135,7 @@ async def list_items(
     favorite: bool | None = None,
     needs_wash: bool | None = None,
     is_archived: bool = False,
+    lifecycle: str | None = Query(None, pattern="^(active|idle|retired)$"),
     search: str | None = None,
     sort_by: str | None = None,
     sort_order: str = "desc",
@@ -150,6 +151,7 @@ async def list_items(
         favorite=favorite,
         needs_wash=needs_wash,
         is_archived=is_archived,
+        lifecycle=lifecycle,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
@@ -191,6 +193,7 @@ async def create_item(
     purchase_date: str | None = Form(None),  # "YYYY" or "YYYY-MM"
     purchase_price: Decimal | None = Form(None),
     is_archived: bool = Form(False),  # multipart sends "true"/"false" strings
+    lifecycle: str | None = Form(None),  # active | idle | retired（权威）
     archive_reason: str | None = Form(None),
     favorite: bool = Form(False),
     skip_ai: bool = Form(False),
@@ -252,6 +255,7 @@ async def create_item(
         purchase_date=purchase_date,
         purchase_price=purchase_price,
         is_archived=is_archived,
+        lifecycle=lifecycle,  # type: ignore[arg-type]
         archive_reason=archive_reason,
         favorite=favorite,
     )

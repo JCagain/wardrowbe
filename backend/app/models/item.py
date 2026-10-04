@@ -142,6 +142,13 @@ class ClothingItem(Base):
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Lifecycle
+    # Authoritative lifecycle (spec §5): active/idle/retired. is_archived stays
+    # as the retired compatibility view and is kept in sync on every write.
+    lifecycle: Mapped[str] = mapped_column(
+        Enum("active", "idle", "retired", name="item_lifecycle"),
+        default="active",
+        nullable=False,
+    )
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archive_reason: Mapped[str | None] = mapped_column(String(50))
