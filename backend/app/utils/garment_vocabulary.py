@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-_VOCABULARY_PATH = Path(__file__).parent.parent / "data" / "garment_vocabulary.json"
-_DATA = json.loads(_VOCABULARY_PATH.read_text())
+VOCABULARY_PATH = Path(__file__).parent.parent / "data" / "garment_vocabulary.json"
+_DATA = json.loads(VOCABULARY_PATH.read_text())
 
 TYPES: tuple[str, ...] = tuple(entry["value"] for entry in _DATA["types"])
 ITEM_ROLE: dict[str, str] = {entry["value"]: entry["role"] for entry in _DATA["types"]}

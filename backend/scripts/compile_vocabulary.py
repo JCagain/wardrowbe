@@ -117,6 +117,14 @@ def _section_label(md_text: str, section: str) -> str | None:
     return None
 
 
+DISABLED_MARK = "已停用"
+
+
+def _disabled_flag(line: str) -> dict:
+    """Runtime writes mark retired rows 已停用 in the last cell (摘不删, no delete)."""
+    return {"disabled": True} if DISABLED_MARK in line else {}
+
+
 def _remember(known: dict[str, str], value: str, line: str, section: str) -> None:
     if value in known:
         raise ValueError(
@@ -141,11 +149,15 @@ def compile_vocabulary(md_text: str) -> dict:
                 types.append({
                     "value": value, "label": type_label, "body_part": section,
                     "role": role, "wash_interval": wash,
+                    **_disabled_flag(line),
                 })
-        elif section in {
-            "neutral", "red", "orange-yellow", "green", "blue", "purple",
-            "pink", "brown", "metallic",
-        }:
+        elif section == "styles":
+            for line in rows:
+                value, style_label = _data_row(line, section)
+                _remember(seen_styles, value, line, section)
+                styles.append({"value": value, "label": style_label,
+                               **_disabled_flag(line)})
+        else:
             color_families.append({"value": section, "label": _section_label(md_text, section)})
             for line in rows:
                 value, color_label = _data_row(line, section)
@@ -156,12 +168,8 @@ def compile_vocabulary(md_text: str) -> dict:
                 colors.append({
                     "value": value, "label": color_label,
                     "family": section, "hex": hex_m.group(1).lower(),
+                    **_disabled_flag(line),
                 })
-        elif section == "styles":
-            for line in rows:
-                value, style_label = _data_row(line, section)
-                _remember(seen_styles, value, line, section)
-                styles.append({"value": value, "label": style_label})
 
     return {
         "body_parts": body_parts,
