@@ -265,7 +265,8 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
             # Unguarded by design: worst case after a cancel this backfills tags onto an
             # item the user already moved past, which is harmless (unlike the error path).
             # Update item fields - only update if user hasn't already set a value
-            # Always update: ai_processed, ai_confidence, status, ai_raw_response
+            # Always update: ai_processed, ai_confidence, ai_raw_response
+            # status: always written, but maps to archived for retired items (see loop below)
             # Conditionally update: type, subtype, body_part, primary_colors, secondary_colors, pattern, material, style, formality, season
             ai_fields = tags_to_item_fields(tags, tags.raw_response)
             # Snapshotted once: applying tagging_status before tagged_by/tagged_at in the
