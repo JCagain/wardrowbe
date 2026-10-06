@@ -88,6 +88,25 @@ class TestCreateGating:
         mock_redis.enqueue_job.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_skip_ai_retired_item_is_archived_not_ready(self, client: AsyncClient, auth_headers):
+        with patch("app.api.items.create_pool", new_callable=AsyncMock) as mock_create_pool:
+            mock_redis = AsyncMock()
+            mock_create_pool.return_value = mock_redis
+            response = await client.post(
+                "/api/v1/items",
+                files={"image": ("shirt.jpg", _make_test_image_bytes(), "image/jpeg")},
+                data={"skip_ai": "true", "lifecycle": "retired"},
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 201, response.json()
+        data = response.json()
+        assert data["lifecycle"] == "retired"
+        assert data["status"] == "archived"
+        assert data["tagging_status"] == "pending"
+        mock_redis.enqueue_job.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_vision_disabled_marks_ready_and_pending(
         self, client: AsyncClient, auth_headers, monkeypatch
     ):
@@ -477,6 +496,44 @@ class TestWorkerTaggingOrigin:
         assert refreshed.tagged_by == TaggedBy.auto
         assert refreshed.tagged_at is not None
         assert refreshed.status == ItemStatus.ready
+
+    @pytest.mark.asyncio
+    async def test_retired_item_stays_archived_after_tagging(
+        self, db_session: AsyncSession, test_user, monkeypatch
+    ):
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="unknown",
+            image_path="test/worker-retired.jpg",
+            status=ItemStatus.processing,
+            lifecycle="retired",
+        )
+        db_session.add(item)
+        await db_session.commit()
+
+        stub_tags = ClothingTags(
+            type="shirt", primary_color="blue", colors=["blue"], confidence=0.9
+        )
+
+        class _StubAI:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def analyze_image(self, path):
+                return stub_tags
+
+        monkeypatch.setattr(tagging, "AIService", _StubAI)
+
+        with (
+            patch("app.workers.tagging.get_db_session", return_value=db_session),
+            patch.object(db_session, "close", new_callable=AsyncMock),
+        ):
+            result = await tagging.tag_item_image({}, str(item.id), __file__)
+
+        assert result["status"] == "success"
+        refreshed = await _get_item(db_session, item.id)
+        assert refreshed.tagging_status == TaggingStatus.tagged
+        assert refreshed.status == ItemStatus.archived
 
     @pytest.mark.asyncio
     async def test_manual_origin_survives_late_worker_completion(

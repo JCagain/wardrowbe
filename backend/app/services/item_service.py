@@ -359,7 +359,11 @@ class ItemService:
 
     async def mark_pending(self, item: ClothingItem, *, set_ready: bool = False) -> ClothingItem:
         if set_ready:
-            item.status = ItemStatus.ready
+            # create-as-retired + skip_ai lands here; a retired item's terminal
+            # status is archived — same sync rule as the tagging write path.
+            item.status = (
+                ItemStatus.archived if item.lifecycle == "retired" else ItemStatus.ready
+            )
         item.tagging_status = TaggingStatus.pending
         item.tagged_by = None
         item.tagged_at = None

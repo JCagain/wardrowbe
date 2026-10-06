@@ -278,12 +278,20 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
                 if field in (
                     "ai_processed",
                     "ai_confidence",
-                    "status",
                     "ai_raw_response",
                     "tags",
                     "ai_description",
                 ):
                     setattr(item, field, value)
+                elif field == "status":
+                    # Tagging must not resurrect a retired item: its terminal
+                    # status is archived, whatever the pipeline computed
+                    # (spec §10.16 status/lifecycle sync).
+                    setattr(
+                        item,
+                        field,
+                        ItemStatus.archived if item.lifecycle == "retired" else value,
+                    )
                 elif field in ("tagging_status", "tagged_by", "tagged_at"):
                     if was_pending:
                         setattr(item, field, value)
