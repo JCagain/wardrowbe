@@ -2086,3 +2086,54 @@ class TestPrunedRoutes:
     async def test_pairings_stays_mounted_but_dormant(self, client, auth_headers):
         resp = await client.get("/api/v1/pairings", headers=auth_headers)
         assert resp.status_code != 404
+
+
+class TestTagsRoundTrip:
+    """AI display metadata in the tags JSONB must survive a detail-dialog save.
+
+    The dialog round-trips the whole tags blob through ItemUpdate on every
+    save. ItemTags used to drop every key it did not name at validation and the
+    service then overwrote the JSONB column — a mere rename wiped
+    occasion/brand/condition/features/logprobs_confidence from the AI panel.
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_ai_tag_keys(self, client: AsyncClient, auth_headers):
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        # The detail dialog's save payload: the whole previous tags blob plus
+        # the style the user edited.
+        ai_tags = {
+            "colors": ["blue"],
+            "primary_color": "blue",
+            "pattern": "striped",
+            "style": ["casual"],
+            "occasion": ["work"],
+            "brand": "Acme",
+            "condition": "good",
+            "features": ["pocket"],
+            "logprobs_confidence": 0.87,
+        }
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"name": "renamed", "tags": {**ai_tags, "style": ["casual", "y2k"]}},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+        tags = patched.json()["tags"]
+        assert tags["occasion"] == ["work"]
+        assert tags["brand"] == "Acme"
+        assert tags["condition"] == "good"
+        assert tags["features"] == ["pocket"]
+        assert tags["logprobs_confidence"] == 0.87
+        assert tags["pattern"] == "striped"
+        # The update itself still applies.
+        assert tags["style"] == ["casual", "y2k"]
+        assert patched.json()["name"] == "renamed"

@@ -21,6 +21,12 @@ class ItemTags(BaseModel):
     # AI-tagging display metadata. The AI JSON contract still names colors /
     # primary_color (see app.services.ai_service); these keys live only in the
     # tags JSONB blob, never on the item's own color columns.
+    #
+    # extra="allow" is load-bearing: a detail-dialog save round-trips the whole
+    # blob through this schema, and Pydantic's default extra="ignore" silently
+    # dropped every key the schema did not name before the JSONB column was
+    # overwritten without them.
+    model_config = ConfigDict(extra="allow")
     colors: list[str] = Field(default_factory=list)
     primary_color: str | None = None
     pattern: str | None = None
@@ -29,6 +35,13 @@ class ItemTags(BaseModel):
     season: list[str] = Field(default_factory=list)
     formality: str | None = None
     fit: str | None = None
+    # Keys written by tags_to_item_fields — named here so the round-trip is
+    # typed as well as preserved.
+    occasion: list[str] = Field(default_factory=list)
+    brand: str | None = None
+    condition: str | None = None
+    features: list[str] = Field(default_factory=list)
+    logprobs_confidence: float | None = None
 
 
 def _check_purchase_date(v: str | None) -> str | None:
