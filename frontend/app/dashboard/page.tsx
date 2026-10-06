@@ -204,7 +204,9 @@ function PendingOutfitsCard() {
               ))}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium capitalize truncate">{outfit.occasion}</p>
+              {outfit.occasion && (
+                <p className="text-sm font-medium capitalize truncate">{outfit.occasion}</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {outfit.scheduled_for ? new Date(outfit.scheduled_for).toLocaleDateString('en-US', {
                   weekday: 'short',

@@ -26,11 +26,12 @@ export function LineageCard({ outfit }: LineageCardProps) {
   const isReplacement = !!replacesId;
   const Icon = isReplacement ? ArrowRight : BookmarkCheck;
 
+  const occasion = referenced.occasion ?? '';
   const label = isReplacement
     ? referenced.scheduled_for
-      ? t('replacesWithDate', { occasion: referenced.occasion, date: format(parseISO(referenced.scheduled_for), 'MMM d') })
-      : t('replaces', { occasion: referenced.occasion })
-    : t('fromLookbook', { name: referenced.name || referenced.occasion });
+      ? t('replacesWithDate', { occasion, date: format(parseISO(referenced.scheduled_for), 'MMM d') })
+      : t('replaces', { occasion })
+    : t('fromLookbook', { name: referenced.name || referenced.occasion || '' });
 
   return (
     <Card className="border-muted bg-muted/30">

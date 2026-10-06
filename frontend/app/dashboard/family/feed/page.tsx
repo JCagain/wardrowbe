@@ -99,9 +99,11 @@ function FeedOutfitCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <SourceBadge source={outfit.source} />
-            <Badge variant="secondary" className="capitalize text-xs">
-              {outfit.occasion}
-            </Badge>
+            {outfit.occasion && (
+              <Badge variant="secondary" className="capitalize text-xs">
+                {outfit.occasion}
+              </Badge>
+            )}
           </div>
           <span className="text-xs text-muted-foreground">
             {outfit.scheduled_for ? new Date(outfit.scheduled_for).toLocaleDateString(undefined, {

@@ -36,7 +36,7 @@ export interface Outfit {
   id: string;
   user_id: string;
   weather_data?: WeatherData;
-  occasion: string;
+  occasion: string | null;
   scheduled_for: string;
   reasoning?: string;
   style_notes?: string;

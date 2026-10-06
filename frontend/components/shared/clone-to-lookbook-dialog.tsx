@@ -22,14 +22,16 @@ import { useTranslations } from 'next-intl';
 interface CloneToLookbookDialogProps {
   open: boolean;
   sourceOutfitId: string;
-  sourceOccasion: string;
+  sourceOccasion: string | null;
   onClose: () => void;
   onSuccess?: (newOutfitId: string) => void;
 }
 
-function defaultCloneName(occasion: string): string {
+export function defaultCloneName(occasion: string | null): string {
+  const date = format(new Date(), 'MMM d');
+  if (!occasion) return date;
   const occasionTitle = occasion.charAt(0).toUpperCase() + occasion.slice(1);
-  return `${occasionTitle} — ${format(new Date(), 'MMM d')}`;
+  return `${occasionTitle} — ${date}`;
 }
 
 export function CloneToLookbookDialog({

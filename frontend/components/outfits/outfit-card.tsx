@@ -78,15 +78,20 @@ function getSourceBadge(outfit: Outfit, t: any): {
   };
 }
 
-function getCardTitle(outfit: Outfit, t: any): string {
+export function getCardTitle(outfit: Outfit, t: any): string {
   if (outfit.name) return outfit.name;
   if (outfit.reasoning) return outfit.reasoning;
   if (outfit.highlights && outfit.highlights.length > 0) {
     return outfit.highlights[0];
   }
-  const occasion =
-    outfit.occasion.charAt(0).toUpperCase() + outfit.occasion.slice(1);
-  return t('outfitFallback', { occasion });
+  // occasion is nullable (the external-authoring path may omit it) — never
+  // dereference it blind, and fall back to a plain label when it is absent.
+  if (outfit.occasion) {
+    const occasion =
+      outfit.occasion.charAt(0).toUpperCase() + outfit.occasion.slice(1);
+    return t('outfitFallback', { occasion });
+  }
+  return t('untitledOutfit');
 }
 function getMetaLabel(outfit: Outfit, t: any): string {
   if (!outfit.scheduled_for) return t('lookbookTemplate');
@@ -185,9 +190,11 @@ export function OutfitCard({ outfit, onClick, selectMode, selected, onSelect }: 
             {getCardTitle(outfit, t)}
           </h3>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <Badge variant="outline" className="capitalize">
-              {outfit.occasion}
-            </Badge>
+            {outfit.occasion && (
+              <Badge variant="outline" className="capitalize">
+                {outfit.occasion}
+              </Badge>
+            )}
             <span>{getMetaLabel(outfit, t)}</span>
           </div>
         </div>

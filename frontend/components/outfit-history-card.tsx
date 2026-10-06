@@ -147,9 +147,11 @@ export function OutfitHistoryCard({ outfit, onFeedback, onPreview }: OutfitHisto
         <div className="flex items-center justify-between mb-2">
           <SourceBadge source={outfit.source} />
           <div className="flex items-center gap-1.5">
-            <Badge variant="secondary" className="capitalize text-xs">
-              {outfit.occasion}
-            </Badge>
+            {outfit.occasion && (
+              <Badge variant="secondary" className="capitalize text-xs">
+                {outfit.occasion}
+              </Badge>
+            )}
             <StatusIcon status={outfit.status} />
           </div>
         </div>

@@ -84,7 +84,9 @@ export default function OutfitDetailPage() {
   const title =
     outfit.name ||
     outfit.reasoning ||
-    t('cards.outfitFallback', { occasion: outfit.occasion });
+    (outfit.occasion
+      ? t('cards.outfitFallback', { occasion: outfit.occasion })
+      : t('cards.untitledOutfit'));
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -100,9 +102,11 @@ export default function OutfitDetailPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight capitalize">{title}</h1>
         <div className="flex items-center gap-2 mt-2">
-          <Badge variant="outline" className="capitalize">
-            {outfit.occasion}
-          </Badge>
+          {outfit.occasion && (
+            <Badge variant="outline" className="capitalize">
+              {outfit.occasion}
+            </Badge>
+          )}
           <Badge variant="outline" className="capitalize">
             {outfit.source.replace('_', ' ')}
           </Badge>

@@ -30,6 +30,7 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
   const t = useTranslations('suggest.outfitPreview');
   const ts = useTranslations('suggest');
   const tc = useTranslations('common');
+  const tCards = useTranslations('outfits.cards');
   const subtypeLabel = useSubtypeLabel();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [imageKey, setImageKey] = useState(0); // Force image reload after rotation
@@ -72,7 +73,9 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
         {/* Header - sticky */}
         <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
           <div>
-            <h2 className="text-lg font-semibold capitalize">{t('title', { occasion: outfit.occasion })}</h2>
+            <h2 className="text-lg font-semibold capitalize">
+              {outfit.occasion ? t('title', { occasion: outfit.occasion }) : tCards('untitledOutfit')}
+            </h2>
             <div className="flex items-center gap-2 mt-0.5">
               {outfit.scheduled_for && (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

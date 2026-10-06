@@ -46,7 +46,7 @@ export type OutfitSource = 'scheduled' | 'on_demand' | 'manual' | 'pairing' | 'e
 
 export interface Outfit {
   id: string;
-  occasion: string;
+  occasion: string | null;
   scheduled_for: string | null;
   status: 'pending' | 'sent' | 'viewed' | 'accepted' | 'rejected' | 'skipped' | 'expired';
   source: OutfitSource;
