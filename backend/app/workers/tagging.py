@@ -14,6 +14,7 @@ from app.models.preference import UserPreference
 from app.services.ai_service import AIService, ClothingTags
 from app.utils.color_migration import migrate_legacy_colors
 from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
+from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -151,7 +152,9 @@ async def mark_item_tagging_skipped(ctx: dict, item_id: str) -> None:
         result = await db.execute(select(ClothingItem).where(ClothingItem.id == UUID(item_id)))
         item = result.scalar_one_or_none()
         if item and item.status == ItemStatus.processing:
-            item.status = ItemStatus.ready
+            # Same lockstep rule as every other pipeline finisher: skipping a
+            # retired item must not resurrect it to ready (spec §10.16).
+            item.status = terminal_status(item.lifecycle, ItemStatus.ready)
             item.tagging_status = TaggingStatus.pending
             await db.commit()
     finally:
@@ -288,11 +291,7 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
                     # Tagging must not resurrect a retired item: its terminal
                     # status is archived, whatever the pipeline computed
                     # (spec §10.16 status/lifecycle sync).
-                    setattr(
-                        item,
-                        field,
-                        ItemStatus.archived if item.lifecycle == "retired" else value,
-                    )
+                    setattr(item, field, terminal_status(item.lifecycle, value))
                 elif field in ("tagging_status", "tagged_by", "tagged_at"):
                     if was_pending:
                         setattr(item, field, value)

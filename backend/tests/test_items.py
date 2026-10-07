@@ -10,6 +10,7 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import Settings
 from app.models.item import ClothingItem, ItemStatus
 from app.models.outfit import Outfit, OutfitSource
 from app.schemas.item import ItemCreate, ItemFilter
@@ -2182,3 +2183,67 @@ class TestTagsRoundTrip:
         # The update itself still applies.
         assert tags["style"] == ["casual", "y2k"]
         assert patched.json()["name"] == "renamed"
+
+
+class TestRetiredLockstepPipelineFinishers:
+    """spec §5/§10.16: a retired item's terminal status is archived.
+
+    Every pipeline finisher writes status through the same rule — finishing an
+    analysis pass must not resurrect a retired item back to ready.
+    """
+
+    async def _create_retired_processing_item(
+        self, db_session: AsyncSession, test_user, **overrides
+    ) -> ClothingItem:
+        defaults = {
+            "user_id": test_user.id,
+            "type": "shirt",
+            "image_path": "test/retired-lockstep.jpg",
+            "status": ItemStatus.processing,
+            "lifecycle": "retired",
+        }
+        defaults.update(overrides)
+        item = ClothingItem(**defaults)
+        db_session.add(item)
+        await db_session.commit()
+        await db_session.refresh(item)
+        return item
+
+    @pytest.mark.asyncio
+    async def test_bulk_analyze_vision_off_does_not_resurrect_a_retired_item(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user, monkeypatch
+    ):
+        monkeypatch.setattr("app.api.items.settings", Settings(ai_vision_enabled=False))
+        item = await self._create_retired_processing_item(db_session, test_user)
+        item_id = item.id
+
+        response = await client.post(
+            "/api/v1/items/bulk/analyze",
+            json={"item_ids": [str(item_id)]},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["queued"] == 0
+
+        db_session.expire_all()
+        result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+        assert result.scalar_one().status == ItemStatus.archived
+
+    @pytest.mark.asyncio
+    async def test_cancel_analysis_does_not_resurrect_a_retired_item(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user
+    ):
+        item = await self._create_retired_processing_item(db_session, test_user, ai_job_id=None)
+        item_id = item.id
+
+        response = await client.post(
+            f"/api/v1/items/{item_id}/cancel-analysis", headers=auth_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "archived"
+
+        db_session.expire_all()
+        result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+        assert result.scalar_one().status == ItemStatus.archived

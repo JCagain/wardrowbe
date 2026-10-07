@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.models.item import ClothingItem, ItemStatus
 from app.services.image_service import ImageService
+from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ async def remove_item_background_job(ctx: dict, item_id: str, bg_color_hex: str)
                 image_service.remove_background, item.image_path, bg_color
             )
             item.original_image_path = out["original_backup_path"]
-            item.status = ItemStatus.ready
+            # Pipeline finisher: a retired item's terminal status is archived
+            # (spec §10.16), not ready.
+            item.status = terminal_status(item.lifecycle, ItemStatus.ready)
             item.ai_started_at = None
             item.processing_kind = None
             await db.commit()

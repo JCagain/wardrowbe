@@ -51,6 +51,7 @@ from app.schemas.item import (
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
 from app.utils.auth import get_current_user
+from app.utils.item_lifecycle import terminal_status, terminal_status_case
 from app.utils.signed_urls import sign_image_url
 from app.workers.queues import IMAGE_QUEUE, TAGGING_QUEUE, queue_for_kind
 from app.workers.settings import get_redis_settings
@@ -592,7 +593,9 @@ async def bulk_analyze_items(
 
     if not settings.effective_ai_vision_enabled:
         for item in items_to_process:
-            item.status = ItemStatus.ready
+            # Pipeline finisher: a retired item's terminal status is archived
+            # (spec §10.16), not ready.
+            item.status = terminal_status(item.lifecycle, ItemStatus.ready)
             item.tagging_status = TaggingStatus.pending
             item.tagged_by = None
             item.tagged_at = None
@@ -799,7 +802,7 @@ async def bulk_cancel_analysis(
         update(ClothingItem)
         .where(ClothingItem.id.in_(processing_ids), ClothingItem.status == ItemStatus.processing)
         .values(
-            status=ItemStatus.ready,
+            status=terminal_status_case(ItemStatus.ready),
             ai_job_id=None,
             ai_started_at=None,
             processing_kind=None,
@@ -1693,7 +1696,12 @@ async def cancel_item_analysis(
     await db.execute(
         update(ClothingItem)
         .where(ClothingItem.id == item.id, ClothingItem.status == ItemStatus.processing)
-        .values(status=ItemStatus.ready, ai_job_id=None, ai_started_at=None, processing_kind=None)
+        .values(
+            status=terminal_status_case(ItemStatus.ready),
+            ai_job_id=None,
+            ai_started_at=None,
+            processing_kind=None,
+        )
     )
     await db.commit()
     # updated_at is recomputed by a DB-side trigger on UPDATE, so the Core update()
@@ -1798,7 +1806,9 @@ async def remove_item_background(
         result = await asyncio.to_thread(image_service.remove_background, item.image_path, bg_color)
         item.original_image_path = result["original_backup_path"]
         if recovering_from_error:
-            item.status = ItemStatus.ready
+            # Pipeline finisher: a retired item's terminal status is archived
+            # (spec §10.16), not ready.
+            item.status = terminal_status(item.lifecycle, ItemStatus.ready)
             item.processing_kind = None
             item.ai_started_at = None
         await db.commit()

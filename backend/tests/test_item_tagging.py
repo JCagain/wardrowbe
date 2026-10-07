@@ -603,3 +603,31 @@ class TestMarkItemTaggingSkipped:
         refreshed = await _get_item(db_session, item.id)
         assert refreshed.status == ItemStatus.ready
         assert refreshed.tagging_status == TaggingStatus.pending
+
+    @pytest.mark.asyncio
+    async def test_retired_processing_item_skips_to_archived_not_ready(
+        self, db_session: AsyncSession, test_user
+    ):
+        # mark_item_tagging_skipped is a pipeline finisher: it must not
+        # resurrect a retired item (spec §10.16 status/lifecycle sync).
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="shirt",
+            image_path="test/skip-retired.jpg",
+            status=ItemStatus.processing,
+            lifecycle="retired",
+            tagging_status=TaggingStatus.tagged,
+            tagged_by=TaggedBy.auto,
+        )
+        db_session.add(item)
+        await db_session.commit()
+
+        with (
+            patch("app.workers.tagging.get_db_session", return_value=db_session),
+            patch.object(db_session, "close", new_callable=AsyncMock),
+        ):
+            await tagging.mark_item_tagging_skipped({}, str(item.id))
+
+        refreshed = await _get_item(db_session, item.id)
+        assert refreshed.status == ItemStatus.archived
+        assert refreshed.tagging_status == TaggingStatus.pending

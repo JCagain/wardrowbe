@@ -61,3 +61,15 @@ def test_migrate_legacy_colors_accepts_a_frozen_valid_set():
         ["red"],
         ["blue"],
     )
+    # A live-only color must be DROPPED under the frozen set: without this the
+    # test stays green if `valid` is silently ignored ("red"/"blue" behave
+    # identically under the live set and the frozen one).
+    assert migrate_legacy_colors("navy", [], valid={"red", "blue"}) == ([], [])
+
+
+def test_frozen_valid_set_is_honored_over_the_live_vocabulary():
+    # Pin for the same invariant as a named case: `valid` must not be
+    # silently hard-wired to the live set. "navy" is live-valid, so only a
+    # frozen set drops it; "red" must still land under the frozen set.
+    assert migrate_legacy_colors("navy", [], valid={"red", "blue"}) == ([], [])
+    assert migrate_legacy_colors("red", [], valid={"red", "blue"}) == (["red"], [])

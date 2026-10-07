@@ -113,6 +113,22 @@ class TestRotateItemImageJob:
         assert refreshed.ai_started_at is None
 
     @pytest.mark.asyncio
+    async def test_retired_item_lands_archived_not_ready(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        # Rotation is a pipeline finisher: it must not resurrect a retired
+        # item (spec §10.16 status/lifecycle sync).
+        item = await _make_item(db_session, test_user, lifecycle="retired")
+
+        get_db, close_db = _job_on(db_session)
+        with get_db, close_db:
+            result = await rotate_item_image_job({}, str(item.id), "cw")
+
+        assert result["status"] == "success"
+        refreshed = await _get_item(db_session, item.id)
+        assert refreshed.status == ItemStatus.archived
+
+    @pytest.mark.asyncio
     async def test_regenerates_every_size(self, db_session: AsyncSession, test_user: User):
         item = await _make_item(db_session, test_user)
         svc = ImageService()

@@ -10,6 +10,7 @@ from sqlalchemy.orm import attributes, selectinload
 from app.models.item import ClothingItem, ItemHistory, ItemStatus, TaggingStatus, WashHistory
 from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
 from app.utils.color_migration import migrate_legacy_colors
+from app.utils.item_lifecycle import terminal_status
 
 
 def parse_purchase_date(value: str | None) -> tuple[date | None, str | None]:
@@ -365,9 +366,7 @@ class ItemService:
         if set_ready:
             # create-as-retired + skip_ai lands here; a retired item's terminal
             # status is archived — same sync rule as the tagging write path.
-            item.status = (
-                ItemStatus.archived if item.lifecycle == "retired" else ItemStatus.ready
-            )
+            item.status = terminal_status(item.lifecycle, ItemStatus.ready)
         item.tagging_status = TaggingStatus.pending
         item.tagged_by = None
         item.tagged_at = None
