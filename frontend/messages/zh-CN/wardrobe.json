@@ -50,6 +50,7 @@
     "singleItem": "单件",
     "status": "状态",
     "statusActive": "在役",
+    "statusIdle": "闲置",
     "statusRetired": "已退役",
     "style": "风格",
     "submit": "添加单品",

@@ -50,6 +50,7 @@
     "singleItem": "Single Item",
     "status": "Status",
     "statusActive": "Active",
+    "statusIdle": "Idle",
     "statusRetired": "Retired",
     "style": "Style",
     "submit": "Add Item",

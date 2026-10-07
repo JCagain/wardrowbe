@@ -77,7 +77,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   const [tempHigh, setTempHigh] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [purchasePrice, setPurchasePrice] = useState('');
-  const [isArchived, setIsArchived] = useState(false);
+  const [lifecycle, setLifecycle] = useState<'active' | 'idle' | 'retired'>('active');
   const [archiveReason, setArchiveReason] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -174,8 +174,11 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     if (tempHigh !== '') formData.append('temp_high', tempHigh);
     if (normalizedPurchaseDate) formData.append('purchase_date', normalizedPurchaseDate);
     if (purchasePrice !== '') formData.append('purchase_price', purchasePrice);
-    formData.append('is_archived', String(isArchived));
-    if (isArchived && archiveReason.trim()) formData.append('archive_reason', archiveReason.trim());
+    // lifecycle is the authority (spec §5); the boolean travels as the
+    // retired compat view so both faces of the status agree on arrival.
+    formData.append('lifecycle', lifecycle);
+    formData.append('is_archived', String(lifecycle === 'retired'));
+    if (lifecycle === 'retired' && archiveReason.trim()) formData.append('archive_reason', archiveReason.trim());
     if (notes) formData.append('notes', notes);
 
     try {
@@ -250,7 +253,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     setTempHigh('');
     setPurchaseDate('');
     setPurchasePrice('');
-    setIsArchived(false);
+    setLifecycle('active');
     setArchiveReason('');
     setNotes('');
 
@@ -470,28 +473,24 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                 <div className="space-y-2">
                   <Label>{t('status')}</Label>
                   <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={isArchived ? 'outline' : 'default'}
-                      aria-pressed={!isArchived}
-                      onClick={() => setIsArchived(false)}
-                    >
-                      {t('statusActive')}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={isArchived ? 'default' : 'outline'}
-                      aria-pressed={isArchived}
-                      onClick={() => setIsArchived(true)}
-                    >
-                      {t('statusRetired')}
-                    </Button>
+                    {([['active', t('statusActive')], ['idle', t('statusIdle')], ['retired', t('statusRetired')]] as const).map(
+                      ([value, label]) => (
+                        <Button
+                          key={value}
+                          type="button"
+                          size="sm"
+                          variant={lifecycle === value ? 'default' : 'outline'}
+                          aria-pressed={lifecycle === value}
+                          onClick={() => setLifecycle(value)}
+                        >
+                          {label}
+                        </Button>
+                      ),
+                    )}
                   </div>
                 </div>
 
-                {isArchived && (
+                {lifecycle === 'retired' && (
                   <div className="space-y-2">
                     <Label htmlFor="archive-reason">{t('archiveReason')}</Label>
                     <Input
