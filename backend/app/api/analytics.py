@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, computed_field
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -98,18 +98,23 @@ def composition_insights(c: WardrobeComposition) -> list[str]:
 Scope = Literal["all", "no_retired", "active_only"]
 
 
+def _lifecycle_clause(scope: Scope):
+    """The scope's lifecycle axis alone (spec §10.16)：全部 / 排除退役 / 仅在役."""
+    if scope == "active_only":
+        return ClothingItem.lifecycle == "active"
+    if scope == "no_retired":
+        return ClothingItem.lifecycle != "retired"
+    return true()
+
+
 def _scope_clause(scope: Scope):
     """统计三档口径（spec §10.16）：全部 / 排除退役 / 仅在役。
 
-    Unfinished pipeline states (processing/error) never count, whatever the
-    scope; the scope axis is the lifecycle column.
+    Unfinished pipeline states (processing/error) never count in the
+    distributions, whatever the scope; the scope axis is the lifecycle column.
     """
     unfinished = ClothingItem.status.in_([ItemStatus.processing, ItemStatus.error])
-    if scope == "active_only":
-        return and_(ClothingItem.lifecycle == "active", ~unfinished)
-    if scope == "no_retired":
-        return and_(ClothingItem.lifecycle != "retired", ~unfinished)
-    return ~unfinished
+    return and_(_lifecycle_clause(scope), ~unfinished)
 
 
 def _wear_stats(item: ClothingItem) -> WearStats:
@@ -137,6 +142,9 @@ async def get_analytics(
 
     # === Wardrobe Stats ===
     # Total items and status breakdown
+    # Headline cards take the lifecycle axis only, not the finished-only filter
+    # the distributions use: items_by_status is the pipeline's own breakdown and
+    # must still show its processing/error buckets in scope (spec §10.16).
     items_query = select(
         func.count(ClothingItem.id).label("total"),
         func.sum(case((ClothingItem.status == ItemStatus.ready, 1), else_=0)).label("ready"),
@@ -146,7 +154,7 @@ async def get_analytics(
         func.sum(case((ClothingItem.status == ItemStatus.archived, 1), else_=0)).label("archived"),
         func.sum(case((ClothingItem.status == ItemStatus.error, 1), else_=0)).label("error"),
         func.sum(ClothingItem.wear_count).label("total_wears"),
-    ).where(ClothingItem.user_id == current_user.id)
+    ).where(and_(ClothingItem.user_id == current_user.id, _lifecycle_clause(scope)))
 
     items_result = await db.execute(items_query)
     items_row = items_result.one()

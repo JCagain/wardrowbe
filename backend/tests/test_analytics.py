@@ -16,11 +16,11 @@ from app.models.user import User
 
 
 def _make_item(user_id, **kwargs) -> ClothingItem:
+    kwargs.setdefault("status", ItemStatus.ready)
     return ClothingItem(
         user_id=user_id,
         type="shirt",
         image_path=f"test/{uuid4()}.jpg",
-        status=ItemStatus.ready,
         **kwargs,
     )
 
@@ -131,3 +131,50 @@ class TestStyleDistributionAndScope:
         )
         styles = {row["style"]: row["count"] for row in no_retired.json()["style_distribution"]}
         assert styles == {"casual": 2}
+
+    @pytest.mark.asyncio
+    async def test_scope_applies_to_headline_stats(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User
+    ):
+        db_session.add(_make_item(test_user.id, lifecycle="active", wear_count=3))
+        db_session.add(_make_item(test_user.id, lifecycle="idle", wear_count=2))
+        db_session.add(
+            _make_item(
+                test_user.id, lifecycle="retired", wear_count=5, status=ItemStatus.archived
+            )
+        )
+        db_session.add(
+            _make_item(
+                test_user.id, lifecycle="active", wear_count=1, status=ItemStatus.processing
+            )
+        )
+        await db_session.flush()
+
+        all_scope = (await client.get("/api/v1/analytics", headers=auth_headers)).json()
+        assert all_scope["wardrobe"]["total_items"] == 4
+        assert all_scope["wardrobe"]["total_wears"] == 11
+        assert all_scope["wardrobe"]["items_by_status"]["ready"] == 2
+
+        active_only = (
+            await client.get(
+                "/api/v1/analytics", params={"scope": "active_only"}, headers=auth_headers
+            )
+        ).json()
+        assert active_only["wardrobe"]["total_items"] == 2
+        assert active_only["wardrobe"]["total_wears"] == 4
+        # The pipeline breakdown keeps its buckets in scope — the finished-only
+        # filter of the distributions must not zero processing/error out.
+        assert active_only["wardrobe"]["items_by_status"] == {
+            "ready": 1,
+            "processing": 1,
+            "archived": 0,
+            "error": 0,
+        }
+
+        no_retired = (
+            await client.get(
+                "/api/v1/analytics", params={"scope": "no_retired"}, headers=auth_headers
+            )
+        ).json()
+        assert no_retired["wardrobe"]["total_items"] == 3
+        assert no_retired["wardrobe"]["total_wears"] == 6
