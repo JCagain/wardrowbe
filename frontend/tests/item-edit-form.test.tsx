@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
-import { editFormFromItem, partTypeChangeHandlers } from '@/lib/item-edit-form';
+import { editFormFromItem, lifecycleLabelKey, partTypeChangeHandlers } from '@/lib/item-edit-form';
 import type { Item } from '@/lib/types';
 import {
   BODY_PART_LABELS,
@@ -142,5 +142,18 @@ describe('lifecycle edit form', () => {
     expect(
       editFormFromItem({ ...baseItem, is_archived: false } as unknown as Item).lifecycle,
     ).toBe('active');
+  });
+});
+
+describe('lifecycle read-view label', () => {
+  it('maps the three states onto distinct status keys', () => {
+    expect(lifecycleLabelKey({ lifecycle: 'active', is_archived: false })).toBe('statusActive');
+    expect(lifecycleLabelKey({ lifecycle: 'idle', is_archived: false })).toBe('statusIdle');
+    expect(lifecycleLabelKey({ lifecycle: 'retired', is_archived: true })).toBe('statusRetired');
+  });
+
+  it('falls back to the compat view for rows without lifecycle', () => {
+    expect(lifecycleLabelKey({ is_archived: true } as Item)).toBe('statusRetired');
+    expect(lifecycleLabelKey({ is_archived: false } as Item)).toBe('statusActive');
   });
 });

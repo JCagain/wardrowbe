@@ -66,7 +66,12 @@ import {
 } from '@/lib/hooks/use-translated-constants';
 
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
-import { editFormFromItem, partTypeChangeHandlers, type EditForm } from '@/lib/item-edit-form';
+import {
+  editFormFromItem,
+  lifecycleLabelKey,
+  partTypeChangeHandlers,
+  type EditForm,
+} from '@/lib/item-edit-form';
 import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
 import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
 import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
@@ -924,7 +929,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-muted-foreground">{t('status')}</span>
                       <Badge variant={item.is_archived ? 'outline' : 'secondary'}>
-                        {item.is_archived ? t('statusRetired') : t('statusActive')}
+                        {t(lifecycleLabelKey(item))}
                       </Badge>
                       {item.is_archived && item.archive_reason && (
                         <span className="text-muted-foreground truncate">{item.archive_reason}</span>

@@ -68,3 +68,14 @@ export function editFormFromItem(item: Item): EditForm {
     wash_interval: item.wash_interval ?? undefined,
   };
 }
+
+/** Read-view status label for the three-state lifecycle (spec §10.16). */
+export function lifecycleLabelKey(
+  item: Pick<Item, 'lifecycle' | 'is_archived'>,
+): 'statusActive' | 'statusIdle' | 'statusRetired' {
+  // lifecycle is the authority; fall back to the compat view for older rows.
+  const lifecycle = item.lifecycle ?? (item.is_archived ? 'retired' : 'active');
+  if (lifecycle === 'retired') return 'statusRetired';
+  if (lifecycle === 'idle') return 'statusIdle';
+  return 'statusActive';
+}
