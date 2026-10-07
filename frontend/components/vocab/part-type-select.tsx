@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BODY_PART_LABELS } from '@/lib/generated/garment-vocabulary';
 import type { TypeEntry, VocabEntry } from '@/lib/types';
-import type { VocabEntryHandlers } from './vocab-managed-chip';
+import { runVocabAction, type VocabEntryHandlers } from './vocab-managed-chip';
 
 const ADD_OPTION = '__vocab_add__';
 
@@ -105,7 +105,9 @@ export function PartTypeSelect({
             >
               {vm('rename')}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => entryHandlers.onDisable(selected.value)}>
+            <DropdownMenuItem
+              onSelect={() => void runVocabAction(vm, () => entryHandlers.onDisable(selected.value))}
+            >
               {vm('disable')}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -129,8 +131,9 @@ export function PartTypeSelect({
                 onClick={async () => {
                   const next = draft.trim();
                   if (!next || !selected) return;
-                  await entryHandlers.onRename(selected.value, next);
-                  setRenameOpen(false);
+                  if (await runVocabAction(vm, () => entryHandlers.onRename(selected.value, next))) {
+                    setRenameOpen(false);
+                  }
                 }}
               >
                 {vm('save')}

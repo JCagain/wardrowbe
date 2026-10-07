@@ -26,6 +26,23 @@ export interface VocabEntryHandlers {
   onDisable: (value: string) => void | Promise<unknown>;
 }
 
+/**
+ * Run one soft-vocabulary mutation and surface failures. A bare await on
+ * patch.mutateAsync left an unhandled rejection, a stuck dialog and no toast.
+ */
+export async function runVocabAction(
+  t: (key: string) => string,
+  fn: () => void | Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await fn();
+    return true;
+  } catch {
+    toast.error(t('actionFailed'));
+    return false;
+  }
+}
+
 /** One picker chip with a hover ⋯ menu for rename/disable (soft vocabulary: never delete). */
 export function VocabManagedChip({
   value,
@@ -77,7 +94,9 @@ export function VocabManagedChip({
               >
                 {t('rename')}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handlers.onDisable(value)}>
+              <DropdownMenuItem
+                onSelect={() => void runVocabAction(t, () => handlers.onDisable(value))}
+              >
                 {t('disable')}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -105,8 +124,9 @@ export function VocabManagedChip({
                     toast.error(t('invalid'));
                     return;
                   }
-                  await handlers.onRename(value, next);
-                  setRenameOpen(false);
+                  if (await runVocabAction(t, () => handlers.onRename(value, next))) {
+                    setRenameOpen(false);
+                  }
                 }}
               >
                 {t('save')}
