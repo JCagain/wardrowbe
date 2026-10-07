@@ -1,9 +1,9 @@
+import json
 import re
 
 import pytest
 
 from app.schemas.item import DEFAULT_WASH_INTERVALS
-from app.services.ai_service import TAGGING_PROMPT, VALID_FORMALITY, VALID_MATERIALS, VALID_TYPES
 from app.services.item_scorer import (
     FORMALITY_ORDER,
     HEAVY_LAYER_MATERIALS,
@@ -12,6 +12,7 @@ from app.services.item_scorer import (
     RAIN_LAYER_TYPES,
     WARM_LAYER_TYPES,
 )
+from app.utils import garment_vocabulary as gv
 from app.utils.clothing import _CANONICAL_ROLE_ORDER, ITEM_ROLE
 from app.utils.garment_vocabulary import (
     FORMALITY,
@@ -23,7 +24,8 @@ from app.utils.prompts import load_prompt
 
 
 def _prompt_options(heading: str) -> set[str]:
-    match = re.search(rf"^{heading} \([^)]*\):\n(.+)\n", TAGGING_PROMPT, re.MULTILINE)
+    prompt = render_tagging_prompt(load_prompt("clothing_analysis"))
+    match = re.search(rf"^{heading} \([^)]*\):\n(.+)\n", prompt, re.MULTILINE)
     assert match, f"{heading} line not found in clothing_analysis prompt"
     return {term.strip() for term in match.group(1).split(",")}
 
@@ -48,32 +50,32 @@ def test_prompt_template_tokens_are_all_rendered():
 
 def test_type_lists_agree():
     prompt_types = _prompt_options("TYPE")
-    assert prompt_types == VALID_TYPES
+    assert prompt_types == set(gv.TYPES)
     assert prompt_types == set(ITEM_ROLE)
     assert prompt_types == set(DEFAULT_WASH_INTERVALS)
 
 
 @pytest.mark.parametrize(
     ("heading", "vocabulary"),
-    [("MATERIAL", VALID_MATERIALS), ("FORMALITY", VALID_FORMALITY)],
+    [("MATERIAL", set(gv.MATERIALS)), ("FORMALITY", set(gv.FORMALITY))],
 )
 def test_prompt_offers_exactly_the_validated_vocabulary(heading, vocabulary):
     assert _prompt_options(heading) == vocabulary
 
 
 def test_scorer_formality_scale_is_the_validated_vocabulary():
-    assert set(FORMALITY_ORDER) == VALID_FORMALITY
+    assert set(FORMALITY_ORDER) == set(gv.FORMALITY)
     for occasion, formalities in OCCASION_FORMALITY.items():
-        assert set(formalities) <= VALID_FORMALITY, occasion
+        assert set(formalities) <= set(gv.FORMALITY), occasion
 
 
 def test_scorer_layer_types_are_real_types():
     scorer_types = RAIN_LAYER_TYPES | WARM_LAYER_TYPES | HEAVY_LAYER_TYPES
-    assert scorer_types <= VALID_TYPES
+    assert scorer_types <= set(gv.TYPES)
 
 
 def test_scorer_heavy_materials_are_real_materials():
-    assert HEAVY_LAYER_MATERIALS <= VALID_MATERIALS
+    assert HEAVY_LAYER_MATERIALS <= set(gv.MATERIALS)
 
 
 def test_v2_sections_are_loaded():
@@ -112,12 +114,33 @@ def test_every_color_slug_is_unique_and_hex_is_lowercase():
 
 
 def test_ai_validation_sets_come_from_the_vocabulary():
-    from app.services.ai_service import VALID_COLORS, VALID_SEASONS, VALID_STYLES
-    from app.utils import garment_vocabulary as gv
+    """ai_service accepts values the vocabulary defines.
 
-    assert VALID_COLORS == gv.COLOR_VALUE_SET
-    assert VALID_STYLES == set(gv.STYLE_VALUES)
-    assert VALID_SEASONS == set(gv.SEASON_VALUES)
+    Its validation sets are no longer module snapshots (VALID_* are gone); they
+    are resolved per call in _parse_tags_from_response from the same gv names,
+    so a vocabulary value must pass through that real path untouched. The
+    freshness pins in test_vocabulary_api.py cover the runtime-write side.
+    """
+    from app.services.ai_service import AIService
+
+    color = sorted(gv.COLOR_VALUE_SET)[0]
+    style = gv.STYLE_VALUES[0]
+    season = gv.SEASON_VALUES[0]
+    tags = AIService()._parse_tags_from_response(
+        json.dumps(
+            {
+                "type": "shirt",
+                "primary_color": color,
+                "colors": [color],
+                "style": [style],
+                "season": [season],
+            }
+        )
+    )
+    assert tags.primary_color == color
+    assert tags.colors == [color]
+    assert tags.style == [style]
+    assert tags.season == [season]
 
 
 def test_legacy_color_aliases_point_at_new_slugs():

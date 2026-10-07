@@ -12,8 +12,8 @@ from app.config import get_settings
 from app.models.item import ClothingItem, ItemStatus, TaggedBy, TaggingStatus
 from app.models.preference import UserPreference
 from app.services.ai_service import AIService, ClothingTags
+from app.utils import garment_vocabulary as gv
 from app.utils.color_migration import migrate_legacy_colors
-from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
 from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
 
@@ -122,7 +122,7 @@ def tags_to_item_fields(tags: ClothingTags, raw_response: str | None = None) -> 
     fields = {
         "type": tags.type,
         "subtype": tags.subtype,
-        "body_part": BODY_PART_BY_TYPE.get(tags.type),
+        "body_part": gv.BODY_PART_BY_TYPE.get(tags.type),
         "primary_colors": primary_list,
         "secondary_colors": secondary_list,
         "pattern": tags.pattern,

@@ -13,16 +13,9 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.utils import garment_vocabulary as gv
 from app.utils.color_migration import LEGACY_COLOR_ALIASES
-from app.utils.garment_vocabulary import (
-    FORMALITY,
-    MATERIALS,
-    TYPES,
-    COLOR_VALUE_SET,
-    SEASON_VALUES,
-    STYLE_VALUES,
-    render_tagging_prompt,
-)
+from app.utils.garment_vocabulary import render_tagging_prompt
 from app.utils.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -65,12 +58,9 @@ class ClothingTags(BaseModel):
     unrecognized_type: str | None = None
 
 
-TAGGING_PROMPT = render_tagging_prompt(load_prompt("clothing_analysis"))
 DESCRIPTION_PROMPT = load_prompt("clothing_description")
 
 # Valid values for validation
-VALID_TYPES = set(TYPES)
-VALID_COLORS = COLOR_VALUE_SET
 VALID_PATTERNS = {
     "solid",
     "striped",
@@ -83,11 +73,7 @@ VALID_PATTERNS = {
     "camouflage",
     "animal-print",
 }
-VALID_MATERIALS = set(MATERIALS)
-VALID_FORMALITY = set(FORMALITY)
 VALID_FIT = {"slim", "regular", "relaxed", "oversized", "tailored", "cropped"}
-VALID_STYLES = set(STYLE_VALUES)
-VALID_SEASONS = set(SEASON_VALUES)
 
 
 def compute_tag_completeness(tags: "ClothingTags") -> float:
@@ -321,6 +307,15 @@ class AIService:
             return base64.b64encode(buffer.read()).decode("utf-8")
 
     def _parse_tags_from_response(self, response_text: str) -> ClothingTags:
+        # Resolved per call: the vocabulary is runtime-mutable and a soft-vocab
+        # write must reach validation without restarting this process.
+        valid_types = set(gv.TYPES)
+        valid_colors = set(gv.COLOR_VALUE_SET)
+        valid_materials = set(gv.MATERIALS)
+        valid_formality = set(gv.FORMALITY)
+        valid_styles = set(gv.STYLE_VALUES)
+        valid_seasons = set(gv.SEASON_VALUES)
+
         def extract_json(text: str) -> dict | None:
             try:
                 return json.loads(text.strip())
@@ -412,7 +407,7 @@ class AIService:
         tags.raw_response = response_text
 
         raw_type = data.get("type")
-        item_type = validate_value(raw_type, VALID_TYPES)
+        item_type = validate_value(raw_type, valid_types)
         if item_type:
             tags.type = item_type
         else:
@@ -422,15 +417,15 @@ class AIService:
                 logger.warning(f"AI returned unsupported item type: {tags.unrecognized_type!r}")
 
         tags.subtype = data.get("subtype") if data.get("subtype") else None
-        tags.primary_color = validate_value(data.get("primary_color"), VALID_COLORS)
+        tags.primary_color = validate_value(data.get("primary_color"), valid_colors)
         # The color list goes through the same alias table as the single value —
         # ["burgundy", "sky blue"] must not silently lose everything but "navy".
-        tags.colors = validate_list(data.get("colors", []), VALID_COLORS, aliases=COLOR_ALIASES)
+        tags.colors = validate_list(data.get("colors", []), valid_colors, aliases=COLOR_ALIASES)
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)
-        tags.material = validate_value(data.get("material"), VALID_MATERIALS)
-        tags.formality = validate_value(data.get("formality"), VALID_FORMALITY)
-        tags.style = validate_list(data.get("style", []), VALID_STYLES)
-        tags.season = validate_list(data.get("season", []), VALID_SEASONS)
+        tags.material = validate_value(data.get("material"), valid_materials)
+        tags.formality = validate_value(data.get("formality"), valid_formality)
+        tags.style = validate_list(data.get("style", []), valid_styles)
+        tags.season = validate_list(data.get("season", []), valid_seasons)
         tags.fit = validate_value(data.get("fit"), VALID_FIT)
         tags.confidence = compute_tag_completeness(tags)
 
@@ -559,7 +554,7 @@ class AIService:
 
         # System/user separation for injection protection
         messages_tags = [
-            {"role": "system", "content": TAGGING_PROMPT},
+            {"role": "system", "content": render_tagging_prompt(load_prompt("clothing_analysis"))},
             {
                 "role": "user",
                 "content": [

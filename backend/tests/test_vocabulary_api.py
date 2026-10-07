@@ -155,6 +155,40 @@ class TestVocabularyApi:
         )
         assert resp.status_code in (404, 405)
 
+    @pytest.mark.asyncio
+    async def test_add_color_reaches_validation_without_restart(self, client, auth_headers, vocab_snapshot):
+        """A soft-vocab write must be visible to the validation sets at once.
+
+        _DATA was a load-time snapshot: the API accepted the new color while
+        ai_service's VALID_COLORS kept rejecting it until a process restart.
+        """
+        resp = await client.post(
+            "/api/v1/vocabulary/colors/values",
+            json={"value": "haze", "label": "雾色", "family": "blue", "hex": "#8fa9bf"},
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 201), resp.text
+
+        from app.services.ai_service import AIService
+        tags = AIService()._parse_tags_from_response(
+            '{"type": "shirt", "primary_color": "haze", "colors": ["haze"]}'
+        )
+        assert tags.primary_color == "haze"
+        assert tags.colors == ["haze"]
+
+    @pytest.mark.asyncio
+    async def test_add_type_reaches_prompt_and_body_part_map(self, client, auth_headers, vocab_snapshot):
+        resp = await client.post(
+            "/api/v1/vocabulary/types",
+            json={"value": "hoodie-dress", "label": "卫衣裙", "body_part": "dresses"},
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 201), resp.text
+
+        from app.utils.garment_vocabulary import BODY_PART_BY_TYPE, render_tagging_prompt
+        assert BODY_PART_BY_TYPE.get("hoodie-dress") == "dresses"
+        assert "hoodie-dress" in render_tagging_prompt("<<TYPES>>")
+
 
 class TestTypeMeta:
     @pytest.mark.asyncio
