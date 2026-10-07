@@ -90,6 +90,16 @@ _COLOR_VALUES: set[str] = {
 }
 
 
+# 旧数据是完整日期（老 schema 是裸 Date），新线格式只有年-月。日成分在这里
+# 一次性丢掉并记录 precision='month'，而不是等到某次无关保存静默改写行。
+# 已带 precision 的行不动。
+NORMALIZE_PURCHASE_DATE_SQL = (
+    "UPDATE clothing_items SET purchase_date = date_trunc('month', purchase_date)::date, "
+    "purchase_date_precision = 'month' "
+    "WHERE purchase_date IS NOT NULL AND purchase_date_precision IS NULL"
+)
+
+
 def _array_literal(values: list[str]) -> str:
     """Render a Python str list as a postgres ARRAY literal.
 
@@ -118,6 +128,7 @@ def upgrade() -> None:
     op.add_column(
         "clothing_items", sa.Column("purchase_date_precision", sa.String(8), nullable=True)
     )
+    op.execute(sa.text(NORMALIZE_PURCHASE_DATE_SQL))
 
     # 旧颜色数据 -> 新数组：主色进 primary_colors，其余去重进 secondary_colors。
     # 别名归一由 Python 端逐行处理（值域小，行数 < 1000）。
