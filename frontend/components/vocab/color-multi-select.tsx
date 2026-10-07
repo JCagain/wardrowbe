@@ -40,7 +40,7 @@ export function ColorMultiSelect({
           </VocabManagedChip>
         );
       })}
-      {onAddEntry && <VocabAddChip kindLabel="color" onClick={onAddEntry} />}
+      {onAddEntry && <VocabAddChip kind="color" onClick={onAddEntry} />}
     </div>
   );
 }

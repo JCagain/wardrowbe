@@ -330,7 +330,6 @@
     "cancel": "取消",
     "save": "保存",
     "invalid": "请填写显示名。",
-    "addEntry": "添加{kind}…",
     "actionFailed": "操作失败，请重试。"
   },
   "lifecycleFilter": {

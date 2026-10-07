@@ -140,8 +140,14 @@ export function VocabManagedChip({
 }
 
 /** Trailing chip that opens the add dialog for this picker. */
-export function VocabAddChip({ kindLabel, onClick }: { kindLabel: string; onClick: () => void }) {
-  const t = useTranslations('wardrobe.vocabManage');
+const TITLE_KEY = {
+  color: 'title.colors',
+  style: 'title.styles',
+  type: 'title.types',
+} as const;
+
+export function VocabAddChip({ kind, onClick }: { kind: 'color' | 'style' | 'type'; onClick: () => void }) {
+  const t = useTranslations('wardrobe.vocabAdd');
   return (
     <button
       type="button"
@@ -151,7 +157,7 @@ export function VocabAddChip({ kindLabel, onClick }: { kindLabel: string; onClic
       <span className="flex h-6 w-6 items-center justify-center">
         <Plus className="h-4 w-4" />
       </span>
-      <span className="text-xs">{t('addEntry', { kind: kindLabel })}</span>
+      <span className="text-xs">{t(TITLE_KEY[kind])}</span>
     </button>
   );
 }

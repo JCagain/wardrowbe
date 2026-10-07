@@ -39,7 +39,7 @@ export function StyleMultiSelect({
           </VocabManagedChip>
         );
       })}
-      {onAddEntry && <VocabAddChip kindLabel="style" onClick={onAddEntry} />}
+      {onAddEntry && <VocabAddChip kind="style" onClick={onAddEntry} />}
     </div>
   );
 }

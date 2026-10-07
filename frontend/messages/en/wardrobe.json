@@ -330,7 +330,6 @@
     "cancel": "Cancel",
     "save": "Save",
     "invalid": "Enter a display name.",
-    "addEntry": "Add {kind}…",
     "actionFailed": "Something went wrong. Please try again."
   },
   "lifecycleFilter": {

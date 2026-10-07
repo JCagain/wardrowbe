@@ -47,6 +47,7 @@ export function PartTypeSelect({
 }) {
   const t = useTranslations('wardrobe.partTypeSelect');
   const vm = useTranslations('wardrobe.vocabManage');
+  const va = useTranslations('wardrobe.vocabAdd');
   const [renameOpen, setRenameOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const selected = entries.find((e) => e.value === type);
@@ -87,7 +88,7 @@ export function PartTypeSelect({
         {visible.map((entry) => (
           <option key={entry.value} value={entry.value}>{entry.label}</option>
         ))}
-        {onAddEntry && <option value={ADD_OPTION}>{vm('addEntry', { kind: 'type' })}</option>}
+        {onAddEntry && <option value={ADD_OPTION}>{va('title.types')}</option>}
       </select>
       {entryHandlers && selected && (
         <DropdownMenu>
