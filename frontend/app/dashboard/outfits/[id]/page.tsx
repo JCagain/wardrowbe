@@ -24,12 +24,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LineageCard } from '@/components/shared/lineage-card';
 import { CloneToLookbookDialog } from '@/components/shared/clone-to-lookbook-dialog';
+import { getCardTitle } from '@/components/outfits/outfit-card';
 import { useDeleteOutfit, useOutfit, useOutfits } from '@/lib/hooks/use-outfits';
 import { useWearToday } from '@/lib/hooks/use-studio';
 import { getErrorMessage } from '@/lib/api';
 
 export default function OutfitDetailPage() {
   const t = useTranslations('outfits');
+  const tCards = useTranslations('outfits.cards');
   const tc = useTranslations('common');
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -81,12 +83,10 @@ export default function OutfitDetailPage() {
     }
   };
 
-  const title =
-    outfit.name ||
-    outfit.reasoning ||
-    (outfit.occasion
-      ? t('cards.outfitFallback', { occasion: outfit.occasion })
-      : t('cards.untitledOutfit'));
+  // One title chain for the card and this page (name → reasoning → first
+  // highlight → occasion fallback → untitled). The inline copy here predates
+  // getCardTitle, skipped highlights, and had no test of its own.
+  const title = getCardTitle(outfit, tCards);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
