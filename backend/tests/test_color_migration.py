@@ -46,3 +46,18 @@ def test_alias_keys_that_are_live_colors_round_trip():
     for key in LEGACY_COLOR_ALIASES:
         if key in COLOR_VALUE_SET:
             assert migrate_legacy_colors(key, []) == ([key], [])
+
+
+def test_body_part_case_sql_accepts_a_frozen_mapping():
+    sql = body_part_case_sql("type", mapping={"shirt": "tops", "jeans": "bottoms"})
+    assert "WHEN type = 'shirt' THEN 'tops'" in sql
+    assert "WHEN type = 'jeans' THEN 'bottoms'" in sql
+    # Nothing outside the snapshot may leak in from the live vocabulary.
+    assert "'dress'" not in sql
+
+
+def test_migrate_legacy_colors_accepts_a_frozen_valid_set():
+    assert migrate_legacy_colors("red", ["blue", "chartreuse"], valid={"red", "blue"}) == (
+        ["red"],
+        ["blue"],
+    )

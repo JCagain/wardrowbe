@@ -17,6 +17,78 @@ down_revision: str | None = "d5e6f7a8b9c0"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+# Frozen snapshots of the seed vocabulary (2026-10-02). The runtime vocabulary
+# file is soft-writable — vocab management writes it back — so deriving these
+# values from it at run time makes a fresh migration write different
+# body_part/color values on any machine whose vocabulary has drifted.
+# Migrations must be reproducible from their own contents.
+_TYPE_BODY_PART: dict[str, str] = {
+    "tank-top": "tops",
+    "shirt": "tops",
+    "vest": "tops",
+    "sweater": "tops",
+    "bandeau": "tops",
+    "polo": "tops",
+    "t-shirt": "tops",
+    "hoodie": "tops",
+    "top": "tops",
+    "skirt": "bottoms",
+    "pants": "bottoms",
+    "shorts": "bottoms",
+    "jeans": "bottoms",
+    "slacks": "bottoms",
+    "sweatpants": "bottoms",
+    "bottom": "bottoms",
+    "jumpskirt": "dresses",
+    "slip-dress": "dresses",
+    "dress": "dresses",
+    "suit": "dresses",
+    "coat": "outerwear",
+    "trench": "outerwear",
+    "jacket": "outerwear",
+    "cardigan": "outerwear",
+    "blazer": "outerwear",
+    "down-jacket": "outerwear",
+    "heels": "footwear",
+    "sandals": "footwear",
+    "shoes": "footwear",
+    "slippers": "footwear",
+    "socks": "footwear",
+    "boots": "footwear",
+    "sneakers": "footwear",
+    "bag": "accessories",
+    "tie": "accessories",
+    "hat": "accessories",
+    "circle-lens": "accessories",
+    "watch": "accessories",
+    "scarf": "accessories",
+    "glasses": "accessories",
+    "belt": "accessories",
+    "accessories": "accessories",
+    "ear-cuff": "jewelry",
+    "earrings": "jewelry",
+    "hair-accessory": "jewelry",
+    "ring": "jewelry",
+    "bracelet": "jewelry",
+    "bangle": "jewelry",
+    "neck-ring": "jewelry",
+    "necklace": "jewelry",
+    "brooch": "jewelry",
+    "jewelry": "jewelry",
+}
+_COLOR_VALUES: set[str] = {
+    "black", "white", "gray", "dark-gray", "light-gray", "off-white",
+    "brown", "khaki", "camel", "caramel", "coffee",
+    "red", "cherry", "brick", "wine", "dark-red",
+    "yellow", "lemon", "cream", "ginger", "pumpkin",
+    "orange", "tangerine",
+    "green", "mint", "avocado", "grass", "olive", "army", "dark-green",
+    "blue", "sky", "misty", "royal", "denim", "klein", "navy",
+    "purple", "taro", "lavender", "grape",
+    "pink", "sakura", "lotus", "coral", "rose",
+    "gold", "silver",
+}
+
 
 def _array_literal(values: list[str]) -> str:
     """Render a Python str list as a postgres ARRAY literal.
@@ -56,11 +128,13 @@ def upgrade() -> None:
     from app.utils.color_migration import migrate_legacy_colors
 
     for row in rows:
-        primary_list, secondary_list = migrate_legacy_colors(row.primary_color, row.colors)
+        primary_list, secondary_list = migrate_legacy_colors(
+            row.primary_color, row.colors, valid=_COLOR_VALUES
+        )
         conn.execute(
             sa.text(
                 "UPDATE clothing_items SET body_part = "
-                + body_part_case_sql("type")
+                + body_part_case_sql("type", mapping=_TYPE_BODY_PART)
                 + ", primary_colors = "
                 + _array_literal(primary_list)
                 + ", secondary_colors = "
@@ -73,7 +147,7 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             "UPDATE clothing_items SET body_part = "
-            + body_part_case_sql("type")
+            + body_part_case_sql("type", mapping=_TYPE_BODY_PART)
             + " WHERE body_part IS NULL"
         )
     )
