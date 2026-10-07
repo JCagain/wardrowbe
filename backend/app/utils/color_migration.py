@@ -15,7 +15,11 @@ LEGACY_COLOR_ALIASES = {
     "dark-brown": "coffee",
 }
 
-from app.utils.garment_vocabulary import BODY_PART_BY_TYPE, COLOR_VALUE_SET
+# The garment_vocabulary import is deliberately function-local below: alembic
+# loads every revision script (and this module with it) at startup, and the
+# vocabulary file is runtime-mutable — a corrupted or missing JSON must never
+# take the migration chain down. Migrations pass frozen snapshots and never
+# touch the defaults.
 
 
 def _normalize(value: str | None, valid: set[str]) -> str | None:
@@ -45,7 +49,10 @@ def migrate_legacy_colors(
     `valid` defaults to the live vocabulary; the DB data migration passes a
     frozen snapshot so re-runs stay reproducible.
     """
-    valid = COLOR_VALUE_SET if valid is None else valid
+    if valid is None:
+        from app.utils.garment_vocabulary import COLOR_VALUE_SET
+
+        valid = COLOR_VALUE_SET
     primary = _normalize(primary_color, valid)
     primary_list = [primary] if primary else []
     secondary: list[str] = []
@@ -62,8 +69,12 @@ def body_part_case_sql(type_column: str, mapping: dict[str, str] | None = None) 
     `mapping` defaults to the live vocabulary; the DB data migration passes a
     frozen snapshot so re-runs stay reproducible.
     """
+    if mapping is None:
+        from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
+
+        mapping = BODY_PART_BY_TYPE
     branches = " ".join(
         f"WHEN {type_column} = '{value}' THEN '{part}'"
-        for value, part in sorted((BODY_PART_BY_TYPE if mapping is None else mapping).items())
+        for value, part in sorted(mapping.items())
     )
     return f"CASE {branches} ELSE NULL END"

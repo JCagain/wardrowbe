@@ -73,3 +73,42 @@ def test_frozen_valid_set_is_honored_over_the_live_vocabulary():
     # frozen set drops it; "red" must still land under the frozen set.
     assert migrate_legacy_colors("navy", [], valid={"red", "blue"}) == ([], [])
     assert migrate_legacy_colors("red", [], valid={"red", "blue"}) == (["red"], [])
+
+
+def test_migration_load_chain_never_imports_the_live_vocabulary(monkeypatch):
+    """alembic loads every revision script at startup, and the vocabulary JSON
+    is runtime-mutable (soft-vocab). A corrupted or missing vocabulary file
+    must not take the migration chain down: the data migration runs off its
+    own frozen snapshots (see e7f8a9b0c1d2_personal_wardrobe_fields) and the
+    shared helpers must never pull the live vocabulary in at import time.
+    """
+    import importlib
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    for name in ("app.utils.garment_vocabulary", "app.utils.color_migration"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+    module = importlib.import_module("app.utils.color_migration")
+    assert "app.utils.garment_vocabulary" not in sys.modules
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "e7f8a9b0c1d2_personal_wardrobe_fields.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "e7f8a9b0c1d2_load_chain_probe", migration_path
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert "app.utils.garment_vocabulary" not in sys.modules
+
+    # The frozen-snapshot entry points still work with no live vocabulary around.
+    assert module.migrate_legacy_colors("navy", [], valid={"red", "blue"}) == ([], [])
+    assert module.body_part_case_sql("type", mapping={"shirt": "tops"}) == (
+        "CASE WHEN type = 'shirt' THEN 'tops' ELSE NULL END"
+    )
