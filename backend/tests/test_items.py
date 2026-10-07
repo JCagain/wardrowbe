@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings
 from app.models.item import ClothingItem, ItemStatus
 from app.models.outfit import Outfit, OutfitSource
-from app.schemas.item import ItemCreate, ItemFilter
+from app.schemas.item import ItemCreate, ItemFilter, ItemTags
 from app.services.item_service import ItemService
 from app.workers.tagging import update_item_status_to_error
 
@@ -2183,6 +2183,48 @@ class TestTagsRoundTrip:
         # The update itself still applies.
         assert tags["style"] == ["casual", "y2k"]
         assert patched.json()["name"] == "renamed"
+
+    def test_item_tags_validation_keeps_undeclared_keys(self):
+        # The mechanism pin for extra="allow": a key the schema does not name —
+        # one nobody has invented yet — must survive validation. Without the
+        # config line, Pydantic drops it silently and the save overwrites the
+        # JSONB column without it.
+        tags = ItemTags.model_validate(
+            {"colors": ["blue"], "future_ai_field": {"nested": True}}
+        )
+        dumped = tags.model_dump()
+        assert dumped["colors"] == ["blue"]
+        assert dumped["future_ai_field"] == {"nested": True}
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_undeclared_tag_keys(self, client: AsyncClient, auth_headers):
+        # End-to-end twin of the pin above: the same guarantee through the real
+        # save path, with keys the schema demonstrably does not declare.
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={
+                "tags": {
+                    "colors": ["blue"],
+                    "future_ai_field": {"nested": True},
+                    "another_undeclared_key": 7,
+                }
+            },
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+        tags = patched.json()["tags"]
+        assert tags["future_ai_field"] == {"nested": True}
+        assert tags["another_undeclared_key"] == 7
+        assert tags["colors"] == ["blue"]
 
 
 class TestRetiredLockstepPipelineFinishers:
