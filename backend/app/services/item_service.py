@@ -346,6 +346,9 @@ class ItemService:
             elif was_retired and not now_retired:
                 update_data["archived_at"] = None
                 update_data["status"] = ItemStatus.ready
+                # Same invariant as restore(): the reason belongs to the
+                # retired period and must not survive into the active row.
+                update_data["archive_reason"] = None
 
         for field, value in update_data.items():
             setattr(item, field, value)

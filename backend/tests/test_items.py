@@ -2498,3 +2498,57 @@ class TestLifecycleAuthorityInQueries:
         )
         await db_session.commit()
         assert await svc.get_ready_item_count(test_user.id) == before - 1
+
+
+class TestUnretireClearsReason:
+    @pytest.mark.asyncio
+    async def test_patch_active_clears_archive_reason(self, client: AsyncClient, auth_headers):
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        item_id = create.json()["id"]
+
+        retired = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"lifecycle": "retired", "archive_reason": "donated"},
+            headers=auth_headers,
+        )
+        assert retired.status_code == 200, retired.text
+        assert retired.json()["archive_reason"] == "donated"
+
+        unretired = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"lifecycle": "active"},
+            headers=auth_headers,
+        )
+        assert unretired.status_code == 200, unretired.text
+        body = unretired.json()
+        assert body["archive_reason"] is None
+        assert body["lifecycle"] == "active"
+        assert body["is_archived"] is False
+
+    @pytest.mark.asyncio
+    async def test_patch_is_archived_false_clears_archive_reason(self, client: AsyncClient, auth_headers):
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        item_id = create.json()["id"]
+
+        await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"is_archived": True, "archive_reason": "donated"},
+            headers=auth_headers,
+        )
+        unretired = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"is_archived": False},
+            headers=auth_headers,
+        )
+        assert unretired.status_code == 200, unretired.text
+        assert unretired.json()["archive_reason"] is None
