@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import os
 import subprocess
 
@@ -62,6 +63,26 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _serialize_suite_runs():
+    """One suite run at a time against this container's shared state.
+
+    The tests share wardrobe_test and the soft-vocabulary files with any other
+    pytest process on the same container — a verification run overlapping a
+    battery is exactly how the intermittent vocab write-back and auth flakes
+    were observed. An exclusive lock turns that race into a queue (flock is
+    released by the kernel if a run dies holding it).
+    """
+    lock_path = os.environ.get("WARDROBE_TEST_LOCK", "/tmp/wardrobe-test-suite.lock")
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("another suite run holds the test lock; waiting for it…", flush=True)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        yield
 
 
 @pytest_asyncio.fixture(scope="function")
