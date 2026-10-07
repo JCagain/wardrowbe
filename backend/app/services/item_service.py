@@ -314,13 +314,17 @@ class ItemService:
 
         # Crossing the retired boundary keeps the same side effects as the
         # dedicated archive/restore endpoints (status + archived_at). The
-        # trigger is the lifecycle axis — a desynced boolean must not skip it.
-        if update_data.get("lifecycle") == "retired" and item.lifecycle != "retired":
-            update_data["archived_at"] = datetime.now(UTC)
-            update_data["status"] = ItemStatus.archived
-        elif update_data.get("lifecycle") == "active" and item.lifecycle == "retired":
-            update_data["archived_at"] = None
-            update_data["status"] = ItemStatus.ready
+        # trigger is the lifecycle axis — any in/out transition counts, not
+        # just the retired↔active pair, and a desynced boolean must not skip it.
+        if "lifecycle" in update_data:
+            was_retired = item.lifecycle == "retired"
+            now_retired = update_data["lifecycle"] == "retired"
+            if now_retired and not was_retired:
+                update_data["archived_at"] = datetime.now(UTC)
+                update_data["status"] = ItemStatus.archived
+            elif was_retired and not now_retired:
+                update_data["archived_at"] = None
+                update_data["status"] = ItemStatus.ready
 
         for field, value in update_data.items():
             setattr(item, field, value)

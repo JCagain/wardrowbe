@@ -2065,6 +2065,51 @@ class TestLifecycleStatus:
         )
         assert [i["id"] for i in only_retired.json()["items"]] == [retired.json()["id"]]
 
+    @pytest.mark.asyncio
+    async def test_retired_to_idle_clears_archived_side_effects(
+        self, client: AsyncClient, auth_headers
+    ):
+        create = await self._create(client, auth_headers, {"type": "shirt"}, seed=7)
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        retired = await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": "retired"}, headers=auth_headers
+        )
+        assert retired.status_code == 200, retired.text
+        assert retired.json()["status"] == "archived"
+        assert retired.json()["archived_at"] is not None
+
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": "idle"}, headers=auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+        data = patched.json()
+        assert data["lifecycle"] == "idle"
+        assert data["status"] == "ready"
+        assert data["archived_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_without_lifecycle_leaves_retired_bookkeeping(
+        self, client: AsyncClient, auth_headers
+    ):
+        create = await self._create(client, auth_headers, {"type": "shirt"}, seed=8)
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+        await client.patch(
+            f"/api/v1/items/{item_id}", json={"lifecycle": "retired"}, headers=auth_headers
+        )
+
+        # A rename of a retired item must not quietly restore it.
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}", json={"name": "still retired"}, headers=auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+        data = patched.json()
+        assert data["lifecycle"] == "retired"
+        assert data["status"] == "archived"
+        assert data["archived_at"] is not None
+
 
 class TestPrunedRoutes:
     """spec §7 摘不删: product-shell routes are unmounted, code kept."""
