@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 from PIL import Image
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -2289,3 +2289,71 @@ class TestRetiredLockstepPipelineFinishers:
         db_session.expire_all()
         result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
         assert result.scalar_one().status == ItemStatus.archived
+
+
+class TestBulkFilters:
+    """Bulk select_all must honor every filter the UI sends.
+
+    BulkFilters silently dropped favorite/needs_wash: select-all delete then
+    matched far more items than the filtered selection on screen (e.g. every
+    wardrobe row, not the three favorites).
+    """
+
+    @pytest.mark.asyncio
+    async def test_select_all_delete_honors_favorite_filter(self, client: AsyncClient, auth_headers, db_session):
+        # one favorite + one non-favorite item (distinct image seeds: identical
+        # bytes collide under phash and the second create 409s as a duplicate)
+        for name, fav, seed in (("fav shirt", True, 1), ("plain shirt", False, 2)):
+            created = await client.post(
+                "/api/v1/items",
+                files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(seed), "image/jpeg")},
+                data={"type": "shirt", "name": name, "skip_ai": "true", "favorite": str(fav).lower()},
+                headers=auth_headers,
+            )
+            assert created.status_code in (200, 201), created.text
+
+        deleted = await client.post(
+            "/api/v1/items/bulk/delete",
+            json={"select_all": True, "filters": {"favorite": True}},
+            headers=auth_headers,
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["deleted"] == 1
+
+        remaining = await client.get("/api/v1/items", headers=auth_headers)
+        names = {i["name"] for i in remaining.json()["items"]}
+        assert names == {"plain shirt"}
+
+    @pytest.mark.asyncio
+    async def test_select_all_delete_honors_needs_wash_filter(self, client: AsyncClient, auth_headers, db_session):
+        kept = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(3), "image/jpeg")},
+            data={"type": "shirt", "name": "clean shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert kept.status_code in (200, 201), kept.text
+        # the other item is needs_wash=True (set directly; no public toggle)
+        dirty = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(4), "image/jpeg")},
+            data={"type": "shirt", "name": "dirty shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert dirty.status_code in (200, 201), dirty.text
+        item_id = dirty.json()["id"]
+        await db_session.execute(
+            update(ClothingItem).where(ClothingItem.id == item_id).values(needs_wash=True)
+        )
+        await db_session.commit()
+
+        deleted = await client.post(
+            "/api/v1/items/bulk/delete",
+            json={"select_all": True, "filters": {"needs_wash": True}},
+            headers=auth_headers,
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["deleted"] == 1
+
+        remaining = await client.get("/api/v1/items", headers=auth_headers)
+        assert {i["name"] for i in remaining.json()["items"]} == {"clean shirt"}

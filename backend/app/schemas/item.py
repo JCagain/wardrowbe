@@ -341,6 +341,10 @@ class BulkFilters(BaseModel):
     search: str | None = None
     is_archived: bool | None = None
     lifecycle: Literal["active", "idle", "retired"] | None = None
+    # Sent by the wardrobe UI's select-all bulk actions; dropping either one
+    # widens a destructive action past the filter the user sees on screen.
+    favorite: bool | None = None
+    needs_wash: bool | None = None
 
 
 class BulkSelectionRequest(BaseModel):

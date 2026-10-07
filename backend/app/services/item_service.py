@@ -146,6 +146,8 @@ class ItemService:
         search: str | None = None,
         is_archived: bool = False,
         lifecycle: str | None = None,
+        favorite: bool | None = None,
+        needs_wash: bool | None = None,
         excluded_ids: list[UUID] | None = None,
         after_id: UUID | None = None,
         limit: int | None = None,
@@ -154,6 +156,11 @@ class ItemService:
 
         if type_filter:
             query = query.where(ClothingItem.type == type_filter)
+
+        if favorite is not None:
+            query = query.where(ClothingItem.favorite == favorite)
+        if needs_wash is not None:
+            query = query.where(ClothingItem.needs_wash == needs_wash)
 
         if lifecycle:
             query = query.where(ClothingItem.lifecycle == lifecycle)
