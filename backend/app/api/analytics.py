@@ -12,7 +12,7 @@ from app.models.item import ClothingItem, ItemStatus
 from app.models.outfit import Outfit
 from app.models.user import User
 from app.utils.auth import get_current_user
-from app.utils.clothing import WardrobeComposition, count_composition, first_primary
+from app.utils.clothing import WardrobeComposition, first_primary
 from app.utils.signed_urls import sign_image_url
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import {
   Heart,
   Pencil,
@@ -20,7 +19,6 @@ import {
   Eraser,
   Undo2,
   ImagePlus,
-  Layers,
   Droplets,
   ChevronDown,
   ChevronLeft,
@@ -95,7 +93,6 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const t = useTranslations('wardrobe.itemDetail');
   const tc = useTranslations('common');
   const tw = useTranslations('wardrobe');
-  const router = useRouter();
   const bodyParts = useBodyParts();
   const typeEntries = useClothingTypes();
   const colorOptions = useClothingColors();
