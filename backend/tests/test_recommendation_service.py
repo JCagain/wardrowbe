@@ -424,6 +424,14 @@ class TestFormatItemsEnriched:
         text, _ = service._format_items_for_prompt(scored, {}, date(2026, 3, 8))
         assert "shirt" in text
 
+    def test_secondary_only_item_still_shows_its_color(self):
+        service = RecommendationService.__new__(RecommendationService)
+        item = _make_item(primary_colors=[], secondary_colors=["wine"])
+        scored = [ScoredItem(item=item)]
+
+        text, _ = service._format_items_for_prompt(scored, {}, date(2026, 3, 8))
+        assert "wine" in text
+
 
 class TestFormatPrefsOccasion:
     def test_occasion_insights(self):

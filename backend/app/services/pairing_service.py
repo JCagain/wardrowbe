@@ -74,12 +74,12 @@ class PairingService:
         # Colors (primary + secondary; the prompt wants every color on the item).
         # `or []` keeps the formatter total for freshly built items whose array
         # columns only get their default at INSERT.
-        primary = first_primary(item.primary_colors)
         colors = list(dict.fromkeys([*(item.primary_colors or []), *(item.secondary_colors or [])]))
         if len(colors) > 1:
             parts.append(f"colors: {', '.join(colors)}")
-        elif primary:
-            parts.append(primary)
+        elif colors:
+            # A single color may live in secondary_colors only.
+            parts.append(first_primary(colors))
 
         # Pattern
         if item.pattern and item.pattern != "solid":

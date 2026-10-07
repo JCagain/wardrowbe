@@ -251,8 +251,9 @@ class RecommendationService:
             all_colors = (item.primary_colors or []) + (item.secondary_colors or [])
             if all_colors and len(all_colors) > 1:
                 parts.append(f"colors: {', '.join(all_colors)}")
-            elif item.primary_colors:
-                parts.append(first_primary(item.primary_colors))
+            elif all_colors:
+                # A single color may live in secondary_colors only.
+                parts.append(first_primary(all_colors))
 
             if item.pattern and item.pattern != "solid":
                 parts.append(item.pattern)

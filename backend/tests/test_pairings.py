@@ -415,6 +415,13 @@ class TestFormatItemDescription:
         assert "wine" in text
         assert "colors:" not in text
 
+    def test_secondary_only_item_still_shows_its_color(self):
+        from app.services.pairing_service import PairingService
+
+        item = _make_item(uuid4(), primary_colors=[], secondary_colors=["wine"])
+        text = PairingService(None)._format_item_description(item)
+        assert "wine" in text
+
     def test_colorless_item_still_formats(self):
         from app.services.pairing_service import PairingService
 
