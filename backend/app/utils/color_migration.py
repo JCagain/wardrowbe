@@ -67,14 +67,21 @@ def body_part_case_sql(type_column: str, mapping: dict[str, str] | None = None) 
     """CASE expression mapping a type column onto body_part slugs.
 
     `mapping` defaults to the live vocabulary; the DB data migration passes a
-    frozen snapshot so re-runs stay reproducible.
+    frozen snapshot so re-runs stay reproducible. `type_column` is a
+    code-provided identifier; mapping values are quoted with doubled single
+    quotes so runtime-vocabulary slugs can never break out of the literal
+    (same rule as `_array_literal`).
     """
     if mapping is None:
         from app.utils.garment_vocabulary import BODY_PART_BY_TYPE
 
         mapping = BODY_PART_BY_TYPE
     branches = " ".join(
-        f"WHEN {type_column} = '{value}' THEN '{part}'"
+        "WHEN {col} = '{value}' THEN '{part}'".format(
+            col=type_column,
+            value=value.replace("'", "''"),
+            part=part.replace("'", "''"),
+        )
         for value, part in sorted(mapping.items())
     )
     return f"CASE {branches} ELSE NULL END"

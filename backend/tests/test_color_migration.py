@@ -56,6 +56,17 @@ def test_body_part_case_sql_accepts_a_frozen_mapping():
     assert "'dress'" not in sql
 
 
+def test_body_part_case_sql_survives_quoted_slugs():
+    from app.utils.color_migration import body_part_case_sql
+
+    sql = body_part_case_sql("type", mapping={"shirt": "tops", "o'brien": "jewelry"})
+    # The quote must be escaped in the literal, not raw — a raw quote is both
+    # invalid SQL and an injection vector when the mapping comes from the
+    # runtime vocabulary.
+    assert "'o''brien'" in sql
+    assert "o'brien" not in sql.replace("o''brien", "")
+
+
 def test_migrate_legacy_colors_accepts_a_frozen_valid_set():
     assert migrate_legacy_colors("red", ["blue", "chartreuse"], valid={"red", "blue"}) == (
         ["red"],
