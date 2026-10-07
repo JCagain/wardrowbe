@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -49,15 +49,24 @@ export function VocabAddDialog({ kind, open, onOpenChange, family }: VocabAddDia
   const [label, setLabel] = useState('');
   const [slug, setSlug] = useState('');
   const [hex, setHex] = useState('#8fa9bf');
-  const [familyValue, setFamilyValue] = useState(family ?? '');
-  const [partValue, setPartValue] = useState(family ?? '');
+  const [familyValue, setFamilyValue] = useState('');
+  const [partValue, setPartValue] = useState('');
+
+  // Re-seed every time the dialog opens: the parent's `family` prop changes
+  // between opens (body-part switch in the item form), and submit reads the
+  // prop while the select shows state — a mount-only seed left the two
+  // disagreeing (and the footer Cancel bypasses reset() entirely).
+  useEffect(() => {
+    if (open) {
+      setFamilyValue(family ?? '');
+      setPartValue(family ?? '');
+    }
+  }, [open, family]);
 
   const reset = () => {
     setLabel('');
     setSlug('');
     setHex('#8fa9bf');
-    setFamilyValue(family ?? '');
-    setPartValue(family ?? '');
   };
 
   const submit = async () => {
