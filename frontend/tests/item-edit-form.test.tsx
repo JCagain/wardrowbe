@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
-import { editFormFromItem, lifecycleLabelKey, partTypeChangeHandlers } from '@/lib/item-edit-form';
+import { editFormFromItem, lifecycleBadgeProps, lifecycleLabelKey, partTypeChangeHandlers } from '@/lib/item-edit-form';
 import type { Item } from '@/lib/types';
 import {
   BODY_PART_LABELS,
@@ -155,5 +155,35 @@ describe('lifecycle read-view label', () => {
   it('falls back to the compat view for rows without lifecycle', () => {
     expect(lifecycleLabelKey({ is_archived: true } as Item)).toBe('statusRetired');
     expect(lifecycleLabelKey({ is_archived: false } as Item)).toBe('statusActive');
+  });
+});
+
+describe('lifecycle read-view badge', () => {
+  // The chip used to key off is_archived alone, so an idle item wore the same
+  // filled secondary chip as an active one and only the label differed.
+  it('gives each of the three states its own chip', () => {
+    expect(lifecycleBadgeProps({ lifecycle: 'active', is_archived: false })).toEqual({
+      variant: 'secondary',
+      className: '',
+    });
+    expect(lifecycleBadgeProps({ lifecycle: 'idle', is_archived: false })).toEqual({
+      variant: 'outline',
+      className: 'border-dashed text-muted-foreground',
+    });
+    expect(lifecycleBadgeProps({ lifecycle: 'retired', is_archived: true })).toEqual({
+      variant: 'outline',
+      className: '',
+    });
+  });
+
+  it('falls back to the compat view for rows without lifecycle', () => {
+    expect(lifecycleBadgeProps({ is_archived: true } as Item)).toEqual({
+      variant: 'outline',
+      className: '',
+    });
+    expect(lifecycleBadgeProps({ is_archived: false } as Item)).toEqual({
+      variant: 'secondary',
+      className: '',
+    });
   });
 });

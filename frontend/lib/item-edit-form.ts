@@ -60,7 +60,7 @@ export function editFormFromItem(item: Item): EditForm {
     purchase_date: formatPurchaseDate(item.purchase_date, item.purchase_date_precision),
     purchase_price: item.purchase_price ?? undefined,
     // lifecycle is the authority; fall back to the compat view for older rows.
-    lifecycle: item.lifecycle ?? (item.is_archived ? 'retired' : 'active'),
+    lifecycle: resolveLifecycle(item),
     is_archived: item.is_archived,
     archive_reason: item.archive_reason || '',
     notes: item.notes || '',
@@ -69,13 +69,30 @@ export function editFormFromItem(item: Item): EditForm {
   };
 }
 
+/** lifecycle is the authority; fall back to the compat view for older rows. */
+export function resolveLifecycle(
+  item: Pick<Item, 'lifecycle' | 'is_archived'>,
+): 'active' | 'idle' | 'retired' {
+  return item.lifecycle ?? (item.is_archived ? 'retired' : 'active');
+}
+
 /** Read-view status label for the three-state lifecycle (spec §10.16). */
 export function lifecycleLabelKey(
   item: Pick<Item, 'lifecycle' | 'is_archived'>,
 ): 'statusActive' | 'statusIdle' | 'statusRetired' {
-  // lifecycle is the authority; fall back to the compat view for older rows.
-  const lifecycle = item.lifecycle ?? (item.is_archived ? 'retired' : 'active');
+  const lifecycle = resolveLifecycle(item);
   if (lifecycle === 'retired') return 'statusRetired';
   if (lifecycle === 'idle') return 'statusIdle';
   return 'statusActive';
+}
+
+/** Read-view badge styling for the three-state lifecycle (spec §10.16).
+ * Idle must not wear the same chip as active — only the label used to differ. */
+export function lifecycleBadgeProps(
+  item: Pick<Item, 'lifecycle' | 'is_archived'>,
+): { variant: 'secondary' | 'outline'; className: string } {
+  const lifecycle = resolveLifecycle(item);
+  if (lifecycle === 'retired') return { variant: 'outline', className: '' };
+  if (lifecycle === 'idle') return { variant: 'outline', className: 'border-dashed text-muted-foreground' };
+  return { variant: 'secondary', className: '' };
 }

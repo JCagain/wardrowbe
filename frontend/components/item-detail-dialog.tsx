@@ -66,6 +66,7 @@ import {
 import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
 import {
   editFormFromItem,
+  lifecycleBadgeProps,
   lifecycleLabelKey,
   partTypeChangeHandlers,
   type EditForm,
@@ -925,7 +926,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     )}
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-muted-foreground">{t('status')}</span>
-                      <Badge variant={item.is_archived ? 'outline' : 'secondary'}>
+                      <Badge {...lifecycleBadgeProps(item)}>
                         {t(lifecycleLabelKey(item))}
                       </Badge>
                       {item.is_archived && item.archive_reason && (
