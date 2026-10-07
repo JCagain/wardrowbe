@@ -6,6 +6,7 @@ once, deterministically, and record the loss in purchase_date_precision,
 instead of the first unrelated save silently rewriting the row.
 """
 import importlib.util
+import inspect
 from datetime import date
 from pathlib import Path
 from uuid import uuid4
@@ -76,3 +77,6 @@ def test_migration_ships_the_normalization_in_its_own_contents():
     assert hasattr(module, "NORMALIZE_PURCHASE_DATE_SQL")
     assert "date_trunc('month', purchase_date)" in module.NORMALIZE_PURCHASE_DATE_SQL
     assert "purchase_date_precision = 'month'" in module.NORMALIZE_PURCHASE_DATE_SQL
+    # upgrade() must actually run the statement — a constant nobody executes
+    # is a silent no-op migration.
+    assert "NORMALIZE_PURCHASE_DATE_SQL" in inspect.getsource(module.upgrade)
