@@ -2229,6 +2229,83 @@ class TestTagsRoundTrip:
         assert tags["another_undeclared_key"] == 7
         assert tags["colors"] == ["blue"]
 
+    @pytest.mark.asyncio
+    async def test_update_preserves_null_valued_tag_keys(self, client: AsyncClient, auth_headers):
+        # AI answers "unknown" as an explicit null. The blob's key presence is
+        # load-bearing for the AI panel, so a rename save must not drop it.
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        patched = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={
+                "name": "renamed",
+                "tags": {"primary_color": None, "brand": None, "fit": None, "colors": ["blue"]},
+            },
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+        tags = patched.json()["tags"]
+        assert tags["primary_color"] is None
+        assert tags["brand"] is None
+        assert tags["fit"] is None
+        assert tags["colors"] == ["blue"]
+
+        # and the second save still sees the same keys
+        again = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"tags": {**tags}},
+            headers=auth_headers,
+        )
+        assert again.json()["tags"]["brand"] is None
+
+    @pytest.mark.asyncio
+    async def test_null_tag_values_do_not_wipe_projected_columns(
+        self, client: AsyncClient, auth_headers
+    ):
+        # Preserved nulls must not become column writes: "pattern": null
+        # leaves the pattern column alone, and a blob whose color keys are
+        # only nulls ("primary_color": null, no colors list) must not fire
+        # the splitter (two Nones would clear the color columns).
+        create = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert create.status_code in (200, 201), create.text
+        item_id = create.json()["id"]
+
+        seeded = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"tags": {"pattern": "striped", "primary_color": "blue", "colors": ["blue"]}},
+            headers=auth_headers,
+        )
+        assert seeded.status_code == 200, seeded.text
+        assert seeded.json()["pattern"] == "striped"
+        assert seeded.json()["primary_colors"] == ["blue"]
+
+        nulled = await client.patch(
+            f"/api/v1/items/{item_id}",
+            json={"tags": {"pattern": None, "primary_color": None}},
+            headers=auth_headers,
+        )
+        assert nulled.status_code == 200, nulled.text
+        data = nulled.json()
+        # the blob round-trips the nulls...
+        assert data["tags"]["pattern"] is None
+        assert data["tags"]["primary_color"] is None
+        # ...but the columns stay put.
+        assert data["pattern"] == "striped"
+        assert data["primary_colors"] == ["blue"]
+        assert data["secondary_colors"] == []
+
 
 class TestRetiredLockstepPipelineFinishers:
     """spec §5/§10.16: a retired item's terminal status is archived.

@@ -249,7 +249,11 @@ class ItemService:
         # Build tags dict
         tags = {}
         if item_data.tags:
-            tags = item_data.tags.model_dump(exclude_none=True)
+            # Round-trip contract: keep every key the client sent, explicit
+            # nulls included (AI "unknown" answers) — exclude_unset keeps
+            # only what arrived, so unset defaults don't get materialized
+            # and nothing that arrived gets dropped.
+            tags = item_data.tags.model_dump(exclude_unset=True)
 
         purchase_date, purchase_date_precision = parse_purchase_date(item_data.purchase_date)
         # lifecycle is authoritative; the boolean is the retired compat view.
@@ -297,9 +301,14 @@ class ItemService:
         if "tags" in update_data and update_data["tags"]:
             tags = update_data["tags"]
             if isinstance(tags, dict):
-                update_data["tags"] = {k: v for k, v in tags.items() if v is not None}
+                # Keep explicitly-null keys: the AI blob's key presence is
+                # load-bearing (primary_color in tag_data etc.), and a
+                # detail-dialog save round-trips the whole blob. The parent
+                # dump is already exclude_unset, so this dict is exactly
+                # what the client sent.
+                update_data["tags"] = dict(tags)
             else:
-                update_data["tags"] = tags.model_dump(exclude_none=True)
+                update_data["tags"] = tags.model_dump(exclude_unset=True)
 
         # purchase_date arrives as "YYYY" | "YYYY-MM" | null and needs the same
         # (Date, precision) split as the create path — including clearing both
@@ -344,7 +353,9 @@ class ItemService:
         if "tags" in update_data:
             attributes.flag_modified(item, "tags")
             tag_data = update_data["tags"] or {}
-            # Only columns that still exist on the item.
+            # Only columns that still exist on the item. Value-aware: a key
+            # present with an explicit null means "AI answered unknown" and
+            # leaves the column alone (as before); empty lists still project.
             for column in (
                 "pattern",
                 "material",
@@ -352,16 +363,18 @@ class ItemService:
                 "season",
                 "formality",
             ):
-                if column in tag_data:
+                if tag_data.get(column) is not None:
                     setattr(item, column, tag_data[column])
             # tags.colors / tags.primary_color are the AI JSON shape (kept on
             # ItemTags). Project them onto the new color columns through the
             # same legacy-normalizing splitter the data migration used — but
             # only when the request didn't set the columns directly: the detail
             # dialog sends top-level primary_colors/secondary_colors AND a tags
-            # blob that still carries the original AI color keys.
+            # blob that still carries the original AI color keys. A blob
+            # carrying only null color keys must not fire the splitter (two
+            # Nones would clear the columns).
             if "primary_colors" not in update_data and "secondary_colors" not in update_data:
-                if "primary_color" in tag_data or "colors" in tag_data:
+                if tag_data.get("primary_color") is not None or tag_data.get("colors") is not None:
                     primary_list, secondary_list = migrate_legacy_colors(
                         tag_data.get("primary_color"), tag_data.get("colors")
                     )
