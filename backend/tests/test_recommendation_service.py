@@ -414,6 +414,16 @@ class TestFormatItemsEnriched:
         text, _ = service._format_items_for_prompt(scored, pairs, today)
         assert "pairs well with:" in text
 
+    def test_null_color_arrays_do_not_crash(self):
+        # Freshly built items carry None array columns until INSERT — the
+        # same hole pairing_service's formatter already guards.
+        service = RecommendationService.__new__(RecommendationService)
+        item = _make_item(primary_colors=None, secondary_colors=None)
+        scored = [ScoredItem(item=item)]
+
+        text, _ = service._format_items_for_prompt(scored, {}, date(2026, 3, 8))
+        assert "shirt" in text
+
 
 class TestFormatPrefsOccasion:
     def test_occasion_insights(self):

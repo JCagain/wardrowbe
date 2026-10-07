@@ -246,7 +246,9 @@ class RecommendationService:
             else:
                 parts.append(item_type)
 
-            all_colors = item.primary_colors + item.secondary_colors
+            # `or []`: freshly built items carry None array columns until
+            # INSERT (same guard as pairing_service's formatter).
+            all_colors = (item.primary_colors or []) + (item.secondary_colors or [])
             if all_colors and len(all_colors) > 1:
                 parts.append(f"colors: {', '.join(all_colors)}")
             elif item.primary_colors:
