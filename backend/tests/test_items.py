@@ -288,6 +288,9 @@ class TestItemService:
             type="shirt",
             image_path=f"test/{uuid4()}.jpg",
             status=ItemStatus.ready,
+            # lifecycle is the authority: the ready count drops a row only when
+            # it is really retired (a drifted boolean must not hide it).
+            lifecycle="retired",
             is_archived=True,
         )
 
@@ -2357,3 +2360,64 @@ class TestBulkFilters:
 
         remaining = await client.get("/api/v1/items", headers=auth_headers)
         assert {i["name"] for i in remaining.json()["items"]} == {"clean shirt"}
+
+
+class TestLifecycleAuthorityInQueries:
+    """lifecycle is the authority; a desynced boolean must not hide a row."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lookup_ignores_a_drifted_boolean(self, client: AsyncClient, auth_headers, test_user, db_session):
+        created = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert created.status_code in (200, 201), created.text
+        item_id = created.json()["id"]
+
+        from app.services.item_service import ItemService
+        svc = ItemService(db_session)
+
+        # Pin a known hash and desync the boolean behind the service layer's
+        # back: is_archived=True while lifecycle stays 'active'.
+        await db_session.execute(
+            update(ClothingItem)
+            .where(ClothingItem.id == item_id)
+            .values(image_hash="drift-test-hash", is_archived=True)
+        )
+        await db_session.commit()
+
+        found = await svc.find_duplicate_by_hash(test_user.id, "drift-test-hash")
+        assert found is not None and found.id == UUID(item_id)
+
+    @pytest.mark.asyncio
+    async def test_ready_count_ignores_a_drifted_boolean(self, client: AsyncClient, auth_headers, test_user, db_session):
+        created = await client.post(
+            "/api/v1/items",
+            files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(), "image/jpeg")},
+            data={"type": "shirt", "skip_ai": "true"},
+            headers=auth_headers,
+        )
+        assert created.status_code in (200, 201), created.text
+        item_id = created.json()["id"]
+
+        from app.services.item_service import ItemService
+        svc = ItemService(db_session)
+
+        before = await svc.get_ready_item_count(test_user.id)
+        await db_session.execute(
+            update(ClothingItem).where(ClothingItem.id == item_id).values(is_archived=True)
+        )
+        await db_session.commit()
+        after = await svc.get_ready_item_count(test_user.id)
+        assert after == before  # drifted boolean hides nothing
+
+        # and a really-retired row does leave the count
+        await db_session.execute(
+            update(ClothingItem)
+            .where(ClothingItem.id == item_id)
+            .values(lifecycle="retired", is_archived=False)  # drift the other way
+        )
+        await db_session.commit()
+        assert await svc.get_ready_item_count(test_user.id) == before - 1

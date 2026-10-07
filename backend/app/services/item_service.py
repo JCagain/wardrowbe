@@ -47,7 +47,9 @@ class ItemService:
                 and_(
                     ClothingItem.user_id == user_id,
                     ClothingItem.status == ItemStatus.ready,
-                    ClothingItem.is_archived.is_(False),
+                    # lifecycle is the authority (spec §5); the boolean is only
+                    # a compat view and may drift.
+                    ClothingItem.lifecycle != "retired",
                 )
             )
         )
@@ -209,7 +211,9 @@ class ItemService:
                 and_(
                     ClothingItem.user_id == user_id,
                     ClothingItem.image_hash == image_hash,
-                    ClothingItem.is_archived.is_(False),
+                    # lifecycle is the authority (spec §5); the boolean is only
+                    # a compat view and may drift.
+                    ClothingItem.lifecycle != "retired",
                 )
             )
         )
