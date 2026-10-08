@@ -56,6 +56,18 @@ describe('PartTypeSelect-driven edit form state', () => {
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'jeans' } });
     expect(readForm()).toEqual({ name: 'coat', body_part: 'bottoms', type: 'jeans' });
   });
+
+  // The placeholder option doubles as the field's only label (the selects sit
+  // side by side with no other marker), so it has to read as the field name
+  // when closed — but it must not list itself as a pickable entry.
+  it('keeps the field-name placeholder out of the opened option list', () => {
+    render(<Harness initial={{ name: 'coat', body_part: 'tops', type: 'shirt' }} />);
+    for (const select of screen.getAllByRole('combobox')) {
+      const placeholder = (select as HTMLSelectElement).querySelector('option[value=""]');
+      expect(placeholder).not.toBeNull();
+      expect(placeholder!.hasAttribute('hidden')).toBe(true);
+    }
+  });
 });
 
 describe('editFormFromItem purchase date', () => {

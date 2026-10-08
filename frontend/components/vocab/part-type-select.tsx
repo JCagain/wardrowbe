@@ -66,7 +66,9 @@ export function PartTypeSelect({
           onTypeChange('');
         }}
       >
-        <option value="">{t('bodyPart')}</option>
+        <option value="" hidden>
+          {t('bodyPart')}
+        </option>
         {parts.map((p) => (
           <option key={p.value} value={p.value}>
             {BODY_PART_LABELS[p.value as keyof typeof BODY_PART_LABELS] ?? p.label}
@@ -84,7 +86,9 @@ export function PartTypeSelect({
           onTypeChange(e.target.value);
         }}
       >
-        <option value="">{t('type')}</option>
+        <option value="" hidden>
+          {t('type')}
+        </option>
         {visible.map((entry) => (
           <option key={entry.value} value={entry.value}>{entry.label}</option>
         ))}
