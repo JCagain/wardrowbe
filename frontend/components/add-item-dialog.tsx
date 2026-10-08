@@ -300,22 +300,22 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   return (
     <>
     <Dialog open={open} onOpenChange={handleCloseRequest}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
             {t('subtitle')}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 min-h-0 flex-col">
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="single">{t('singleItem')}</TabsTrigger>
             <TabsTrigger value="bulk">{t('bulkUpload')}</TabsTrigger>
           </TabsList>
 
           {/* Single Item Upload */}
-          <TabsContent value="single" className="space-y-4">
+          <TabsContent value="single" className="space-y-4 overflow-y-auto min-h-0">
             <form onSubmit={handleSingleSubmit} className="space-y-4">
               {!preview ? (
                 <div
@@ -534,7 +534,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
           </TabsContent>
 
           {/* Bulk Upload */}
-          <TabsContent value="bulk" className="space-y-4">
+          <TabsContent value="bulk" className="space-y-4 overflow-y-auto min-h-0">
             {!bulkResult ? (
               <>
                 <div
