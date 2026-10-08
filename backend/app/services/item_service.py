@@ -243,7 +243,7 @@ class ItemService:
         self,
         user_id: UUID,
         item_data: ItemCreate,
-        image_paths: dict[str, str],
+        image_paths: dict[str, str | None],
         upload_key: str | None = None,
     ) -> ClothingItem:
         # Build tags dict
@@ -265,6 +265,7 @@ class ItemService:
             image_path=image_paths["image_path"],
             thumbnail_path=image_paths.get("thumbnail_path"),
             medium_path=image_paths.get("medium_path"),
+            calibration_original_path=image_paths.get("calibration_original_path"),
             image_hash=image_paths.get("image_hash"),
             type=item_data.type,
             subtype=item_data.subtype,

@@ -121,7 +121,8 @@ class ImageService:
         user_id: uuid.UUID,
         image_data: bytes,
         original_filename: str,
-    ) -> dict[str, str]:
+        keep_source: bool = True,
+    ) -> dict[str, str | None]:
         """
         Process an uploaded image and store all sizes.
 
@@ -130,7 +131,12 @@ class ImageService:
             "original": "user_id/20240116_123456_abc123.jpg",
             "medium": "user_id/20240116_123456_abc123_medium.jpg",
             "thumbnail": "user_id/20240116_123456_abc123_thumb.jpg",
+            "calibration_original_path": "user_id/20240116_123456_abc123_src.jpg",
         }
+
+        keep_source=False skips the immutable pre-calibration copy (calibration
+        source is only useful for main images; additional images neither
+        calibrate nor matte) and reports calibration_original_path as None.
         """
         # Validate file extension
         ext = Path(original_filename).suffix.lower()
@@ -148,6 +154,18 @@ class ImageService:
         base_name = base_filename.rsplit(".", 1)[0]
 
         user_path = self._get_user_path(user_id)
+
+        # 校色前原图（fixes #6）：整个管线里唯一不可变的文件。校色/抠图/旋转
+        # 都只写工作图与三档尺寸，「重置回原图」从这里取。上传原始字节不保留。
+        source_path: str | None = None
+        if keep_source:
+            source_name = f"{base_name}_src.jpg"
+            # _resize_image (not a raw JPEG save): an RGBA/P PNG upload must be
+            # composited to RGB first, exactly as the working sizes are.
+            source_bytes = self._resize_image(image.copy(), SIZES["original"], quality=95)
+            (user_path / source_name).write_bytes(source_bytes)
+            source_path = f"{user_id}/{source_name}"
+
         paths = {}
 
         # Process and save each size
@@ -179,6 +197,7 @@ class ImageService:
             "image_path": paths["original"],
             "medium_path": paths["medium"],
             "thumbnail_path": paths["thumbnail"],
+            "calibration_original_path": source_path,
             "image_hash": image_hash,
         }
 

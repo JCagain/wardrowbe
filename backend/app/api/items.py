@@ -548,6 +548,7 @@ async def bulk_delete_items(
                     "medium_path": item.medium_path,
                     "thumbnail_path": item.thumbnail_path,
                     "original_backup_path": item.original_image_path,
+                    "calibration_original_path": item.calibration_original_path,
                 }
             )
 
@@ -1311,6 +1312,7 @@ async def delete_item(
             "medium_path": item.medium_path,
             "thumbnail_path": item.thumbnail_path,
             "original_backup_path": item.original_image_path,
+            "calibration_original_path": item.calibration_original_path,
         }
     )
 
@@ -1932,6 +1934,10 @@ async def replace_item_image(
         "medium_path": item.medium_path,
         "thumbnail_path": item.thumbnail_path,
         "original_backup_path": item.original_image_path,
+        # Swapping the main image swaps its identity: the pre-calibration
+        # source must follow the new upload or a later calibration reset
+        # would restore the OLD image, so the old _src goes here too.
+        "calibration_original_path": item.calibration_original_path,
     }
 
     item.image_path = image_paths["image_path"]
@@ -1939,6 +1945,7 @@ async def replace_item_image(
     item.thumbnail_path = image_paths["thumbnail_path"]
     item.image_hash = image_paths["image_hash"]
     item.original_image_path = None
+    item.calibration_original_path = image_paths["calibration_original_path"]
     await db.commit()
     await db.refresh(
         item,
@@ -1948,6 +1955,7 @@ async def replace_item_image(
             "thumbnail_path",
             "image_hash",
             "original_image_path",
+            "calibration_original_path",
             "updated_at",
         ],
     )
@@ -2006,6 +2014,9 @@ async def add_item_image(
             user_id=current_user.id,
             image_data=content,
             original_filename=image.filename or "upload.jpg",
+            # Additional images are never calibrated or matted, so a
+            # pre-calibration copy would be dead data nobody can reference.
+            keep_source=False,
         )
     except ValueError as e:
         raise HTTPException(
