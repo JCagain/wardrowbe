@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
-import { api, setAccessToken } from '@/lib/api';
+import { api, setAccessToken, ApiError } from '@/lib/api';
 
 function useSetTokenIfAvailable() {
   const { data: session } = useSession();
@@ -29,9 +29,20 @@ export function useWeather() {
   const { status } = useSession();
   useSetTokenIfAvailable();
 
-  return useQuery({
+  return useQuery<Weather | null>({
     queryKey: ['weather'],
-    queryFn: () => api.get<Weather>('/weather/current'),
+    queryFn: async () => {
+      try {
+        return await api.get<Weather>('/weather/current');
+      } catch (error) {
+        // Location is optional, so "no coordinates" is an empty state rather
+        // than a failure. The endpoint answers that with a 400, which the
+        // global QueryCache handler would otherwise toast on every page load.
+        // Swallow it and report null so consumers render their own empty UI.
+        if (error instanceof ApiError && error.status === 400) return null;
+        throw error;
+      }
+    },
     enabled: status !== 'loading',
     staleTime: 1000 * 60 * 15, // 15 minutes - weather doesn't change that fast
     retry: false, // Don't retry if location not set

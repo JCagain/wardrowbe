@@ -118,7 +118,7 @@ interface WeatherOverride {
   condition: 'sunny' | 'cloudy' | 'rainy';
 }
 
-function WeatherCard({ weather, isLoading, temperatureUnit, t }: { weather?: Weather; isLoading: boolean; temperatureUnit: TempUnit; t: Translator }) {
+function WeatherCard({ weather, isLoading, temperatureUnit, t }: { weather?: Weather | null; isLoading: boolean; temperatureUnit: TempUnit; t: Translator }) {
   if (isLoading) {
     return (
       <Card className="border-muted">
