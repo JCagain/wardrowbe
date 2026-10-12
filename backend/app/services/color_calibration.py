@@ -20,7 +20,8 @@ _ORDER = ("gray", "white")  # 灰卡优先（fixes #1）
 def detect_reference(image: Image.Image) -> tuple[str, tuple[int, int, int, int]] | None:
     """找参考物区域。灰卡优先，找不到再找白纸，都没有返回 None。
 
-    返回的 box 是含右下的像素框，可直接喂 `Image.crop`。
+    返回的 box 是**含右下**的像素框，与 `detect_reference` 的 `-1` 对应。
+    PIL 的 `Image.crop` 右/下是开区间，喂它时要 `(l, t, r + 1, b + 1)`。
     """
     from skimage.color import rgb2lab
     from skimage.measure import label, regionprops
@@ -88,7 +89,11 @@ def calibrate(
     box: tuple[int, int, int, int],
     baseline: str,
 ) -> Image.Image:
-    """以框内像素为基准做白平衡，应用到整图。box=(l,t,r,b) 含右下。"""
+    """以框内像素为基准做白平衡，应用到整图。
+
+    box=(l,t,r,b) 是含右下的（同 `detect_reference` 返回值）；内部转成 PIL 的
+    开区间 crop，调用方无需转换。
+    """
     rgb = image.convert("RGB")
     l, t, r, b = box
     # box 是含右下的（detect_reference 契约）；PIL crop 右/下开区间，要 +1
