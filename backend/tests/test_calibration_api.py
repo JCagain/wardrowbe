@@ -351,3 +351,62 @@ async def test_apply_rejects_a_bad_box_or_baseline(
             headers=auth_headers,
         )
         assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_calibrate_image_rejects_a_box_outside_the_image(tmp_path):
+    """服务层兜底：越界 box 在裁剪/按面积分配内存之前就拒掉。
+
+    越界裁剪会被 PIL 黑边填充地接受，参考均值带偏成错误颜色；超大 box 还会
+    先按 box 面积分配内存。
+    """
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(USER, _jpeg_bytes(size=(600, 400)), "coat.jpg")
+
+    for box in ((0, 0, 2000, 2000), (-5, 0, 50, 50), (50, 50, 40, 60)):
+        with pytest.raises(ValueError):
+            svc.calibrate_image(
+                paths["image_path"], paths["calibration_original_path"], box, "gray"
+            )
+
+
+@pytest.mark.asyncio
+async def test_apply_rejects_an_out_of_bounds_box(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """越界 box 是 400，不能 200 + 错误颜色。"""
+    item = await _make_item(db_session, test_user)  # 600×400
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [0, 0, 2000, 2000], "baseline": "gray"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 400, resp.text
+
+
+@pytest.mark.asyncio
+async def test_write_endpoints_reject_an_item_with_a_running_job(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """后台任务拥有三档文件（同 remove-background 的 409）；detect 只读不拦。"""
+    item = await _make_item(
+        db_session, test_user, status=ItemStatus.processing, ai_job_id="job-123"
+    )
+
+    for path, payload in (
+        ("apply", {"box": [0, 0, 50, 50], "baseline": "gray"}),
+        ("manual", {"kelvin": 6500.0, "tint": 0.0}),
+        ("reset", None),
+    ):
+        kwargs: dict = {"headers": auth_headers}
+        if payload is not None:
+            kwargs["json"] = payload
+        resp = await client.post(f"/api/v1/items/{item.id}/calibration/{path}", **kwargs)
+        assert resp.status_code == 409, f"{path}: {resp.status_code} {resp.text}"
+
+    detected = await client.post(
+        f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
+    )
+    assert detected.status_code == 200, detected.text

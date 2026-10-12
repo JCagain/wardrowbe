@@ -404,6 +404,14 @@ class ImageService:
             raise ValueError(f"Calibration source not found: {calibration_original_path}")
 
         base = Image.open(source).convert("RGB")
+        l, t, r, b = box
+        width, height = base.size
+        # box 含右下。越界裁剪会被 PIL 黑边填充地接受（参考均值被带偏成错误
+        # 颜色），超大 box 还会先按 box 面积分配内存——在裁剪之前就拒掉。
+        if not (0 <= l <= r < width and 0 <= t <= b < height):
+            raise ValueError(
+                f"Calibration box {tuple(box)} is outside the {width}x{height} image"
+            )
         result = calibrate(base, box, baseline)
         return self._save_all_sizes(result, image_path)
 

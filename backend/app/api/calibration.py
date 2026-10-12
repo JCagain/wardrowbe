@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.item import ClothingItem
+from app.models.item import ClothingItem, ItemStatus
 from app.models.user import User
 from app.schemas.item import ItemResponse
 from app.services.color_calibration import detect_reference
@@ -51,7 +51,7 @@ async def _owned_item(db: AsyncSession, item_id: UUID, user_id: UUID) -> Clothin
 
 
 def _calibration_paths(item: ClothingItem) -> tuple[str, str]:
-    """校色三操作都要求工作图与不可变副本在位。"""
+    """校色三写的前置条件：工作图与不可变副本在位，且没有在跑的后台任务。"""
     if not item.image_path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -61,6 +61,14 @@ def _calibration_paths(item: ClothingItem) -> tuple[str, str]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Item has no calibration source",
+        )
+
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # 同 remove-background：排队/在跑的 job 拥有 image_path/medium_path/
+        # thumbnail_path——抢写会谁后落盘谁赢，甚至三档尺寸组撕裂。
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
         )
     return item.image_path, item.calibration_original_path
 
