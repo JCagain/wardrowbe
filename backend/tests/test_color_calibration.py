@@ -1,6 +1,14 @@
+import numpy as np
 from PIL import Image, ImageDraw
 
-from app.services.color_calibration import detect_reference
+from app.services.color_calibration import (
+    GAIN_MAX,
+    GAIN_MIN,
+    apply_gains,
+    calibrate,
+    detect_reference,
+    white_balance_gain,
+)
 
 
 def test_detects_a_gray_card_before_a_white_patch():
@@ -48,3 +56,40 @@ def test_ignores_gray_band_region_below_min_area():
     img = Image.new("RGB", (800, 600), (30, 90, 160))
     ImageDraw.Draw(img).rectangle((100, 100, 144, 219), fill=(128, 128, 128))
     assert detect_reference(img) is None
+
+
+def test_gray_baseline_equalizes_channels():
+    mean = np.array([200.0, 100.0, 50.0])
+    corrected = mean * white_balance_gain(mean, "gray")
+    assert np.allclose(corrected, corrected[0], atol=1e-6)
+
+
+def test_white_baseline_drives_channels_to_white():
+    mean = np.array([180.0, 190.0, 170.0])
+    assert np.allclose(mean * white_balance_gain(mean, "white"), 255.0, atol=1e-6)
+
+
+def test_gain_is_clamped_for_a_near_black_reference():
+    # fixes #7：框选在极暗区域，增益不得炸到无穷
+    gains = white_balance_gain(np.array([1.0, 1.0, 1.0]), "white")
+    assert gains.max() <= GAIN_MAX and gains.min() >= GAIN_MIN
+
+
+def test_gain_is_clamped_for_a_blown_out_reference():
+    gains = white_balance_gain(np.array([254.0, 255.0, 253.0]), "gray")
+    assert np.all((gains >= GAIN_MIN) & (gains <= GAIN_MAX))
+
+
+def test_apply_gains_never_overflows_a_channel():
+    out = apply_gains(Image.new("RGB", (8, 8), (250, 10, 10)), np.array([2.0, 2.0, 2.0]))
+    arr = np.asarray(out)
+    assert arr.max() == 255 and arr.min() >= 0
+
+
+def test_calibrate_uses_the_box_not_the_whole_image():
+    img = Image.new("RGB", (100, 100), (30, 30, 200))
+    for x in range(10, 40):
+        for y in range(10, 40):
+            img.putpixel((x, y), (128, 128, 128))
+    out = np.asarray(calibrate(img, (10, 10, 39, 39), "gray")).astype(float)[10:40, 10:40]
+    assert out[..., 0].mean() == out[..., 2].mean()
