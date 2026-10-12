@@ -75,9 +75,17 @@ def test_gain_is_clamped_for_a_near_black_reference():
     assert gains.max() <= GAIN_MAX and gains.min() >= GAIN_MIN
 
 
-def test_gain_is_clamped_for_a_blown_out_reference():
+def test_gain_lower_bound_clamps_an_out_of_range_mean():
+    # 合成越界均值（uint8 派生的均值到不了这里，是防御性下界）：255/2000 = 0.1275 < GAIN_MIN
+    gains = white_balance_gain(np.array([2000.0, 2000.0, 2000.0]), "white")
+    assert gains.min() == GAIN_MIN
+    assert gains.min() >= GAIN_MIN
+
+
+def test_near_white_reference_stays_untouched():
+    # 过曝附近的参考区：增益应贴近 1（不被夹到边界）
     gains = white_balance_gain(np.array([254.0, 255.0, 253.0]), "gray")
-    assert np.all((gains >= GAIN_MIN) & (gains <= GAIN_MAX))
+    assert np.allclose(gains, 1.0, atol=0.01)
 
 
 def test_apply_gains_never_overflows_a_channel():
@@ -88,8 +96,24 @@ def test_apply_gains_never_overflows_a_channel():
 
 def test_calibrate_uses_the_box_not_the_whole_image():
     img = Image.new("RGB", (100, 100), (30, 30, 200))
+    # 参考区不均匀、不中性：内部偏暖，含右下的最后一行/一列偏冷 ——
+    # 均匀中性色块会让「漏 +1」和「no-op」都测不出来。
     for x in range(10, 40):
         for y in range(10, 40):
-            img.putpixel((x, y), (128, 128, 128))
-    out = np.asarray(calibrate(img, (10, 10, 39, 39), "gray")).astype(float)[10:40, 10:40]
-    assert out[..., 0].mean() == out[..., 2].mean()
+            img.putpixel((x, y), (200, 100, 50))
+    for x in range(10, 40):
+        img.putpixel((x, 39), (50, 150, 100))
+    for y in range(10, 39):
+        img.putpixel((39, y), (50, 150, 100))
+
+    box = (10, 10, 39, 39)
+    region = np.asarray(img, dtype=np.float64)[10:40, 10:40]  # 含右下
+    mean = region.reshape(-1, 3).mean(axis=0)
+    gains = white_balance_gain(mean, "gray")
+    out = np.asarray(calibrate(img, box, "gray"), dtype=np.float64)[10:40, 10:40]
+
+    # no-op 会红：输出通道被拉平，且不同于输入的通道均值
+    assert np.allclose(out[..., 0].mean(), out[..., 2].mean(), atol=1.0)
+    assert not np.allclose(out.mean(axis=(0, 1)), mean, atol=1.0)
+    # 漏 +1 会红：输出须等于按「含右下整块」均值算出的预期
+    assert np.allclose(out, np.clip(region * gains, 0, 255), atol=1.5)
