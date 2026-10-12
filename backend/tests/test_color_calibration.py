@@ -32,3 +32,19 @@ def test_ignores_small_noise_regions():
     for i in range(6):
         d.rectangle((10 + i * 30, 10, 25 + i * 30, 25), fill=(200, 200, 200))
     assert detect_reference(img) is None
+
+
+def test_ignores_gray_band_region_below_min_side():
+    # 灰带内（128,128,128 → L*≈0.54）、面积 300×20=6000 已过 MIN_REGION_AREA_RATIO
+    # (5760)，但最短边 20 < MIN_REGION_SIDE —— 只有最短边分支能拒掉它。
+    img = Image.new("RGB", (800, 600), (30, 90, 160))
+    ImageDraw.Draw(img).rectangle((100, 100, 399, 119), fill=(128, 128, 128))
+    assert detect_reference(img) is None
+
+
+def test_ignores_gray_band_region_below_min_area():
+    # 灰带内、两维度都 ≥ MIN_REGION_SIDE（45×120），但面积 5400 < 5760 ——
+    # 只有面积分支能拒掉它。
+    img = Image.new("RGB", (800, 600), (30, 90, 160))
+    ImageDraw.Draw(img).rectangle((100, 100, 144, 219), fill=(128, 128, 128))
+    assert detect_reference(img) is None
