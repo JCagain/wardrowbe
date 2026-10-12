@@ -146,15 +146,16 @@ class TestRotateItemImageJob:
     async def test_writes_back_the_paths_the_rotation_actually_returned(
         self, db_session: AsyncSession, test_user: User
     ):
-        # A matted item is stored as an RGBA PNG. Rotation flattens it to RGB,
-        # so `_save_all_sizes` flips the extension to .jpg and returns those
-        # names - the job must write them back or the item keeps pointing at
-        # the now-stale PNG.
+        # An RGB working image stored under a .png name gets rewritten as .jpg
+        # (extension follows the alpha channel), so `_save_all_sizes` returns
+        # different names - the job must write them back or the item keeps
+        # pointing at the now-deleted PNG. A matted RGBA PNG keeps its
+        # extension; this is the case where the names actually change.
         item = await _make_item(db_session, test_user)
         svc = ImageService()
         base = item.image_path.rsplit(".", 1)[0]
         png_path = f"{base}.png"
-        Image.new("RGBA", (400, 600), (10, 200, 30, 255)).save(
+        Image.new("RGB", (400, 600), (10, 200, 30)).save(
             svc.get_image_path(png_path), format="PNG"
         )
         item.image_path = png_path
@@ -175,7 +176,7 @@ class TestRotateItemImageJob:
             result = await rotate_item_image_job({}, str(item.id), "cw")
 
         assert result["status"] == "success"
-        # Today's rotate flattens the matte, so the extension flips back.
+        # The format flip happened, so the returned names differ from the old ones.
         assert returned["image_path"] != png_path
         refreshed = await _get_item(db_session, item.id)
         assert refreshed.image_path == returned["image_path"]

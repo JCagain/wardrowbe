@@ -88,7 +88,8 @@ class TestRemoveBackgroundBackup:
 
         with patch("app.services.background_removal.get_provider", return_value=_mock_provider()):
             first = svc.remove_background(item_with_image.image_path)
-            second = svc.remove_background(item_with_image.image_path)
+            # 第二次抠图走的是第一次写回后的路径（旧 .jpg 三档已被格式翻转清掉）
+            second = svc.remove_background(first["image_path"])
 
         assert first["original_backup_path"] == second["original_backup_path"]
         backup_full = svc.get_image_path(first["original_backup_path"])

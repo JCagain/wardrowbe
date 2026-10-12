@@ -287,6 +287,7 @@ class ImageService:
         fmt = "PNG" if has_alpha else "JPEG"
         ext = ".png" if has_alpha else ".jpg"
         base_path = image_path.rsplit(".", 1)[0]
+        old_ext = Path(image_path).suffix
         original_path = f"{base_path}{ext}"
         medium_path = f"{base_path}_medium{ext}"
         thumb_path = f"{base_path}_thumb{ext}"
@@ -307,11 +308,41 @@ class ImageService:
                 img_copy.save(output, format="JPEG", quality=quality, optimize=True)
             (self.storage_path / rel_path).write_bytes(output.getvalue())
 
+        if old_ext and old_ext != ext:
+            # 换扩展名后旧三档是无引用孤儿（磁盘泄漏）。先写新档再删旧档：
+            # 中途失败最多多占几个文件，不会两头都缺。
+            for rel_path in (image_path, f"{base_path}_medium{old_ext}", f"{base_path}_thumb{old_ext}"):
+                stale = self.storage_path / rel_path
+                if stale.exists():
+                    stale.unlink()
+
         return {
             "image_path": original_path,
             "medium_path": medium_path,
             "thumbnail_path": thumb_path,
         }
+
+    def _mask_path_for(self, image_path: str) -> str:
+        """mask 旁挂路径约定：与主图同 base 的 `_mask.png`（remove_background 同款）。"""
+        return f"{image_path.rsplit('.', 1)[0]}_mask.png"
+
+    def _clear_mask(self, image_path: str) -> None:
+        """删掉 mask 旁挂。校色从 `_src` 重推导像素，旧 mask 必然过期。"""
+        mask_full = self.storage_path / self._mask_path_for(image_path)
+        if mask_full.exists():
+            mask_full.unlink()
+
+    def _save_calibrated(self, image_path: str, image: Image.Image) -> dict[str, str | bool]:
+        """校色收尾：写三档、清掉过期 mask，并上报 `mask_cleared`（fixes 过期 mask）。
+
+        校色从 `calibration_original_path`（RGB JPEG）重推导像素，抠图结果必然
+        不再对应——留着 mask 就是过期 mask，`update_mask` 会拿它合成垃圾。调用方
+        看到 `mask_cleared` 应把 `mask_path` 置 None，并提示用户重新抠图。
+        """
+        self._clear_mask(image_path)
+        paths: dict[str, str | bool] = self._save_all_sizes(image, image_path)
+        paths["mask_cleared"] = True
+        return paths
 
     def remove_background(self, image_path: str) -> dict[str, str]:
         """抠图：存 RGBA PNG 主图 + L 模式 mask 旁挂。不合成纯色底（fixes #9）。"""
@@ -330,7 +361,7 @@ class ImageService:
         result = background_removal.get_provider().remove(image)
 
         mask = result.getchannel("A")
-        mask_path = f"{base_path}_mask.png"
+        mask_path = self._mask_path_for(image_path)
         mask_service.save_mask(mask, self.storage_path / mask_path)
 
         paths = self._save_all_sizes(result, image_path)
@@ -352,12 +383,15 @@ class ImageService:
         """
         Rotate an image and regenerate all sizes.
 
+        旋转是几何变换：RGBA 主图带着 alpha 一起转（**不**铺白底压成 RGB），
+        mask 旁挂用同一角度转，两者继续逐点对应。
+
         Args:
             image_path: Relative path to the original image (e.g., "user_id/filename.jpg")
             direction: "cw" for clockwise 90°, "ccw" for counter-clockwise 90°
 
         Returns:
-            dict with updated paths (same as input since we overwrite)
+            dict with the paths actually written (the extension follows the alpha)
         """
         original_full = self.storage_path / image_path
 
@@ -367,17 +401,20 @@ class ImageService:
         angle = -90 if direction == "cw" else 90  # PIL rotates counter-clockwise by default
 
         image = Image.open(original_full)
-
-        if image.mode in ("RGBA", "P", "LA"):
-            background = Image.new("RGB", image.size, (255, 255, 255))
-            if image.mode == "P":
-                image = image.convert("RGBA")
-            background.paste(image, mask=image.split()[-1] if image.mode == "RGBA" else None)
-            image = background
+        has_alpha = image.mode in ("RGBA", "LA") or (
+            image.mode == "P" and "transparency" in image.info
+        )
+        if has_alpha:
+            image = image.convert("RGBA")
         elif image.mode != "RGB":
             image = image.convert("RGB")
 
         rotated = image.rotate(angle, expand=True)
+
+        mask_full = self.storage_path / self._mask_path_for(image_path)
+        if mask_full.exists():
+            mask = mask_service.load_mask(mask_full)
+            mask_service.save_mask(mask.rotate(angle, expand=True), mask_full)
 
         return self._save_all_sizes(rotated, image_path)
 
@@ -387,7 +424,7 @@ class ImageService:
         calibration_original_path: str,
         box: tuple[int, int, int, int],
         baseline: str,
-    ) -> dict[str, str]:
+    ) -> dict[str, str | bool]:
         """以框内像素做白平衡，写回工作图与三档。原图副本不动。
 
         box=(l,t,r,b) 含右下（同 `detect_reference` 返回值），原样下传给
@@ -411,7 +448,7 @@ class ImageService:
                 f"Calibration box {tuple(box)} is outside the {width}x{height} image"
             )
         result = calibrate(base, box, baseline)
-        return self._save_all_sizes(result, image_path)
+        return self._save_calibrated(image_path, result)
 
     def manual_white_balance(
         self,
@@ -419,7 +456,7 @@ class ImageService:
         calibration_original_path: str,
         kelvin: float,
         tint: float,
-    ) -> dict[str, str]:
+    ) -> dict[str, str | bool]:
         """色温/色调滑块的手动白平衡。滑块在 UI 上无界，这里把增益夹住。
 
         6500K 为中性；每 1000K 约 6% 通道偏移。tint 是绿-品红轴。
@@ -432,11 +469,11 @@ class ImageService:
         t = (kelvin - 6500.0) / 1000.0
         gains = np.array([1.0 + 0.06 * t, 1.0 + 0.01 * tint / 100.0, 1.0 - 0.06 * t])
         gains = np.clip(gains, GAIN_MIN, GAIN_MAX)
-        return self._save_all_sizes(apply_gains(base, gains), image_path)
+        return self._save_calibrated(image_path, apply_gains(base, gains))
 
     def reset_calibration(
         self, image_path: str, calibration_original_path: str
-    ) -> dict[str, str]:
+    ) -> dict[str, str | bool]:
         """重置回原图：副本字节原样写回工作图，再重生成三档。
 
         fixes #6：不对副本做任何像素变换。重置后工作图与副本逐字节一致——
@@ -449,9 +486,9 @@ class ImageService:
 
         pristine = source.read_bytes()
         base = Image.open(BytesIO(pristine)).convert("RGB")
-        paths = self._save_all_sizes(base, image_path)
+        paths = self._save_calibrated(image_path, base)
         # original 档必须是副本字节本身（原样还原，不接受重编码漂移）。
         # 写到返回的真实路径上：工作图若是 PNG（抠图产物），`_save_all_sizes`
         # 按无 alpha 会把扩展名换回 .jpg，写入参路径会把 JPEG 字节塞进 .png。
-        (self.storage_path / paths["image_path"]).write_bytes(pristine)
+        (self.storage_path / str(paths["image_path"])).write_bytes(pristine)
         return paths

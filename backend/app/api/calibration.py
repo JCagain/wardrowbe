@@ -76,7 +76,7 @@ def _calibration_paths(item: ClothingItem) -> tuple[str, str]:
 async def _persist_image_op(
     db: AsyncSession,
     item: ClothingItem,
-    op: Callable[..., dict[str, str]],
+    op: Callable[..., dict[str, str | bool]],
     args: tuple,
     action: str,
 ) -> ItemResponse:
@@ -99,12 +99,22 @@ async def _persist_image_op(
     item.image_path = result["image_path"]
     item.medium_path = result["medium_path"]
     item.thumbnail_path = result["thumbnail_path"]
+    if result.get("mask_cleared"):
+        # 校色从 `_src` 重推导像素，抠图结果不再对应；mask 文件服务层已删，
+        # 这里把列置 None，否则 update_mask 会拿过期 mask 合成垃圾。
+        item.mask_path = None
     await db.commit()
     # 只刷写过的列：整对象 refresh 会把 get_by_id 预载的 additional_images
     # 打回未加载，ItemResponse 序列化时懒加载就会炸 greenlet
     await db.refresh(
         item,
-        attribute_names=["image_path", "medium_path", "thumbnail_path", "updated_at"],
+        attribute_names=[
+            "image_path",
+            "medium_path",
+            "thumbnail_path",
+            "mask_path",
+            "updated_at",
+        ],
     )
     return ItemResponse.model_validate(item)
 

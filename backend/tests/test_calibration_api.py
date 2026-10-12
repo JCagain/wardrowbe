@@ -8,11 +8,13 @@
 
 import uuid
 from io import BytesIO
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from httpx import AsyncClient
 from PIL import Image, ImageDraw
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item import ClothingItem, ItemStatus
@@ -410,3 +412,43 @@ async def test_write_endpoints_reject_an_item_with_a_running_job(
         f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
     )
     assert detected.status_code == 200, detected.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("apply", {"box": [0, 0, 50, 50], "baseline": "gray"}),
+        ("manual", {"kelvin": 6500.0, "tint": 0.0}),
+        ("reset", None),
+    ],
+)
+async def test_calibration_endpoints_clear_a_stale_mask(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, path, payload
+):
+    """校色后 mask 必须清掉（列置 None + 文件删掉），否则 update_mask 会拿过期 mask 合成。"""
+    item = await _make_item(db_session, test_user)
+    item_id = item.id
+    svc = ImageService()
+    provider = MagicMock()
+    provider.remove.side_effect = lambda img: Image.new("RGBA", img.size, (0, 0, 255, 255))
+    with patch("app.services.background_removal.get_provider", return_value=provider):
+        matte = svc.remove_background(item.image_path)
+    item.image_path = matte["image_path"]
+    item.medium_path = matte["medium_path"]
+    item.thumbnail_path = matte["thumbnail_path"]
+    item.mask_path = matte["mask_path"]
+    await db_session.commit()
+    mask_file = svc.get_image_path(matte["mask_path"])
+    assert mask_file.exists()
+
+    kwargs: dict = {"headers": auth_headers}
+    if payload is not None:
+        kwargs["json"] = payload
+    resp = await client.post(f"/api/v1/items/{item_id}/calibration/{path}", **kwargs)
+
+    assert resp.status_code == 200, f"{path}: {resp.status_code} {resp.text}"
+    assert not mask_file.exists(), f"{path}: stale mask sidecar left on disk"
+    db_session.expire_all()
+    result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+    assert result.scalar_one().mask_path is None, f"{path}: mask_path not cleared"
