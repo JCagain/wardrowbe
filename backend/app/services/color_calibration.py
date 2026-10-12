@@ -1,60 +1,264 @@
 """校色（spec §1.2 / fixes #1-#7）：参考物检出与白平衡数学。
 
-纯函数、无 I/O、不读词表。检出用 scikit-image —— **不引入 OpenCV**。
+纯函数、无 I/O、不读词表。检出用 scikit-image/scipy —— **不引入 OpenCV**。
+
+检出（Task R19 / Ruling 19）不看绝对亮度带，看**白-灰-黑三卡成条**的结构先验：
+相对 L 排序 + 显著间隔是曝光不变量，背景不可能同时满足「三块扁平矩形 +
+单调 L 阶梯」。绝对 L 只在兜底（单卡）时用来定 kind。
 """
 from __future__ import annotations
+
+import math
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
 
-# 参考物是低色度（近中性）的大块区域：灰卡居中等亮度，白纸居高亮度。
-CHROMA_MAX = 12.0
-LIGHTNESS_BANDS = {"gray": (0.28, 0.72), "white": (0.80, 1.01)}
-# 小块当噪声丢掉（fixes #3）：不足整图 1.2%，或最短边不到 40px。
-MIN_REGION_AREA_RATIO = 0.012
+# ---- 平坦掩码（Task R19，拿 test.jpg 校准；勿散落魔数）--------------------
+# 局部 L 标准差窗口随图幅缩放：0.72% 长边 ≈ test.jpg 5712px 上的 41px。
+FLAT_WINDOW_FRAC = 0.0072
+FLAT_WINDOW_MIN = 7
+FLAT_WINDOW_MAX = 55
+# 平坦阈值：test.jpg 三卡局部 L-std ≈ 0.010–0.014，床单/衣物 ≥ 0.013–0.020
+FLAT_STD_MAX = 0.014
+
+# ---- 候选过滤 ------------------------------------------------------------
+# 面积在整图 0.05%–30%（下限拒噪声斑块，上限拒背景/整面墙）
+MIN_AREA_RATIO = 0.0005
+MAX_AREA_RATIO = 0.30
+# 旧安全钉保留：噪声斑块不得当参考（最短边）
 MIN_REGION_SIDE = 40
+# 长宽比不极端：0.25–4（倒数同界，长短边之比 ≤ 4）
+ASPECT_MAX = 4.0
+# 矩形度：凸包最小外接矩形填充率 > 0.6 —— 旋转不变，容得下约 45° 倾斜。
+# （轴对齐 bbox 填充率对 45° 方块恰好 0.5，与「容得下倾斜」自相矛盾，故用最小外接矩形。）
+MINRECT_FILL_MIN = 0.6
 
-_ORDER = ("gray", "white")  # 灰卡优先（fixes #1）
+# ---- 找条（Ruling 19）----------------------------------------------------
+# 贴边：bbox 间距 < 图对角线 2%（重叠算 0）
+STRIP_GAP_FRAC = 0.02
+# 尺寸相近：面积比在 0.5–2
+STRIP_AREA_RATIO_LO = 0.5
+STRIP_AREA_RATIO_HI = 2.0
+# 相邻 L 间隔 > 8% 的整图 L 极差（p98-p2，稳健极差）
+L_GAP_FRAC = 0.08
+
+# ---- 兜底（spec §1.2：灰卡优先、白纸 fallback、都不像 → None 不猜）--------
+GRAY_L_RANGE = (0.25, 0.65)  # 中亮度带 → 灰卡
+SINGLE_WHITE_L = 0.65  # 单块 ≥ 该亮度 → 白纸基准
+
+Box = tuple[int, int, int, int]
 
 
-def detect_reference(image: Image.Image) -> tuple[str, tuple[int, int, int, int]] | None:
-    """找参考物区域。灰卡优先，找不到再找白纸，都没有返回 None。
+class ReferenceDetection(NamedTuple):
+    """`detect_reference` 的结果：主参考 (kind, box) + 三联时的各卡框。
 
-    返回的 box 是**含右下**的像素框，与 `detect_reference` 的 `-1` 对应。
-    PIL 的 `Image.crop` 右/下是开区间，喂它时要 `(l, t, r + 1, b + 1)`。
+    kind/box 语义与旧契约一致（box 含右下）；cards 只在三联检出时给全，
+    否则 None —— 不为单卡编造另两框。
+    """
+
+    kind: str  # "gray" | "white" —— 白平衡基准类型
+    box: Box  # 主参考框，含右下
+    cards: dict[str, Box] | None  # {"white": box, "gray": box, "black": box}
+
+
+class _Candidate(NamedTuple):
+    box: Box
+    area: int
+    mean_L: float
+    std_L: float
+
+
+def _local_std(lightness: np.ndarray, w: int) -> np.ndarray:
+    """局部 L 标准差（均匀窗）。色度是坏筛子，平坦度才是卡的特征。"""
+    from scipy.ndimage import uniform_filter
+
+    mean = uniform_filter(lightness, w)
+    mean_sq = uniform_filter(lightness * lightness, w)
+    return np.sqrt(np.maximum(mean_sq - mean * mean, 0.0))
+
+
+def _minrect_fill(points: np.ndarray, area: int) -> float:
+    """凸包最小外接矩形填充率（旋转不变的矩形度）。
+
+    skimage 的 orientation 惯性张量对方块退化（各向同性）不可用；
+    对凸包顶点做旋转卡壳取最小面积外接矩形。
+    """
+    from scipy.spatial import ConvexHull
+
+    if len(points) < 3:
+        return 0.0
+    hull = ConvexHull(points)
+    hp = points[hull.vertices].astype(np.float64)
+    best = math.inf
+    for i in range(len(hp)):
+        edge = hp[(i + 1) % len(hp)] - hp[i]
+        length = float(np.hypot(edge[0], edge[1]))
+        if length == 0.0:
+            continue
+        u = edge / length
+        v = np.array([-u[1], u[0]])
+        pu = hp @ u
+        pv = hp @ v
+        rect = float(pu.max() - pu.min()) * float(pv.max() - pv.min())
+        if rect > 0.0:
+            best = min(best, rect)
+    if not math.isfinite(best):
+        return 0.0
+    return float(min(1.0, area / best))
+
+
+def _candidates(lightness: np.ndarray) -> list[_Candidate]:
+    """平坦连通域 → 过滤后的候选（含右下 box）。"""
+    from skimage.measure import label, regionprops
+
+    height, width = lightness.shape
+    w = int(round(FLAT_WINDOW_FRAC * max(height, width))) | 1  # 奇数窗
+    w = max(FLAT_WINDOW_MIN, min(FLAT_WINDOW_MAX, w))
+
+    flat = _local_std(lightness, w) < FLAT_STD_MAX
+    if not flat.any():
+        return []
+
+    min_area = max(int(height * width * MIN_AREA_RATIO), 1)
+    max_area = int(height * width * MAX_AREA_RATIO)
+    out: list[_Candidate] = []
+    for region in regionprops(label(flat)):
+        top, left, bottom, right = region.bbox  # skimage 右下开区间
+        side_h, side_w = bottom - top, right - left
+        area = int(region.area)
+        if area < min_area or area > max_area:
+            continue
+        if min(side_h, side_w) < MIN_REGION_SIDE:
+            continue
+        if max(side_h, side_w) > ASPECT_MAX * max(1, min(side_h, side_w)):
+            continue
+
+        mask = region.image
+        patch = lightness[top:bottom, left:right][mask]
+        # 边界像素（凸包与实心区域同）—— 大区域免得拿百万点算凸包
+        padded = np.pad(mask, 1)
+        inner = (
+            padded[:-2, 1:-1]
+            & padded[2:, 1:-1]
+            & padded[1:-1, :-2]
+            & padded[1:-1, 2:]
+        )
+        bys, bxs = np.where(mask & ~inner)
+        points = np.column_stack([bxs + left, bys + top])
+        if _minrect_fill(points, area) <= MINRECT_FILL_MIN:
+            continue
+
+        out.append(
+            _Candidate(
+                box=(left, top, right - 1, bottom - 1),  # 转含右下
+                area=area,
+                mean_L=float(patch.mean()),
+                std_L=float(patch.std()),
+            )
+        )
+    return out
+
+
+def _find_strip(
+    cands: list[_Candidate], lightness: np.ndarray, diag: float
+) -> ReferenceDetection | None:
+    """找白-灰-黑三联条：贴边 + 尺寸相近 + 主轴上 L 单调阶梯。
+
+    主轴由三块质心 PCA 自求（照片可任意旋转）；中间那块 = 灰卡。
+    """
+    gap_max = STRIP_GAP_FRAC * diag
+    span = float(np.percentile(lightness, 98) - np.percentile(lightness, 2))
+    gap_min = L_GAP_FRAC * max(span, 1e-6)
+
+    def adjacent(a: _Candidate, b: _Candidate) -> bool:
+        dx = max(a.box[0] - b.box[2], b.box[0] - a.box[2], 0)
+        dy = max(a.box[1] - b.box[3], b.box[1] - a.box[3], 0)
+        return math.hypot(dx, dy) < gap_max
+
+    def similar(a: _Candidate, b: _Candidate) -> bool:
+        ratio = a.area / b.area
+        return STRIP_AREA_RATIO_LO <= ratio <= STRIP_AREA_RATIO_HI
+
+    def centroid(c: _Candidate) -> np.ndarray:
+        l, t, r, b = c.box
+        return np.array([(l + r) / 2.0, (t + b) / 2.0])
+
+    best: tuple[int, ReferenceDetection] | None = None
+    n = len(cands)
+    for i in range(n):
+        for j in range(i + 1, n):
+            for k in range(j + 1, n):
+                triple = (cands[i], cands[j], cands[k])
+                # 主轴 = 质心第一主成分（不假定水平）
+                pts = np.stack([centroid(c) for c in triple])
+                centered = pts - pts.mean(axis=0)
+                _, _, vt = np.linalg.svd(centered, full_matrices=False)
+                order = np.argsort(centered @ vt[0])
+                first, mid, last = (triple[order[0]], triple[order[1]], triple[order[2]])
+                # 中间那块贴着两端即成条（两端彼此可以不贴边）
+                if not (adjacent(first, mid) and similar(first, mid)):
+                    continue
+                if not (adjacent(mid, last) and similar(mid, last)):
+                    continue
+                l_first, l_mid, l_last = first.mean_L, mid.mean_L, last.mean_L
+                if l_first > l_mid > l_last:
+                    pass
+                elif l_first < l_mid < l_last:
+                    pass
+                else:
+                    continue
+                if abs(l_first - l_mid) <= gap_min or abs(l_mid - l_last) <= gap_min:
+                    continue
+                # L 高的那端是白卡，低的那端是黑卡
+                bright, dark = (first, last) if l_first > l_last else (last, first)
+                total = first.area + mid.area + last.area
+                found = ReferenceDetection(
+                    kind="gray",
+                    box=mid.box,
+                    cards={"white": bright.box, "gray": mid.box, "black": dark.box},
+                )
+                if best is None or total > best[0]:
+                    best = (total, found)
+    return best[1] if best is not None else None
+
+
+def _fallback(cands: list[_Candidate]) -> ReferenceDetection | None:
+    """单卡兜底：灰卡优先 → 白纸 → 都不像返回 None（不猜白平衡）。"""
+    if not cands:
+        return None
+    grayish = [c for c in cands if GRAY_L_RANGE[0] <= c.mean_L < GRAY_L_RANGE[1]]
+    whitish = [c for c in cands if c.mean_L >= SINGLE_WHITE_L]
+    if grayish:
+        pool, kind = grayish, "gray"
+    elif whitish:
+        pool, kind = whitish, "white"
+    else:
+        pool, kind = cands, "gray"  # 深中性也当灰卡（等化通道）
+    # 同类里取最大（面积/填充/长宽比已把背景巨块和斑点挡在外面）
+    best = max(pool, key=lambda c: (c.area, -c.std_L))
+    return ReferenceDetection(kind=kind, box=best.box, cards=None)
+
+
+def detect_reference(image: Image.Image) -> ReferenceDetection | None:
+    """找参考物区域（spec §1.2：灰卡优先、白纸 fallback、都没有 → None）。
+
+    三联条（白-灰-黑相邻成条）优先：命中即以中间的灰卡为主参考，三框一起回给 UI。
+    不成条时按亮度兜底到单卡。返回的 box 是**含右下**的像素框；PIL 的
+    `Image.crop` 右/下是开区间，喂它时要 `(l, t, r + 1, b + 1)`。
     """
     from skimage.color import rgb2lab
-    from skimage.measure import label, regionprops
 
     # rgb2lab 只对 uint8 自动除以 255；float 输入必须自己归一到 [0,1]。
     lab = rgb2lab(np.asarray(image.convert("RGB"), dtype=np.float64) / 255.0)
-    chroma = np.hypot(lab[..., 1], lab[..., 2])
-    lightness = lab[..., 0] / 100.0
+    lightness = lab[..., 0] / 100.0  # 现有约定：L 归一到 0..1
 
-    height, width = lightness.shape
-    min_area = max(int(height * width * MIN_REGION_AREA_RATIO), MIN_REGION_SIDE**2)
+    cands = _candidates(lightness)
+    if not cands:
+        return None
 
-    for kind in _ORDER:
-        lo, hi = LIGHTNESS_BANDS[kind]
-        mask = (chroma < CHROMA_MAX) & (lightness >= lo) & (lightness < hi)
-        if not mask.any():
-            continue
-
-        best = None
-        for region in regionprops(label(mask)):
-            top, left, bottom, right = region.bbox  # skimage 右下开区间
-            if region.area < min_area:
-                continue
-            if min(bottom - top, right - left) < MIN_REGION_SIDE:
-                continue
-            if best is None or region.area > best.area:
-                best = region
-
-        if best is not None:
-            top, left, bottom, right = best.bbox
-            return kind, (left, top, right - 1, bottom - 1)
-
-    return None
+    strip = _find_strip(cands, lightness, diag=float(np.hypot(*lightness.shape[::-1])))
+    return strip if strip is not None else _fallback(cands)
 
 
 # 增益有界（fixes #7）：参考区极暗时 target/mean 趋于无穷，极亮时趋于 0。

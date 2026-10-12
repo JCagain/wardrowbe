@@ -198,6 +198,35 @@ async def test_detect_reports_no_reference_for_a_plain_photo(
 
 
 @pytest.mark.asyncio
+async def test_detect_reports_all_three_cards_for_a_strip(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """白-灰-黑三联检出时三框一起回给 UI（Task 7 渲染用），主参考仍是灰卡。"""
+    img = Image.new("RGB", (800, 600), (30, 90, 160))
+    d = ImageDraw.Draw(img)
+    d.rectangle((100, 200, 299, 379), fill=(245, 245, 245))
+    d.rectangle((310, 200, 509, 379), fill=(128, 128, 128))
+    d.rectangle((520, 200, 719, 379), fill=(35, 35, 35))
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    item = await _make_item(db_session, test_user, image_data=buf.getvalue())
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "gray"
+    assert set(body["cards"]) == {"white", "gray", "black"}
+    # 主参考 = 中间那块（灰卡），含右下契约
+    assert body["cards"]["gray"] == body["box"]
+    l, t, r, b = body["box"]
+    assert 310 <= l <= 330 and 200 <= t <= 220
+    assert 489 <= r <= 509 and 359 <= b <= 379
+
+
+@pytest.mark.asyncio
 async def test_apply_calibrates_the_working_image_without_touching_the_source(
     client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
 ):

@@ -140,8 +140,12 @@ async def detect_calibration_region(
         found = detect_reference(image)
         if found is None:
             return {"kind": None, "box": None}
-        kind, box = found
-        return {"kind": kind, "box": list(box)}
+        # box 含右下（detect_reference 契约），原样下传；三联检出时把三框
+        # 一起带回给 UI（Task 7 渲染用），单卡不编造 cards
+        result = {"kind": found.kind, "box": list(found.box)}
+        if found.cards is not None:
+            result["cards"] = {k: list(v) for k, v in found.cards.items()}
+        return result
 
     # skimage 的连通域分析是纯 CPU 阻塞活，不能占着事件循环
     return await asyncio.to_thread(_detect)
