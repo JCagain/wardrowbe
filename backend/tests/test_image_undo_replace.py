@@ -76,7 +76,10 @@ class TestRemoveBackgroundBackup:
         backup_full = svc.get_image_path(backup_path)
         assert backup_full.exists()
         assert backup_full.read_bytes() == original_bytes
-        assert _close(_pixel(svc.get_image_path(item_with_image.image_path)), BLUE)
+        # The matted image lands at the path the method reports (extension flips
+        # to .png), not at whatever the item pointed at before.
+        assert result["image_path"] != item_with_image.image_path
+        assert _close(_pixel(svc.get_image_path(result["image_path"])), BLUE)
 
     @pytest.mark.asyncio
     async def test_double_removal_keeps_first_backup(self, item_with_image: ClothingItem):
@@ -97,7 +100,9 @@ class TestRemoveBackgroundBackup:
         with patch("app.services.background_removal.get_provider", return_value=_mock_provider()):
             result = svc.remove_background(item_with_image.image_path)
 
-        restored = svc.restore_original(item_with_image.image_path, result["original_backup_path"])
+        # Restore from the matted path the item now points at: the backup is an
+        # RGB JPEG, so the extension flips back to .jpg for the same base name.
+        restored = svc.restore_original(result["image_path"], result["original_backup_path"])
 
         assert restored["image_path"] == item_with_image.image_path
         assert _close(_pixel(svc.get_image_path(item_with_image.image_path)), GREEN)
@@ -204,19 +209,25 @@ class TestReplaceImageEndpoint:
         self, client: AsyncClient, auth_headers, item_with_image: ClothingItem
     ):
         svc = ImageService()
-        old_paths = {
-            "image_path": item_with_image.image_path,
-            "medium_path": item_with_image.medium_path,
-            "thumbnail_path": item_with_image.thumbnail_path,
-        }
-        old_hash = item_with_image.image_hash
+        pre_matte_hash = item_with_image.image_hash
         with patch("app.services.background_removal.get_provider", return_value=_mock_provider()):
             removal = await client.post(
                 f"/api/v1/items/{item_with_image.id}/remove-background",
                 json={},
                 headers=auth_headers,
             )
-        backup_path = removal.json()["original_image_path"]
+        removal_data = removal.json()
+        backup_path = removal_data["original_image_path"]
+        # The files owned by the item at replace time: the matte flipped the
+        # extensions to .png and added a mask sidecar.
+        old_paths = {
+            "image_path": removal_data["image_path"],
+            "medium_path": removal_data["medium_path"],
+            "thumbnail_path": removal_data["thumbnail_path"],
+        }
+        assert old_paths["image_path"].endswith(".png")
+        mask_path = f"{item_with_image.image_path.rsplit('.', 1)[0]}_mask.png"
+        assert svc.get_image_path(mask_path).exists()
 
         response = await client.put(
             f"/api/v1/items/{item_with_image.id}/image",
@@ -228,11 +239,12 @@ class TestReplaceImageEndpoint:
         data = response.json()
         assert data["image_path"] != old_paths["image_path"]
         assert data["original_image_path"] is None
-        assert data["image_hash"] != old_hash if "image_hash" in data else True
+        assert data["image_hash"] != pre_matte_hash if "image_hash" in data else True
         assert _close(_pixel(svc.get_image_path(data["image_path"])), RED)
         for path in old_paths.values():
             assert not svc.get_image_path(path).exists()
         assert not svc.get_image_path(backup_path).exists()
+        assert not svc.get_image_path(mask_path).exists()
 
     @pytest.mark.asyncio
     async def test_invalid_file_400(

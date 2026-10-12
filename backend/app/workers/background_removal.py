@@ -14,14 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 async def remove_item_background_job(ctx: dict, item_id: str, bg_color_hex: str) -> dict:
-    """Remove the background for one item and composite it onto bg_color_hex.
+    """Remove the background for one item, storing a transparent PNG + mask sidecar.
+
+    `bg_color_hex` is kept in the queue signature for compatibility with already
+    enqueued jobs (and the API's display-only `bg_color` body field) but is no
+    longer consumed: the matte is stored as RGBA (fixes #8) and never composited
+    onto a solid background (fixes #9).
 
     Deterministic local image op (no external AI call), so no retry/cooldown
     machinery is needed here - unlike tag_item_image. A failure is just marked
     as an error status; the user re-selects and retries via the bulk toolbar.
     """
-    hex_color = bg_color_hex.lstrip("#")
-    bg_color = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+    del bg_color_hex  # display-only; kept in the signature for queue compat
 
     db = get_db_session(ctx)
     try:
@@ -36,10 +40,12 @@ async def remove_item_background_job(ctx: dict, item_id: str, bg_color_hex: str)
 
         try:
             image_service = ImageService()
-            out = await asyncio.to_thread(
-                image_service.remove_background, item.image_path, bg_color
-            )
+            out = await asyncio.to_thread(image_service.remove_background, item.image_path)
+            item.image_path = out["image_path"]
+            item.medium_path = out["medium_path"]
+            item.thumbnail_path = out["thumbnail_path"]
             item.original_image_path = out["original_backup_path"]
+            item.mask_path = out["mask_path"]
             # Pipeline finisher: a retired item's terminal status is archived
             # (spec §10.16), not ready.
             item.status = terminal_status(item.lifecycle, ItemStatus.ready)

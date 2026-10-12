@@ -1,5 +1,5 @@
 from io import BytesIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -143,6 +143,47 @@ class TestRotateItemImageJob:
         assert thumb[0] > thumb[1]
 
     @pytest.mark.asyncio
+    async def test_writes_back_the_paths_the_rotation_actually_returned(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        # A matted item is stored as an RGBA PNG. Rotation flattens it to RGB,
+        # so `_save_all_sizes` flips the extension to .jpg and returns those
+        # names - the job must write them back or the item keeps pointing at
+        # the now-stale PNG.
+        item = await _make_item(db_session, test_user)
+        svc = ImageService()
+        base = item.image_path.rsplit(".", 1)[0]
+        png_path = f"{base}.png"
+        Image.new("RGBA", (400, 600), (10, 200, 30, 255)).save(
+            svc.get_image_path(png_path), format="PNG"
+        )
+        item.image_path = png_path
+        item.medium_path = f"{base}_medium.png"
+        item.thumbnail_path = f"{base}_thumb.png"
+        await db_session.commit()
+
+        original = ImageService.rotate_image
+        returned: dict = {}
+
+        def _rotate(self, image_path, direction="cw"):
+            out = original(self, image_path, direction)
+            returned.update(out)
+            return out
+
+        get_db, close_db = _job_on(db_session)
+        with get_db, close_db, patch.object(ImageService, "rotate_image", _rotate):
+            result = await rotate_item_image_job({}, str(item.id), "cw")
+
+        assert result["status"] == "success"
+        # Today's rotate flattens the matte, so the extension flips back.
+        assert returned["image_path"] != png_path
+        refreshed = await _get_item(db_session, item.id)
+        assert refreshed.image_path == returned["image_path"]
+        assert refreshed.medium_path == returned["medium_path"]
+        assert refreshed.thumbnail_path == returned["thumbnail_path"]
+        assert svc.get_image_path(refreshed.image_path).exists()
+
+    @pytest.mark.asyncio
     async def test_sets_ai_started_at_before_the_rotation_runs(
         self, db_session: AsyncSession, test_user: User
     ):
@@ -204,3 +245,54 @@ class TestRotateItemImageJob:
             result = await rotate_item_image_job({}, str(uuid4()), "cw")
 
         assert result["status"] == "error"
+
+
+def _opaque_provider():
+    provider = MagicMock()
+    provider.remove.side_effect = lambda img: Image.new("RGBA", img.size, (0, 0, 255, 255))
+    return provider
+
+
+class TestRemoveItemBackgroundJob:
+    @pytest.mark.asyncio
+    async def test_persists_the_written_paths_mask_and_backup(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        # remove_background returns the paths it wrote (extension flips to
+        # .png) plus a mask sidecar and the pre-matte backup; the job must
+        # write all of them back. bg_color_hex stays in the queue signature
+        # but is ignored (no solid-background composite is stored).
+        item = await _make_item(
+            db_session, test_user, processing_kind="background_removal"
+        )
+        item_id = item.id
+        base = item.image_path.rsplit(".", 1)[0]
+        svc = ImageService()
+
+        get_db = patch(
+            "app.workers.background_removal.get_db_session", return_value=db_session
+        )
+        close_db = patch.object(db_session, "close", new_callable=AsyncMock)
+        provider = patch(
+            "app.services.background_removal.get_provider", return_value=_opaque_provider()
+        )
+        with get_db, close_db, provider:
+            result = await remove_item_background_job({}, str(item_id), "#FFFFFF")
+
+        assert result["status"] == "success"
+        refreshed = await _get_item(db_session, item_id)
+        assert refreshed.image_path == f"{base}.png"
+        assert refreshed.medium_path == f"{base}_medium.png"
+        assert refreshed.thumbnail_path == f"{base}_thumb.png"
+        assert refreshed.mask_path == f"{base}_mask.png"
+        assert refreshed.original_image_path == f"{base}_orig.jpg"
+        assert refreshed.status == ItemStatus.ready
+        for path in (
+            refreshed.image_path,
+            refreshed.medium_path,
+            refreshed.thumbnail_path,
+            refreshed.mask_path,
+            refreshed.original_image_path,
+        ):
+            assert svc.get_image_path(path).exists()
+        assert Image.open(svc.get_image_path(refreshed.image_path)).mode == "RGBA"

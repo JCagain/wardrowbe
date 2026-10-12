@@ -213,6 +213,40 @@ class TestRemoveBackgroundEndpoint:
         assert refreshed.status == ItemStatus.ready
         assert refreshed.processing_kind is None
 
+    @pytest.mark.asyncio
+    async def test_persists_the_written_paths_and_the_mask_sidecar(
+        self, client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+    ):
+        # remove_background returns the paths it actually wrote (extension flips
+        # to .png) plus a mask sidecar; the endpoint must write all of them back
+        # to the item, or the grid keeps loading the stale pre-matte files.
+        item = await _make_item(db_session, test_user)
+        item_id = item.id
+        base = item.image_path.rsplit(".", 1)[0]
+
+        with patch("app.services.background_removal.get_provider", return_value=_mock_provider()):
+            response = await client.post(
+                f"/api/v1/items/{item_id}/remove-background",
+                json={},
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["image_path"] == f"{base}.png"
+        assert data["medium_path"] == f"{base}_medium.png"
+        assert data["thumbnail_path"] == f"{base}_thumb.png"
+
+        db_session.expire_all()
+        result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+        refreshed = result.scalar_one()
+        assert refreshed.image_path == f"{base}.png"
+        assert refreshed.medium_path == f"{base}_medium.png"
+        assert refreshed.thumbnail_path == f"{base}_thumb.png"
+        assert refreshed.mask_path == f"{base}_mask.png"
+        assert ImageService().get_image_path(refreshed.mask_path).exists()
+        assert Image.open(ImageService().get_image_path(refreshed.image_path)).mode == "RGBA"
+
 
 class TestHealthFeatures:
     @pytest.mark.asyncio

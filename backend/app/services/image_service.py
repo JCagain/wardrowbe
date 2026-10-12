@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from app.config import get_settings
-from app.services import background_removal
+from app.services import background_removal, mask_service
 from app.services.color_calibration import GAIN_MAX, GAIN_MIN, apply_gains, calibrate
 
 settings = get_settings()
@@ -281,63 +281,61 @@ class ImageService:
         return ImageService.hash_distance(hash1, hash2) <= threshold
 
     def _save_all_sizes(self, image: Image.Image, image_path: str) -> dict[str, str]:
+        # fixes #8：带 alpha 存 RGBA PNG；无 alpha 仍写 JPEG，存量图不强制迁移。
+        # 返回的是真实写出的路径——扩展名跟着格式走，调用方必须把返回值写回。
+        has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
+        fmt = "PNG" if has_alpha else "JPEG"
+        ext = ".png" if has_alpha else ".jpg"
         base_path = image_path.rsplit(".", 1)[0]
-        medium_path = f"{base_path}_medium.jpg"
-        thumb_path = f"{base_path}_thumb.jpg"
+        original_path = f"{base_path}{ext}"
+        medium_path = f"{base_path}_medium{ext}"
+        thumb_path = f"{base_path}_thumb{ext}"
 
+        targets = {
+            "original": (original_path, 95),
+            "medium": (medium_path, 90),
+            "thumbnail": (thumb_path, 88),
+        }
         for size_name, max_size in SIZES.items():
-            if size_name == "original":
-                file_path = self.storage_path / image_path
-                quality = 95
-            elif size_name == "medium":
-                file_path = self.storage_path / medium_path
-                quality = 90
-            else:
-                file_path = self.storage_path / thumb_path
-                quality = 88
-
+            rel_path, quality = targets[size_name]
             img_copy = image.copy()
             img_copy.thumbnail(max_size, Image.Resampling.LANCZOS)
-
             output = BytesIO()
-            img_copy.save(output, format="JPEG", quality=quality, optimize=True)
-            file_path.write_bytes(output.getvalue())
+            if fmt == "PNG":
+                img_copy.save(output, format="PNG", optimize=True)
+            else:
+                img_copy.save(output, format="JPEG", quality=quality, optimize=True)
+            (self.storage_path / rel_path).write_bytes(output.getvalue())
 
         return {
-            "image_path": image_path,
+            "image_path": original_path,
             "medium_path": medium_path,
             "thumbnail_path": thumb_path,
         }
 
-    def remove_background(
-        self,
-        image_path: str,
-        bg_color: tuple[int, int, int] = (255, 255, 255),
-    ) -> dict[str, str]:
+    def remove_background(self, image_path: str) -> dict[str, str]:
+        """抠图：存 RGBA PNG 主图 + L 模式 mask 旁挂。不合成纯色底（fixes #9）。"""
         base_path = image_path.rsplit(".", 1)[0]
         original_full = self.storage_path / image_path
-
         if not original_full.exists():
             raise ValueError(f"Image not found: {image_path}")
 
         backup_path = f"{base_path}_orig.jpg"
         backup_full = self.storage_path / backup_path
-        # First removal wins: a second removal must not overwrite the true
-        # original with an already-processed image
+        # First removal wins：第二次抠图不得用已处理图覆盖真原图
         if not backup_full.exists():
             shutil.copy2(original_full, backup_full)
 
         image = Image.open(original_full).convert("RGB")
-        provider = background_removal.get_provider()
-        result = provider.remove(image)
+        result = background_removal.get_provider().remove(image)
 
-        # Composite onto solid color background
-        background = Image.new("RGBA", result.size, (*bg_color, 255))
-        background.paste(result, mask=result.split()[3])
-        final = background.convert("RGB")
+        mask = result.getchannel("A")
+        mask_path = f"{base_path}_mask.png"
+        mask_service.save_mask(mask, self.storage_path / mask_path)
 
-        paths = self._save_all_sizes(final, image_path)
+        paths = self._save_all_sizes(result, image_path)
         paths["original_backup_path"] = backup_path
+        paths["mask_path"] = mask_path
         return paths
 
     def restore_original(self, image_path: str, backup_path: str) -> dict[str, str]:
@@ -452,6 +450,8 @@ class ImageService:
         pristine = source.read_bytes()
         base = Image.open(BytesIO(pristine)).convert("RGB")
         paths = self._save_all_sizes(base, image_path)
-        # original 档必须是副本字节本身（原样还原，不接受重编码漂移）
-        (self.storage_path / image_path).write_bytes(pristine)
+        # original 档必须是副本字节本身（原样还原，不接受重编码漂移）。
+        # 写到返回的真实路径上：工作图若是 PNG（抠图产物），`_save_all_sizes`
+        # 按无 alpha 会把扩展名换回 .jpg，写入参路径会把 JPEG 字节塞进 .png。
+        (self.storage_path / paths["image_path"]).write_bytes(pristine)
         return paths

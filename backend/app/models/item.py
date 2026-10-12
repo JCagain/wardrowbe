@@ -61,6 +61,10 @@ class ClothingItem(Base):
     # pipeline that calibration/matte/rotation must never overwrite — it is
     # what "reset to original" restores. NULL for rows that predate it.
     calibration_original_path: Mapped[str | None] = mapped_column(String(500))
+    # L-mode PNG sidecar of the matte (fixes #11): the editable cut-out mask,
+    # written by remove_background alongside the RGBA main image. NULL when the
+    # item has never been matted (or the matte was undone).
+    mask_path: Mapped[str | None] = mapped_column(String(500))
     image_hash: Mapped[str | None] = mapped_column(String(16), index=True)  # pHash hex string
     # Client-generated idempotency key for the durable bulk-upload queue (frontend
     # IndexedDB record id). Unique per user when set, enforced by a partial index

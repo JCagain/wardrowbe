@@ -549,6 +549,7 @@ async def bulk_delete_items(
                     "thumbnail_path": item.thumbnail_path,
                     "original_backup_path": item.original_image_path,
                     "calibration_original_path": item.calibration_original_path,
+                    "mask_path": item.mask_path,
                 }
             )
 
@@ -1313,6 +1314,7 @@ async def delete_item(
             "thumbnail_path": item.thumbnail_path,
             "original_backup_path": item.original_image_path,
             "calibration_original_path": item.calibration_original_path,
+            "mask_path": item.mask_path,
         }
     )
 
@@ -1750,9 +1752,18 @@ async def rotate_item_image(
         # to_thread because rotate_image is a blocking decode/resize/encode
         # cycle; calling it directly stalls the whole event loop for its
         # duration, which on a large image is seconds of dead API.
-        await asyncio.to_thread(image_service.rotate_image, item.image_path, direction)
+        result = await asyncio.to_thread(image_service.rotate_image, item.image_path, direction)
+        # `_save_all_sizes` returns the paths it actually wrote — the extension
+        # follows the alpha channel (PNG for mattes, JPEG otherwise), so the
+        # names can differ from what the item pointed at before the rotation.
+        item.image_path = result["image_path"]
+        item.medium_path = result["medium_path"]
+        item.thumbnail_path = result["thumbnail_path"]
         await db.commit()
-        await db.refresh(item)
+        await db.refresh(
+            item,
+            attribute_names=["image_path", "medium_path", "thumbnail_path", "updated_at"],
+        )
         return ItemResponse.model_validate(item)
     except ValueError as e:
         raise HTTPException(
@@ -1802,13 +1813,17 @@ async def remove_item_background(
         item.status == ItemStatus.error and item.processing_kind == "background_removal"
     )
 
-    hex_color = request.bg_color.lstrip("#")
-    bg_color = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-
     try:
         image_service = ImageService()
-        result = await asyncio.to_thread(image_service.remove_background, item.image_path, bg_color)
+        # request.bg_color is display-only: the matte is stored as a transparent
+        # PNG (fixes #8) and never composited onto a solid background (fixes #9).
+        # The field is kept (and ignored) so existing callers can keep sending it.
+        result = await asyncio.to_thread(image_service.remove_background, item.image_path)
+        item.image_path = result["image_path"]
+        item.medium_path = result["medium_path"]
+        item.thumbnail_path = result["thumbnail_path"]
         item.original_image_path = result["original_backup_path"]
+        item.mask_path = result["mask_path"]
         if recovering_from_error:
             # Pipeline finisher: a retired item's terminal status is archived
             # (spec §10.16), not ready.
@@ -1819,7 +1834,11 @@ async def remove_item_background(
         await db.refresh(
             item,
             attribute_names=[
+                "image_path",
+                "medium_path",
+                "thumbnail_path",
                 "original_image_path",
+                "mask_path",
                 "status",
                 "processing_kind",
                 "ai_started_at",
@@ -1870,7 +1889,7 @@ async def restore_item_original(
 
     try:
         image_service = ImageService()
-        await asyncio.to_thread(
+        result = await asyncio.to_thread(
             image_service.restore_original, item.image_path, item.original_image_path
         )
     except ValueError as e:
@@ -1885,9 +1904,29 @@ async def restore_item_original(
             detail="Failed to restore original image",
         ) from None
 
+    # `_save_all_sizes` returns the paths it wrote; restoring a matted PNG's
+    # backup (an RGB JPEG) flips the extension back to .jpg.
+    item.image_path = result["image_path"]
+    item.medium_path = result["medium_path"]
+    item.thumbnail_path = result["thumbnail_path"]
     item.original_image_path = None
+    # Restoring undoes the matte, so its mask sidecar no longer describes the
+    # image. Drop the reference and the file rather than leave a stale mask.
+    if item.mask_path:
+        image_service.delete_images({"mask_path": item.mask_path})
+        item.mask_path = None
     await db.commit()
-    await db.refresh(item, attribute_names=["original_image_path", "updated_at"])
+    await db.refresh(
+        item,
+        attribute_names=[
+            "image_path",
+            "medium_path",
+            "thumbnail_path",
+            "original_image_path",
+            "mask_path",
+            "updated_at",
+        ],
+    )
     return ItemResponse.model_validate(item)
 
 
@@ -1938,6 +1977,9 @@ async def replace_item_image(
         # source must follow the new upload or a later calibration reset
         # would restore the OLD image, so the old _src goes here too.
         "calibration_original_path": item.calibration_original_path,
+        # A matte belongs to the image it was cut from; a replaced image makes
+        # its mask sidecar meaningless.
+        "mask_path": item.mask_path,
     }
 
     item.image_path = image_paths["image_path"]
@@ -1946,6 +1988,7 @@ async def replace_item_image(
     item.image_hash = image_paths["image_hash"]
     item.original_image_path = None
     item.calibration_original_path = image_paths["calibration_original_path"]
+    item.mask_path = None
     await db.commit()
     await db.refresh(
         item,
@@ -1956,6 +1999,7 @@ async def replace_item_image(
             "image_hash",
             "original_image_path",
             "calibration_original_path",
+            "mask_path",
             "updated_at",
         ],
     )

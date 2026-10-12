@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 async def rotate_item_image_job(ctx: dict, item_id: str, direction: str) -> dict:
     """Rotate one item's stored image and regenerate its size variants.
 
-    Rotation overwrites in place, so the item's three paths are unchanged and
-    only status bookkeeping is written back.
+    `_save_all_sizes` returns the paths it actually wrote (the extension follows
+    the alpha channel), so the three paths can change and must be written back.
     """
     db = get_db_session(ctx)
     try:
@@ -32,7 +32,10 @@ async def rotate_item_image_job(ctx: dict, item_id: str, direction: str) -> dict
 
         try:
             image_service = ImageService()
-            await asyncio.to_thread(image_service.rotate_image, item.image_path, direction)
+            out = await asyncio.to_thread(image_service.rotate_image, item.image_path, direction)
+            item.image_path = out["image_path"]
+            item.medium_path = out["medium_path"]
+            item.thumbnail_path = out["thumbnail_path"]
             # Pipeline finisher: a retired item's terminal status is archived
             # (spec §10.16), not ready.
             item.status = terminal_status(item.lifecycle, ItemStatus.ready)
