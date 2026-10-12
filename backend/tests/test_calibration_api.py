@@ -1,0 +1,353 @@
+"""校色 API：检出 / 应用 / 手动白平衡 / 重置（计划风险 #1 的钉子也在这里）。
+
+测试只验证行为：
+- 校色两次后重置，工作图字节等于最初的 `_src.jpg`（且副本全程未被改动）
+- 手动白平衡的增益夹在 [GAIN_MIN, GAIN_MAX]（去掉 clamp 变红）
+- 四个端点都认 owner（漏了 user 校验变红）
+"""
+
+import uuid
+from io import BytesIO
+
+import numpy as np
+import pytest
+from httpx import AsyncClient
+from PIL import Image, ImageDraw
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.item import ClothingItem, ItemStatus
+from app.models.user import User
+from app.services.color_calibration import apply_gains
+from app.services.image_service import ImageService
+
+USER = uuid.UUID("00000000-0000-0000-0000-000000000009")
+
+
+def _jpeg_bytes(color=(200, 60, 60), size=(600, 400)) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", size, color).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def _jpeg_textured(size=(600, 400)) -> bytes:
+    """带纹理的照片内容。
+
+    纯色图的 JPEG 重编码是字节幂等的（实测 solid 重编码后 bytes 不变），
+    「重置必须字节还原」的钉子会因此空转；噪声/纹理才让重编码漂移可见。
+    """
+    rng = np.random.default_rng(7)
+    arr = rng.integers(0, 256, (size[1], size[0], 3), dtype=np.uint8)
+    buf = BytesIO()
+    Image.fromarray(arr).save(buf, format="JPEG", quality=95, optimize=True)
+    return buf.getvalue()
+
+
+def _jpeg_with_gray_card() -> bytes:
+    img = Image.new("RGB", (800, 600), (30, 90, 160))
+    ImageDraw.Draw(img).rectangle((500, 300, 700, 460), fill=(128, 128, 128))
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------- 服务层
+
+
+@pytest.mark.asyncio
+async def test_apply_then_reset_restores_the_pristine_source_bytes(tmp_path):
+    """计划风险 #1：校色两次后重置，字节等于最初的 `_src.jpg`。
+
+    三个断言各有钉子：副本不变（校色不得覆盖原副本）、工作图确实被改过
+    （否则重置断言是空转）、重置后工作图与副本逐字节一致（原样还原）。
+    """
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(USER, _jpeg_textured(), "coat.jpg")
+
+    src = tmp_path / paths["calibration_original_path"]
+    working = tmp_path / paths["image_path"]
+    src_before = src.read_bytes()
+    # 入库时工作图与副本本就逐字节一致
+    assert working.read_bytes() == src_before
+
+    svc.calibrate_image(
+        paths["image_path"], paths["calibration_original_path"], (0, 0, 50, 50), "gray"
+    )
+    svc.calibrate_image(
+        paths["image_path"], paths["calibration_original_path"], (60, 60, 120, 120), "white"
+    )
+
+    assert src.read_bytes() == src_before
+    assert working.read_bytes() != src_before
+
+    svc.reset_calibration(paths["image_path"], paths["calibration_original_path"])
+
+    assert src.read_bytes() == src_before
+    assert working.read_bytes() == src_before
+
+
+def test_manual_white_balance_is_bounded_for_extreme_inputs(tmp_path):
+    """滑块在 UI 上无界；服务层必须把增益夹在 [GAIN_MIN, GAIN_MAX]（防御纵深）。
+
+    kelvin=100000 时未夹紧的增益是 [6.61, 1.0, -4.61]：R 爆到 255、B 被负增益压成 0。
+    夹紧后是 [GAIN_MAX, 1.0, GAIN_MIN] = [4.0, 1.0, 0.25]。去掉 clamp 此测试变红。
+    """
+    svc = ImageService(storage_path=str(tmp_path))
+    img = Image.new("RGB", (200, 200), (40, 40, 40))
+    img.save(tmp_path / "w.jpg", format="JPEG", quality=95)
+    img.save(tmp_path / "src.jpg", format="JPEG", quality=95)
+
+    out = svc.manual_white_balance("w.jpg", "src.jpg", kelvin=100000.0, tint=0.0)
+
+    expected = np.asarray(
+        apply_gains(
+            Image.open(tmp_path / "src.jpg").convert("RGB"),
+            np.array([4.0, 1.0, 0.25]),
+        ),
+        dtype=np.float64,
+    )
+    got = np.asarray(Image.open(tmp_path / out["image_path"]).convert("RGB"), dtype=np.float64)
+    # ±5 是再编码 JPEG 的漂移；去掉 clamp 时 B 通道差 ~10、R 通道差 ~95
+    assert np.abs(got - expected).max() <= 5
+
+
+# ---------------------------------------------------------------- API 层
+
+
+async def _make_item(
+    db_session: AsyncSession,
+    user: User,
+    image_data: bytes | None = None,
+    **overrides,
+) -> ClothingItem:
+    svc = ImageService()
+    paths = await svc.process_and_store(
+        user_id=user.id,
+        image_data=image_data if image_data is not None else _jpeg_bytes(),
+        original_filename="coat.jpg",
+    )
+    defaults = {
+        "user_id": user.id,
+        "type": "shirt",
+        "image_path": paths["image_path"],
+        "medium_path": paths["medium_path"],
+        "thumbnail_path": paths["thumbnail_path"],
+        "calibration_original_path": paths["calibration_original_path"],
+        "image_hash": paths["image_hash"],
+        "status": ItemStatus.ready,
+    }
+    defaults.update(overrides)
+    item = ClothingItem(**defaults)
+    db_session.add(item)
+    await db_session.commit()
+    await db_session.refresh(item)
+    return item
+
+
+async def _make_user(db_session: AsyncSession) -> User:
+    unique_id = uuid.uuid4()
+    user = User(
+        id=unique_id,
+        external_id=f"test-user-{unique_id}",
+        email=f"test-{unique_id}@example.com",
+        display_name="Other User",
+        timezone="UTC",
+        is_active=True,
+        onboarding_completed=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.mark.asyncio
+async def test_detect_reports_the_gray_card_box(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user, image_data=_jpeg_with_gray_card())
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "gray"
+    l, t, r, b = body["box"]
+    # 灰卡画在 (500,300)-(700,460) 含右下；JPEG 边缘漂移留 ±20
+    assert 500 <= l <= 520 and 300 <= t <= 320
+    assert 680 <= r <= 700 and 440 <= b <= 460
+
+
+@pytest.mark.asyncio
+async def test_detect_reports_no_reference_for_a_plain_photo(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(
+        db_session, test_user, image_data=_jpeg_bytes(color=(180, 40, 90))
+    )
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"kind": None, "box": None}
+
+
+@pytest.mark.asyncio
+async def test_apply_calibrates_the_working_image_without_touching_the_source(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user)
+    svc = ImageService()
+    src_before = svc.get_image_path(item.calibration_original_path).read_bytes()
+    working_before = svc.get_image_path(item.image_path).read_bytes()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [0, 0, 50, 50], "baseline": "gray"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["image_path"] == item.image_path
+    assert svc.get_image_path(item.calibration_original_path).read_bytes() == src_before
+    assert svc.get_image_path(item.image_path).read_bytes() != working_before
+
+
+@pytest.mark.asyncio
+async def test_manual_endpoint_writes_the_white_balanced_image(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user)
+    svc = ImageService()
+    src_before = svc.get_image_path(item.calibration_original_path).read_bytes()
+    working_before = svc.get_image_path(item.image_path).read_bytes()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/manual",
+        json={"kelvin": 5500.0, "tint": -20.0},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert svc.get_image_path(item.calibration_original_path).read_bytes() == src_before
+    assert svc.get_image_path(item.image_path).read_bytes() != working_before
+
+
+@pytest.mark.asyncio
+async def test_reset_endpoint_restores_the_pristine_source_bytes(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user, image_data=_jpeg_textured())
+    svc = ImageService()
+    src_before = svc.get_image_path(item.calibration_original_path).read_bytes()
+
+    applied = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [0, 0, 50, 50], "baseline": "gray"},
+        headers=auth_headers,
+    )
+    assert applied.status_code == 200, applied.text
+    assert svc.get_image_path(item.image_path).read_bytes() != src_before
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/reset", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert svc.get_image_path(item.image_path).read_bytes() == src_before
+    assert svc.get_image_path(item.calibration_original_path).read_bytes() == src_before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        ("detect", None),
+        ("apply", {"box": [0, 0, 50, 50], "baseline": "gray"}),
+        ("manual", {"kelvin": 6500.0, "tint": 0.0}),
+        ("reset", None),
+    ],
+)
+async def test_calibration_endpoints_reject_foreign_items(
+    client: AsyncClient,
+    test_user,
+    auth_headers,
+    db_session: AsyncSession,
+    path: str,
+    payload: dict | None,
+):
+    """别人的物品一律 404 —— 漏了 user 校验时这四条全部变红。"""
+    other = await _make_user(db_session)
+    item = await _make_item(db_session, other)
+
+    kwargs: dict = {"headers": auth_headers}
+    if payload is not None:
+        kwargs["json"] = payload
+    resp = await client.post(f"/api/v1/items/{item.id}/calibration/{path}", **kwargs)
+
+    # 404 + "Item not found" 才是归属校验的语义（路由缺失的 404 是 "Not Found"，
+    # 漏了 user 校验会放行 200 —— 两种都能被这条抓住）
+    assert resp.status_code == 404, f"{path}: {resp.status_code} {resp.text}"
+    assert resp.json() == {"detail": "Item not found"}
+
+
+@pytest.mark.asyncio
+async def test_detect_requires_authentication(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user)
+
+    resp = await client.post(f"/api/v1/items/{item.id}/calibration/detect")
+
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_apply_rejects_an_item_without_a_calibration_source(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user, calibration_original_path=None)
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [0, 0, 50, 50], "baseline": "gray"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_manual_rejects_kelvin_outside_the_slider_range(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user)
+
+    for payload in ({"kelvin": 1000.0, "tint": 0.0}, {"kelvin": 20000.0, "tint": 0.0}):
+        resp = await client.post(
+            f"/api/v1/items/{item.id}/calibration/manual",
+            json=payload,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_apply_rejects_a_bad_box_or_baseline(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _make_item(db_session, test_user)
+
+    for payload in (
+        {"box": [0, 0, 50], "baseline": "gray"},
+        {"box": [0, 0, 50, 50], "baseline": "green"},
+    ):
+        resp = await client.post(
+            f"/api/v1/items/{item.id}/calibration/apply",
+            json=payload,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422, resp.text

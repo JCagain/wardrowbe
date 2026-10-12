@@ -5,10 +5,12 @@ from io import BytesIO
 from pathlib import Path
 
 import imagehash
+import numpy as np
 from PIL import Image, ImageOps
 
 from app.config import get_settings
 from app.services import background_removal
+from app.services.color_calibration import GAIN_MAX, GAIN_MIN, apply_gains, calibrate
 
 settings = get_settings()
 
@@ -380,3 +382,68 @@ class ImageService:
         rotated = image.rotate(angle, expand=True)
 
         return self._save_all_sizes(rotated, image_path)
+
+    def calibrate_image(
+        self,
+        image_path: str,
+        calibration_original_path: str,
+        box: tuple[int, int, int, int],
+        baseline: str,
+    ) -> dict[str, str]:
+        """以框内像素做白平衡，写回工作图与三档。原图副本不动。
+
+        box=(l,t,r,b) 含右下（同 `detect_reference` 返回值），原样下传给
+        `calibrate`，这里不做坐标转换。每次都从原图副本起算，避免多次校色
+        叠加漂移。
+        """
+        working = self.storage_path / image_path
+        if not working.exists():
+            raise ValueError(f"Image not found: {image_path}")
+        source = self.storage_path / calibration_original_path
+        if not source.exists():
+            raise ValueError(f"Calibration source not found: {calibration_original_path}")
+
+        base = Image.open(source).convert("RGB")
+        result = calibrate(base, box, baseline)
+        return self._save_all_sizes(result, image_path)
+
+    def manual_white_balance(
+        self,
+        image_path: str,
+        calibration_original_path: str,
+        kelvin: float,
+        tint: float,
+    ) -> dict[str, str]:
+        """色温/色调滑块的手动白平衡。滑块在 UI 上无界，这里把增益夹住。
+
+        6500K 为中性；每 1000K 约 6% 通道偏移。tint 是绿-品红轴。
+        """
+        source = self.storage_path / calibration_original_path
+        if not source.exists():
+            raise ValueError(f"Calibration source not found: {calibration_original_path}")
+        base = Image.open(source).convert("RGB")
+
+        t = (kelvin - 6500.0) / 1000.0
+        gains = np.array([1.0 + 0.06 * t, 1.0 + 0.01 * tint / 100.0, 1.0 - 0.06 * t])
+        gains = np.clip(gains, GAIN_MIN, GAIN_MAX)
+        return self._save_all_sizes(apply_gains(base, gains), image_path)
+
+    def reset_calibration(
+        self, image_path: str, calibration_original_path: str
+    ) -> dict[str, str]:
+        """重置回原图：副本字节原样写回工作图，再重生成三档。
+
+        fixes #6：不对副本做任何像素变换。重置后工作图与副本逐字节一致——
+        `_save_all_sizes` 的 JPEG 重编码不保字节，所以 original 档用副本字节
+        本身覆盖。
+        """
+        source = self.storage_path / calibration_original_path
+        if not source.exists():
+            raise ValueError(f"Calibration source not found: {calibration_original_path}")
+
+        pristine = source.read_bytes()
+        base = Image.open(BytesIO(pristine)).convert("RGB")
+        paths = self._save_all_sizes(base, image_path)
+        # original 档必须是副本字节本身（原样还原，不接受重编码漂移）
+        (self.storage_path / image_path).write_bytes(pristine)
+        return paths
