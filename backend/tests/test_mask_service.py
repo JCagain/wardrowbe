@@ -134,6 +134,30 @@ async def test_calibrating_clears_the_stale_mask(tmp_path, monkeypatch, op_name)
     assert not mask_file.exists(), "the stale mask sidecar must be deleted"
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("op_name", ["apply", "manual", "reset"])
+async def test_calibrating_without_a_mask_reports_nothing_cleared(tmp_path, op_name):
+    # 从没抠过的图校色完不该弹「请重抠」：mask_cleared 只在真删了 mask 文件时为 True，
+    # 没有文件可删就是 False（把「真删才 True」的判断去掉会变红）
+    svc = ImageService(storage_path=str(tmp_path))
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 60, 60)).save(buf, format="JPEG")
+    paths = await svc.process_and_store(USER, buf.getvalue(), "coat.jpg")
+
+    if op_name == "apply":
+        result = svc.calibrate_image(
+            paths["image_path"], paths["calibration_original_path"], (0, 0, 50, 50), "gray"
+        )
+    elif op_name == "manual":
+        result = svc.manual_white_balance(
+            paths["image_path"], paths["calibration_original_path"], kelvin=6500.0, tint=0.0
+        )
+    else:
+        result = svc.reset_calibration(paths["image_path"], paths["calibration_original_path"])
+
+    assert result["mask_cleared"] is False
+
+
 def test_flipping_the_format_removes_the_orphaned_variants(tmp_path):
     # 换扩展名写出新档后，旧扩展名的三档是无引用孤儿（磁盘泄漏），必须删掉
     svc = ImageService(storage_path=str(tmp_path))

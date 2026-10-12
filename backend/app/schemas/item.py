@@ -242,6 +242,12 @@ class ItemResponse(ItemBase):
         return DEFAULT_WASH_INTERVALS.get(self.type, 3)
 
 
+class CalibrationItemResponse(ItemResponse):
+    """物品 + 本次校色是否打掉了抠图 mask（UI 据此提示「已重抠校色，请重新抠图」）。"""
+
+    mask_cleared: bool = False
+
+
 class AnalysisInProgress(BaseModel):
     item_id: UUID
     name: str | None = None

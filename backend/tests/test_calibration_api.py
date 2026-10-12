@@ -448,7 +448,38 @@ async def test_calibration_endpoints_clear_a_stale_mask(
     resp = await client.post(f"/api/v1/items/{item_id}/calibration/{path}", **kwargs)
 
     assert resp.status_code == 200, f"{path}: {resp.status_code} {resp.text}"
+    # 响应体里的 mask_cleared 是 UI「请重抠」提示的唯一依据，必须进 HTTP 响应
+    assert resp.json()["mask_cleared"] is True, f"{path}: cleared mask not reported"
     assert not mask_file.exists(), f"{path}: stale mask sidecar left on disk"
     db_session.expire_all()
     result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
     assert result.scalar_one().mask_path is None, f"{path}: mask_path not cleared"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("apply", {"box": [0, 0, 50, 50], "baseline": "gray"}),
+        ("manual", {"kelvin": 6500.0, "tint": 0.0}),
+        ("reset", None),
+    ],
+)
+async def test_calibration_endpoints_report_nothing_cleared_without_a_mask(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, path, payload
+):
+    """从没抠过的图校色完不该弹「请重抠」：mask_cleared 只在真删了 mask 文件时为 True。"""
+    item = await _make_item(db_session, test_user)
+    item_id = item.id
+    assert item.mask_path is None
+
+    kwargs: dict = {"headers": auth_headers}
+    if payload is not None:
+        kwargs["json"] = payload
+    resp = await client.post(f"/api/v1/items/{item_id}/calibration/{path}", **kwargs)
+
+    assert resp.status_code == 200, f"{path}: {resp.status_code} {resp.text}"
+    assert resp.json()["mask_cleared"] is False, f"{path}: no mask file but mask_cleared=True"
+    db_session.expire_all()
+    result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+    assert result.scalar_one().mask_path is None, f"{path}: mask_path must stay null"

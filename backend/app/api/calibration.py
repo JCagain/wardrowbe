@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.item import ClothingItem, ItemStatus
 from app.models.user import User
-from app.schemas.item import ItemResponse
+from app.schemas.item import CalibrationItemResponse
 from app.services.color_calibration import detect_reference
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
@@ -79,7 +79,7 @@ async def _persist_image_op(
     op: Callable[..., dict[str, str | bool]],
     args: tuple,
     action: str,
-) -> ItemResponse:
+) -> CalibrationItemResponse:
     """跑一个阻塞的图像改写，并把三个返回路径写回物品（同 rotate/remove-background语义）。"""
     try:
         # to_thread：解码/变换/重编码是阻塞 CPU 活，不能占着事件循环
@@ -99,10 +99,10 @@ async def _persist_image_op(
     item.image_path = result["image_path"]
     item.medium_path = result["medium_path"]
     item.thumbnail_path = result["thumbnail_path"]
-    if result.get("mask_cleared"):
-        # 校色从 `_src` 重推导像素，抠图结果不再对应；mask 文件服务层已删，
-        # 这里把列置 None，否则 update_mask 会拿过期 mask 合成垃圾。
-        item.mask_path = None
+    # 校色从 `_src` 重推导像素，抠图结果不再对应：列只要校色跑过就清（不管原来
+    # 有没有 mask），否则 update_mask 会拿过期 mask 合成垃圾。是否「真的清掉了
+    # mask 文件」另由 mask_cleared 标志上报给 UI。
+    item.mask_path = None
     await db.commit()
     # 只刷写过的列：整对象 refresh 会把 get_by_id 预载的 additional_images
     # 打回未加载，ItemResponse 序列化时懒加载就会炸 greenlet
@@ -116,7 +116,9 @@ async def _persist_image_op(
             "updated_at",
         ],
     )
-    return ItemResponse.model_validate(item)
+    return CalibrationItemResponse.model_validate(item).model_copy(
+        update={"mask_cleared": bool(result.get("mask_cleared"))}
+    )
 
 
 @router.post("/{item_id}/calibration/detect")
@@ -145,13 +147,13 @@ async def detect_calibration_region(
     return await asyncio.to_thread(_detect)
 
 
-@router.post("/{item_id}/calibration/apply", response_model=ItemResponse)
+@router.post("/{item_id}/calibration/apply", response_model=CalibrationItemResponse)
 async def apply_calibration(
     item_id: UUID,
     request: CalibrationApplyIn,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> ItemResponse:
+) -> CalibrationItemResponse:
     item = await _owned_item(db, item_id, current_user.id)
     image_path, source_path = _calibration_paths(item)
 
@@ -165,13 +167,13 @@ async def apply_calibration(
     )
 
 
-@router.post("/{item_id}/calibration/manual", response_model=ItemResponse)
+@router.post("/{item_id}/calibration/manual", response_model=CalibrationItemResponse)
 async def manual_white_balance(
     item_id: UUID,
     request: ManualWbIn,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> ItemResponse:
+) -> CalibrationItemResponse:
     item = await _owned_item(db, item_id, current_user.id)
     image_path, source_path = _calibration_paths(item)
 
@@ -185,12 +187,12 @@ async def manual_white_balance(
     )
 
 
-@router.post("/{item_id}/calibration/reset", response_model=ItemResponse)
+@router.post("/{item_id}/calibration/reset", response_model=CalibrationItemResponse)
 async def reset_calibration(
     item_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> ItemResponse:
+) -> CalibrationItemResponse:
     item = await _owned_item(db, item_id, current_user.id)
     image_path, source_path = _calibration_paths(item)
 

@@ -326,11 +326,13 @@ class ImageService:
         """mask 旁挂路径约定：与主图同 base 的 `_mask.png`（remove_background 同款）。"""
         return f"{image_path.rsplit('.', 1)[0]}_mask.png"
 
-    def _clear_mask(self, image_path: str) -> None:
-        """删掉 mask 旁挂。校色从 `_src` 重推导像素，旧 mask 必然过期。"""
+    def _clear_mask(self, image_path: str) -> bool:
+        """删掉 mask 旁挂，返回是否真的删了。校色从 `_src` 重推导像素，旧 mask 必然过期。"""
         mask_full = self.storage_path / self._mask_path_for(image_path)
         if mask_full.exists():
             mask_full.unlink()
+            return True
+        return False
 
     def _save_calibrated(self, image_path: str, image: Image.Image) -> dict[str, str | bool]:
         """校色收尾：写三档、清掉过期 mask，并上报 `mask_cleared`（fixes 过期 mask）。
@@ -338,10 +340,13 @@ class ImageService:
         校色从 `calibration_original_path`（RGB JPEG）重推导像素，抠图结果必然
         不再对应——留着 mask 就是过期 mask，`update_mask` 会拿它合成垃圾。调用方
         看到 `mask_cleared` 应把 `mask_path` 置 None，并提示用户重新抠图。
+
+        `mask_cleared` **只在真的删掉了 mask 文件时为 True**：没抠过的图校色完
+        不该弹「请重抠」。列 `mask_path` 由调用方只要校色跑过就清，与此标志无关。
         """
-        self._clear_mask(image_path)
+        cleared = self._clear_mask(image_path)
         paths: dict[str, str | bool] = self._save_all_sizes(image, image_path)
-        paths["mask_cleared"] = True
+        paths["mask_cleared"] = cleared
         return paths
 
     def remove_background(self, image_path: str) -> dict[str, str]:
