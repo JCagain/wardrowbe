@@ -37,6 +37,7 @@ type FakeCtx = {
   stroke: ReturnType<typeof vi.fn>;
   save: ReturnType<typeof vi.fn>;
   restore: ReturnType<typeof vi.fn>;
+  lineWidth: number;
 };
 
 function fakeCtx(): FakeCtx {
@@ -50,6 +51,7 @@ function fakeCtx(): FakeCtx {
     stroke: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
+    lineWidth: 1,
   };
 }
 
@@ -86,6 +88,23 @@ beforeEach(() => {
 });
 
 describe('ReferenceBoxEditor', () => {
+  // 画布是原图分辨率、被 CSS 缩小显示：线宽/手柄要乘 naturalWidth / rect.width，
+  // 否则大图上约 0.1~0.5 CSS 像素，肉眼不可见。
+  it('scales line width and handle size by natural/display ratio', () => {
+    const scale = NATURAL_W / RECT.width;
+    const widths: number[] = [];
+    ctx.strokeRect.mockImplementation(() => widths.push(ctx.lineWidth));
+    const { container } = render(
+      <ReferenceBoxEditor imageSrc="item.png" detection={SINGLE} onApply={vi.fn()} onManual={vi.fn()} />,
+    );
+    setupDom(container);
+    expect(widths.length).toBeGreaterThan(0);
+    for (const w of widths) expect(w).toBeCloseTo(2 * scale);
+    const [, , w, h] = ctx.fillRect.mock.calls[0] as number[];
+    expect(w).toBeCloseTo(8 * scale);
+    expect(h).toBeCloseTo(8 * scale);
+  });
+
   // 钉子 5：detection.cards 三框都画到 canvas 上（三趟 stroke/rect）。
   it('draws all three card boxes from detection.cards', () => {
     const { container } = render(

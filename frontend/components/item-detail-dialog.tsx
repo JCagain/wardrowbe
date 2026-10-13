@@ -368,6 +368,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
       });
     } catch (error) {
       console.error('Failed to detect calibration reference:', error);
+      toast.error(tw('pipeline.calibrateError'));
     }
   };
 
@@ -385,6 +386,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
       setImageKey((k) => k + 1);
     } catch (error) {
       console.error('Failed to apply calibration:', error);
+      toast.error(tw('pipeline.applyError'));
     }
   };
 
@@ -398,6 +400,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
       setImageKey((k) => k + 1);
     } catch (error) {
       console.error('Failed to apply manual white balance:', error);
+      toast.error(tw('pipeline.manualWbError'));
     }
   };
 
@@ -411,14 +414,17 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
       setImageKey((k) => k + 1);
     } catch (error) {
       console.error('Failed to reset calibration:', error);
+      toast.error(tw('pipeline.resetError'));
     }
   };
 
   const handleRetag = async () => {
     try {
       await retagItem.mutateAsync(item.id);
+      toast.success(tw('pipeline.retagQueued'));
     } catch (error) {
       console.error('Failed to retag item:', error);
+      toast.error(tw('pipeline.retagError'));
     }
   };
 

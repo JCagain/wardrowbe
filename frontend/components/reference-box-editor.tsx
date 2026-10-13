@@ -70,6 +70,15 @@ function applyHandle(
  * - 「应用」→ `onApply(box, baseline)`；「不用参考框」→ `onManual()`（改走色温/色调
  *   滑块，spec §1.2 兜底）
  */
+const LINE_CSS_PX = 2;
+const HANDLE_CSS_PX = 8;
+
+// 1 个 CSS 像素对应多少图像像素（naturalWidth / 显示宽度）；未布局时按 1 兜底
+function imageUnitsPerCssPx(canvas: HTMLCanvasElement, naturalWidth: number): number {
+  const width = canvas.getBoundingClientRect().width;
+  return width > 0 ? naturalWidth / width : 1;
+}
+
 export function ReferenceBoxEditor({
   imageSrc,
   detection,
@@ -100,6 +109,10 @@ export function ReferenceBoxEditor({
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 画布是原图分辨率、被 CSS 缩小：线宽/手柄按 CSS 像素定义再换算到图像空间
+    const scale = imageUnitsPerCssPx(canvas, canvas.width);
+    ctx.lineWidth = LINE_CSS_PX * scale;
+    const handleSize = HANDLE_CSS_PX * scale;
     // 三联检出：三框都画，主参考高亮且是活的可拖框；单卡只画主框。
     const cards = detection.cards;
     const entries: Array<{ box: ReferenceBox; main: boolean }> = cards
@@ -121,7 +134,7 @@ export function ReferenceBoxEditor({
     // 拖拽手柄（四角 + 四边中点）
     for (const handle of HANDLES) {
       const p = handlePoint(box, handle);
-      ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+      ctx.fillRect(p.x - handleSize / 2, p.y - handleSize / 2, handleSize, handleSize);
     }
   }, [box, detection]);
 
@@ -159,8 +172,7 @@ export function ReferenceBoxEditor({
       if (!canvas || !img || !p) return;
       e.preventDefault();
       // 手柄命中容差 ≈ 12 CSS 像素（换算到图像坐标空间）
-      const rect = canvas.getBoundingClientRect();
-      const tolerance = 12 * (img.naturalWidth / rect.width);
+      const tolerance = 12 * imageUnitsPerCssPx(canvas, img.naturalWidth);
       let hit: HandleId | null = null;
       let best = tolerance;
       for (const handle of HANDLES) {
