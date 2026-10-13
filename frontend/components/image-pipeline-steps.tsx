@@ -21,37 +21,43 @@ export function ImagePipelineSteps({
   onCalibrate,
   onCutout,
   onTag,
+  interactive = true,
 }: {
   calibration: CalibrationState;
   hasMask: boolean;
   tagged: boolean;
-  onCalibrate: () => void;
-  onCutout: () => void;
-  onTag: () => void;
+  onCalibrate?: () => void;
+  onCutout?: () => void;
+  onTag?: () => void;
+  /** false：只显示三步顺序与状态，不渲染动作按钮（Ruling 42：录入页还没有 item）。 */
+  interactive?: boolean;
 }) {
   const t = useTranslations('wardrobe.pipeline');
   // D2：严格顺序 校色 → 抠图 → 打标，抠图没做完不给打标。
   const tagEnabled = hasMask;
 
+  const step = (testId: string, label: string, onClick: (() => void) | undefined, disabled: boolean) =>
+    interactive ? (
+      <button type="button" data-testid={testId} onClick={onClick} disabled={disabled}>
+        {label}
+      </button>
+    ) : (
+      <span data-testid={testId}>{label}</span>
+    );
+
   return (
     <ol className="flex items-center gap-3">
       <li>
-        <button type="button" data-testid="pipeline-calibrate"
-                onClick={onCalibrate} disabled={calibration === 'done'}>
-          {t('calibrate')} · {t(`state.${calibration}`)}
-        </button>
+        {step('pipeline-calibrate', `${t('calibrate')} · ${t(`state.${calibration}`)}`,
+              onCalibrate, calibration === 'done')}
       </li>
       <li>
-        <button type="button" data-testid="pipeline-cutout"
-                onClick={onCutout} disabled={hasMask}>
-          {t('cutout')} · {t(hasMask ? 'state.done' : 'state.none')}
-        </button>
+        {step('pipeline-cutout', `${t('cutout')} · ${t(hasMask ? 'state.done' : 'state.none')}`,
+              onCutout, hasMask)}
       </li>
       <li>
-        <button type="button" data-testid="pipeline-tag"
-                onClick={onTag} disabled={!tagEnabled}>
-          {t('tag')} · {t(tagged ? 'state.done' : 'state.none')}
-        </button>
+        {step('pipeline-tag', `${t('tag')} · ${t(tagged ? 'state.done' : 'state.none')}`,
+              onTag, !tagEnabled)}
       </li>
     </ol>
   );

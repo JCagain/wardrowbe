@@ -357,17 +357,14 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                 </div>
               )}
 
-              {/* R39：录入页只挂步骤条做「上传后的下一步」指引。此时还没有 item，
-                  校色/抠图/打标都得在详情页（有工作图之后）进行，这里不接线，
-                  按钮点了也没有可操作的对象。 */}
+              {/* R39 / Ruling 42：录入页只挂步骤条做「上传后的下一步」指引。此时还没有
+                  item，校色/抠图/打标都得在详情页进行——只显示状态，不给可点的按钮。 */}
               {preview && (
                 <ImagePipelineSteps
+                  interactive={false}
                   calibration="none"
                   hasMask={false}
                   tagged={false}
-                  onCalibrate={() => undefined}
-                  onCutout={() => undefined}
-                  onTag={() => undefined}
                 />
               )}
 

@@ -122,4 +122,18 @@ describe('ImagePipelineSteps', () => {
       expect(btn.textContent).not.toContain('pipeline.');
     }
   });
+
+  // Ruling 42：录入页还没有 item，三个动作无处可派——点了没反应比不给点更糟。
+  it('shows step order and state without any buttons when not interactive', () => {
+    render(
+      <ImagePipelineSteps interactive={false} calibration="none" hasMask={false} tagged={false} />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    const steps = screen.getAllByRole('listitem');
+    expect(steps).toHaveLength(3);
+    expect(within(steps[0]).getByTestId('pipeline-calibrate')).toHaveTextContent(/\S/);
+    expect(within(steps[1]).getByTestId('pipeline-cutout')).toBeInTheDocument();
+    expect(within(steps[2]).getByTestId('pipeline-tag')).toBeInTheDocument();
+  });
 });
