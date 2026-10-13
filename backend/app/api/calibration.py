@@ -98,10 +98,12 @@ async def _persist_image_op(
         ) from None
 
     assign_size_paths(item, result)
-    # 校色从 `_src` 重推导像素，抠图结果不再对应：列只要校色跑过就清（不管原来
+    # 校色从 `_src` 重推导像素，抠图结果不再对应：两列只要校色跑过就清（不管原来
     # 有没有 mask），否则 update_mask 会拿过期 mask 合成垃圾。是否「真的清掉了
     # mask 文件」另由 mask_cleared 标志上报给 UI。
     item.mask_path = None
+    # 抠图前备份随抠图一起作废（服务层已删文件）：否则「还原原图」会把旧校色写回
+    item.original_image_path = None
     await db.commit()
     # 只刷写过的列：整对象 refresh 会把 get_by_id 预载的 additional_images
     # 打回未加载，ItemResponse 序列化时懒加载就会炸 greenlet
@@ -112,6 +114,7 @@ async def _persist_image_op(
             "medium_path",
             "thumbnail_path",
             "mask_path",
+            "original_image_path",
             "updated_at",
         ],
     )

@@ -132,6 +132,9 @@ async def test_calibrating_clears_the_stale_mask(tmp_path, monkeypatch, op_name)
 
     assert result["mask_cleared"] is True
     assert not mask_file.exists(), "the stale mask sidecar must be deleted"
+    assert not (tmp_path / out["original_backup_path"]).exists(), (
+        "the cutout backup must be retired with the matte"
+    )
 
 
 @pytest.mark.anyio

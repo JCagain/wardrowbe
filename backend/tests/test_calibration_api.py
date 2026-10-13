@@ -468,6 +468,7 @@ async def test_calibration_endpoints_clear_a_stale_mask(
     item.medium_path = matte["medium_path"]
     item.thumbnail_path = matte["thumbnail_path"]
     item.mask_path = matte["mask_path"]
+    item.original_image_path = matte["original_backup_path"]
     await db_session.commit()
     mask_file = svc.get_image_path(matte["mask_path"])
     assert mask_file.exists()
@@ -483,7 +484,44 @@ async def test_calibration_endpoints_clear_a_stale_mask(
     assert not mask_file.exists(), f"{path}: stale mask sidecar left on disk"
     db_session.expire_all()
     result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
-    assert result.scalar_one().mask_path is None, f"{path}: mask_path not cleared"
+    refreshed = result.scalar_one()
+    assert refreshed.mask_path is None, f"{path}: mask_path not cleared"
+    assert refreshed.original_image_path is None, f"{path}: stale cutout backup still restorable"
+    assert resp.json()["original_image_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_calibrating_a_legacy_cutout_retires_its_backup(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """分支前抠过的旧物品：主图是合成白底 JPG + `_orig.jpg`，没有 mask。
+
+    校色后工作图从 `_src` 重推导，旧备份描述的是被丢弃的像素——「还原原图」
+    必须不再可用，而不是把旧合成图写回来。
+    """
+    item = await _make_item(db_session, test_user)
+    svc = ImageService()
+    backup = svc.get_image_path(item.image_path).with_name(
+        svc.get_image_path(item.image_path).stem + "_orig.jpg"
+    )
+    backup.write_bytes(svc.get_image_path(item.image_path).read_bytes())
+    item.original_image_path = str(backup.relative_to(svc.storage_path))
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/manual",
+        json={"kelvin": 5000.0, "tint": 0.0},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["original_image_path"] is None
+    assert resp.json()["mask_cleared"] is False
+    assert not backup.exists()
+
+    restore = await client.post(
+        f"/api/v1/items/{item.id}/restore-original", headers=auth_headers
+    )
+    assert restore.status_code == 400
 
 
 @pytest.mark.asyncio
