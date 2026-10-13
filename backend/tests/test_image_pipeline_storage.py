@@ -1,5 +1,6 @@
 import io
 import uuid
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -563,3 +564,34 @@ async def test_a_corrupt_backup_fails_rotate_without_touching_anything(tmp_path,
     assert (tmp_path / out["image_path"]).read_bytes() == working_before
     assert (tmp_path / paths["calibration_original_path"]).read_bytes() == source_before
     assert not list(tmp_path.rglob("*.tmp")), "staged temp files were left behind"
+
+
+@pytest.mark.anyio
+async def test_a_failed_tmp_write_leaves_no_orphan_and_no_changes(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.background_removal.get_provider", lambda: _opaque_left_half_provider()
+    )
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(USER, _quadrant_jpeg(), "coat.jpg")
+    out = svc.remove_background(paths["image_path"])
+
+    working_before = (tmp_path / out["image_path"]).read_bytes()
+    source_before = (tmp_path / paths["calibration_original_path"]).read_bytes()
+
+    real_write_bytes = Path.write_bytes
+
+    def failing_write_bytes(self, data):
+        if self.name.endswith(".tmp"):
+            real_write_bytes(self, data[: len(data) // 2])
+            raise OSError(28, "No space left on device")
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", failing_write_bytes)
+
+    with pytest.raises(OSError):
+        svc.rotate_image(out["image_path"], "cw")
+
+    monkeypatch.undo()
+    assert not list(tmp_path.rglob("*.tmp")), "a partial .tmp was left behind"
+    assert (tmp_path / out["image_path"]).read_bytes() == working_before
+    assert (tmp_path / paths["calibration_original_path"]).read_bytes() == source_before

@@ -421,8 +421,9 @@ class ImageService:
                     output, format="JPEG", quality=95, optimize=True
                 )
                 tmp = full.with_name(full.name + ".tmp")
-                tmp.write_bytes(output.getvalue())
+                # 先登记再写：write_bytes 中途失败（ENOSPC）留下的半截 tmp 也归 finally 清。
                 staged.append((tmp, full))
+                tmp.write_bytes(output.getvalue())
 
             image = Image.open(original_full)
             has_alpha = image.mode in ("RGBA", "LA") or (
