@@ -3,11 +3,12 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item import ClothingItem
+from app.services.color_calibration import detect_reference
 from app.services.image_service import ImageService
 
 USER = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -217,3 +218,259 @@ async def test_bulk_delete_removes_source_files(
     assert deleted.status_code == 200, deleted.text
     assert deleted.json()["deleted"] == 1
     assert not svc.get_image_path(src_rel).exists()
+
+
+# ---------------------------------------------------------------- 旋转同步 `_src`
+# Task R23：detect 在工作图坐标系给框，calibrate/reset 从 `_src` 裁像素。
+# rotate 不转 `_src` 就是坐标空间分裂——白平衡静默取错区域、重置连旋转一起撤销。
+# 不变量：**任何时刻 `_src` 与工作图同尺寸同朝向。**
+
+
+def _block_image(size: tuple[int, int] = (600, 400)) -> bytes:
+    """非对称四象限色块：转错方向/轴立刻显形，JPEG 往返后仍稳定。"""
+    img = Image.new("RGB", size, (15, 15, 15))
+    w, h = size
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 0, w // 2 - 1, h // 2 - 1), fill=(220, 40, 40))  # 左上 红
+    d.rectangle((w // 2, 0, w - 1, h // 2 - 1), fill=(40, 220, 40))  # 右上 绿
+    d.rectangle((0, h // 2, w // 2 - 1, h - 1), fill=(40, 40, 220))  # 左下 蓝
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+def _mean_channel_diff(a: Image.Image, b: Image.Image) -> float:
+    """两图逐像素平均通道差。硬边缘的 JPEG 振铃只在边角（实测块内逐像素 0、
+    角点最大 20/255），全局 max 对合成硬边过脆，改钉「整体接近」。"""
+    assert a.size == b.size
+    stat = ImageStat.Stat(ImageChops.difference(a.convert("RGB"), b.convert("RGB")))
+    return max(stat.mean)
+
+
+def _quadrant_samples(size: tuple[int, int]) -> list[tuple[int, int]]:
+    """四象限中心 + 距块边界 4px 的取样点。
+
+    象限中心钉住几何映射（转错方向/轴立刻变色）；边界内侧 4px 的点钉住平移
+    （实测 JPEG 振铃只在边角数 px 内、直边 4px 处已 ≤ 2/255），都避开四色角点。
+    """
+    w, h = size
+    mid_w, mid_h = w // 2, h // 2
+    return [
+        (w // 4, h // 4),
+        (3 * w // 4, h // 4),
+        (w // 4, 3 * h // 4),
+        (3 * w // 4, 3 * h // 4),
+        (mid_w - 4, h // 4),
+        (mid_w + 4, h // 4),
+        (mid_w - 4, 3 * h // 4),
+        (mid_w + 4, 3 * h // 4),
+        (w // 4, mid_h - 4),
+        (w // 4, mid_h + 4),
+        (3 * w // 4, mid_h - 4),
+        (3 * w // 4, mid_h + 4),
+    ]
+
+
+def _max_sample_diff(a: Image.Image, b: Image.Image, points) -> int:
+    a = a.convert("RGB")
+    b = b.convert("RGB")
+    return max(
+        max(abs(x - y) for x, y in zip(a.getpixel(p), b.getpixel(p), strict=True))
+        for p in points
+    )
+
+
+def _mapped_box_cw(box: tuple[int, int, int, int], size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """含右下框随顺时针 90°（expand）映射到新坐标系。点 (x,y)→(H-1-y, x)。"""
+    l, t, r, b = box
+    height = size[1]
+    return (height - 1 - b, l, height - 1 - t, r)
+
+
+def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
+    iw = max(0, min(a[2], b[2]) - max(a[0], b[0]) + 1)
+    ih = max(0, min(a[3], b[3]) - max(a[1], b[1]) + 1)
+    inter = iw * ih
+    area_a = (a[2] - a[0] + 1) * (a[3] - a[1] + 1)
+    area_b = (b[2] - b[0] + 1) * (b[3] - b[1] + 1)
+    return inter / (area_a + area_b - inter)
+
+
+def _strip_on_tint(size: tuple[int, int] = (640, 480)) -> bytes:
+    """偏暖纯色背景 + 白/灰/黑三联参考条（Ruling 19）。
+
+    背景带强色偏：校色要是裁错区域，增益来自背景而不是灰卡，灰卡就不再中性。
+    """
+    img = Image.new("RGB", size, (200, 120, 60))
+    d = ImageDraw.Draw(img)
+    cards = {
+        "white": (120, 160, 239, 319),
+        "gray": (250, 160, 369, 319),
+        "black": (380, 160, 499, 319),
+    }
+    d.rectangle(cards["white"], fill=(245, 245, 245))
+    d.rectangle(cards["gray"], fill=(128, 128, 128))
+    d.rectangle(cards["black"], fill=(35, 35, 35))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_rotate_keeps_the_source_in_the_same_size_and_orientation(tmp_path):
+    # 核心钉：`_src` 与工作图任何时刻同尺寸同朝向。90° 后两者都应是尺寸对调。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_jpeg_bytes(size=(600, 400)), original_filename="coat.jpg"
+    )
+    src = tmp_path / paths["calibration_original_path"]
+
+    rotated = svc.rotate_image(paths["image_path"], "cw")
+
+    working_size = Image.open(tmp_path / rotated["image_path"]).size
+    src_size = Image.open(src).size
+    assert working_size == (400, 600)  # 600x400 顺时针 90°
+    assert src_size == working_size, "校色副本必须和工作图始终同尺寸同朝向"
+
+    rotated_back = svc.rotate_image(rotated["image_path"], "ccw")
+    assert Image.open(tmp_path / rotated_back["image_path"]).size == (600, 400)
+    assert Image.open(src).size == (600, 400)
+
+
+@pytest.mark.asyncio
+async def test_rotate_transforms_the_source_pixels_exactly(tmp_path):
+    # `_src` 像素 = 旋转前 `_src` 做同样 90° 精确旋转。容差只留给 JPEG 重编码。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_block_image(), original_filename="coat.jpg"
+    )
+    src = tmp_path / paths["calibration_original_path"]
+    expected = Image.open(src).convert("RGB").transpose(Image.Transpose.ROTATE_270)
+
+    svc.rotate_image(paths["image_path"], "cw")
+
+    after = Image.open(src).convert("RGB")
+    assert after.size == expected.size
+    # 几何映射是逐像素精确的；容差只留给 JPEG 重编码（见 _mean_channel_diff）。
+    sample_diff = _max_sample_diff(after, expected, _quadrant_samples(expected.size))
+    assert sample_diff <= 2, f"取样点偏差超容差: max channel diff {sample_diff}"
+    mean_diff = _mean_channel_diff(after, expected)
+    assert mean_diff < 1.0, f"整体重编码损失过大: mean channel diff {mean_diff}"
+
+
+@pytest.mark.asyncio
+async def test_reset_after_rotate_restores_the_rotated_original(tmp_path):
+    # 「重置回原图」= 当前朝向下的校色前像素，不得连用户的旋转一起撤销。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_block_image(), original_filename="coat.jpg"
+    )
+    src = tmp_path / paths["calibration_original_path"]
+    expected = Image.open(src).convert("RGB").transpose(Image.Transpose.ROTATE_270)
+
+    rotated = svc.rotate_image(paths["image_path"], "cw")
+    out = svc.reset_calibration(rotated["image_path"], paths["calibration_original_path"])
+
+    restored = Image.open(tmp_path / out["image_path"]).convert("RGB")
+    assert restored.size == (400, 600), "重置把用户的旋转意图撤销了"
+    assert restored.size == expected.size
+    sample_diff = _max_sample_diff(restored, expected, _quadrant_samples(expected.size))
+    assert sample_diff <= 2, f"重置后不是旋转后的原图像素: max channel diff {sample_diff}"
+    # 点位证明是旋转后的像素，不是碰巧同尺寸：红块（原左上）→顺时针后在右上，
+    # 蓝块（原左下）→在左上。
+    assert restored.getpixel((350, 50))[0] > 180, "右上应是旋转过来的红块"
+    assert restored.getpixel((50, 50))[2] > 180, "左上应是旋转过来的蓝块"
+
+
+@pytest.mark.asyncio
+async def test_detect_boxes_stay_in_one_coordinate_space_across_a_rotate(tmp_path):
+    # 端到端：旋转前后 detect 的框映射到同一物理区域；框喂给 calibrate 裁的是
+    # 同一块像素（输出该区域中性）。坐标空间分裂在这里出错色，甚至静默。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_strip_on_tint(), original_filename="coat.jpg"
+    )
+    before_img = Image.open(tmp_path / paths["image_path"]).convert("RGB")
+    ref_before = detect_reference(before_img)
+    assert ref_before is not None and ref_before.kind == "gray"
+
+    rotated = svc.rotate_image(paths["image_path"], "cw")
+    after_img = Image.open(tmp_path / rotated["image_path"]).convert("RGB")
+    ref_after = detect_reference(after_img)
+    assert ref_after is not None and ref_after.kind == "gray"
+
+    # 旋转前后两个框映射到同一物理区域
+    mapped = _mapped_box_cw(ref_before.box, before_img.size)
+    assert _iou(mapped, ref_after.box) > 0.8, f"{mapped} vs {ref_after.box}"
+
+    # detect 框喂给 calibrate：裁到的就是灰卡，输出对应区域中性；输出保持旋转后尺寸
+    out = svc.calibrate_image(
+        rotated["image_path"], paths["calibration_original_path"], ref_after.box, "gray"
+    )
+    result = Image.open(tmp_path / out["image_path"]).convert("RGB")
+    assert result.size == after_img.size, "校色输出丢了旋转朝向（裁的是未旋转的副本）"
+    l, t, r, b = ref_after.box
+    region = result.crop((l, t, r + 1, b + 1))
+    pixels = list(region.convert("RGB").getdata())
+    mean = [sum(p[c] for p in pixels) / len(pixels) for c in range(3)]
+    assert max(mean) - min(mean) <= 3, f"参考块区域应中性，实际均值 {mean}"
+
+
+@pytest.mark.asyncio
+async def test_rotate_without_a_source_still_rotates_working_image_and_mask(
+    tmp_path, monkeypatch
+):
+    # keep_source=False 的附加图没有 `_src`：rotate 只转工作图 + mask，不报错。
+    def _half_opaque_provider():
+        class FakeProvider:
+            def remove(self, image):
+                rgba = image.convert("RGBA")
+                alpha = Image.new("L", rgba.size, 0)
+                for x in range(rgba.width // 2):
+                    for y in range(rgba.height):
+                        alpha.putpixel((x, y), 255)
+                rgba.putalpha(alpha)
+                return rgba
+
+        return FakeProvider()
+
+    monkeypatch.setattr(
+        "app.services.background_removal.get_provider", lambda: _half_opaque_provider()
+    )
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER,
+        image_data=_jpeg_bytes(size=(600, 400)),
+        original_filename="detail.jpg",
+        keep_source=False,
+    )
+    assert paths["calibration_original_path"] is None
+    out = svc.remove_background(paths["image_path"])
+
+    rotated = svc.rotate_image(out["image_path"], "cw")  # 不抛错
+
+    main = Image.open(tmp_path / rotated["image_path"])
+    assert main.size == (400, 600)
+    mask = Image.open(tmp_path / out["mask_path"])
+    assert mask.size == (400, 600)
+    assert list(main.getchannel("A").getdata()) == list(mask.getdata())
+
+
+@pytest.mark.asyncio
+async def test_a_corrupt_source_fails_rotate_loudly_without_touching_the_working_image(
+    tmp_path,
+):
+    # `_src` 转失败必须抛错，不许只转工作图就返回——那正是本 bug 的形态。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_jpeg_bytes(size=(600, 400)), original_filename="coat.jpg"
+    )
+    (tmp_path / paths["calibration_original_path"]).write_bytes(b"not a jpeg")
+    working_before = (tmp_path / paths["image_path"]).read_bytes()
+
+    with pytest.raises((OSError, ValueError)):
+        svc.rotate_image(paths["image_path"], "cw")
+
+    assert (tmp_path / paths["image_path"]).read_bytes() == working_before, (
+        "副本旋转失败时工作图不得已经被改写"
+    )

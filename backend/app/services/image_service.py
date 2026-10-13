@@ -157,8 +157,10 @@ class ImageService:
 
         user_path = self._get_user_path(user_id)
 
-        # 校色前原图（fixes #6）：整个管线里唯一不可变的文件。校色/抠图/旋转
-        # 都只写工作图与三档尺寸，「重置回原图」从这里取。上传原始字节不保留。
+        # 校色前原图（fixes #6）：不得被后续处理产物替换（校色/抠图只写工作图
+        # 与三档，永远不把处理结果写回这里），「重置回原图」从这里取。上传原始
+        # 字节不保留。唯一允许的改动是旋转的几何同步（fix-spec #7a）：它必须和
+        # 工作图始终同尺寸同朝向，否则 detect 的框会裁到错误区域。
         source_path: str | None = None
         if keep_source:
             source_name = f"{base_name}_src.jpg"
@@ -391,6 +393,13 @@ class ImageService:
         旋转是几何变换：RGBA 主图带着 alpha 一起转（**不**铺白底压成 RGB），
         mask 旁挂用同一角度转，两者继续逐点对应。
 
+        校色前原图副本（`{base}_src.jpg`）同步同角度旋转（fix-spec #7a 的几何
+        同步）：detect 在工作图坐标系给框，calibrate / manual / reset 都从副本
+        取像素，两边不一致就是坐标空间分裂——白平衡静默取错区域、重置把未旋转
+        的副本写回工作图连用户的旋转一起撤销。「重置回原图」= **当前朝向下**的
+        校色前像素。副本缺失（keep_source=False 的附加图）则跳过；副本旋转失败
+        必须抛错，不许只转工作图就返回。
+
         Args:
             image_path: Relative path to the original image (e.g., "user_id/filename.jpg")
             direction: "cw" for clockwise 90°, "ccw" for counter-clockwise 90°
@@ -404,6 +413,20 @@ class ImageService:
             raise ValueError(f"Image not found: {image_path}")
 
         angle = -90 if direction == "cw" else 90  # PIL rotates counter-clockwise by default
+
+        # 先动副本：损坏就在这里炸掉，工作图一个字节都不该被改写。
+        source_full = self.storage_path / f"{image_path.rsplit('.', 1)[0]}_src.jpg"
+        if source_full.exists():
+            source = Image.open(source_full)
+            if source.mode != "RGB":
+                source = source.convert("RGB")
+            # 90° 用 rotate(angle, expand=True)：对 90/270 是逐像素精确映射。
+            # 重编码一次，quality=95（与首次写入同款），把代际损失压到不可见。
+            output = BytesIO()
+            source.rotate(angle, expand=True).save(
+                output, format="JPEG", quality=95, optimize=True
+            )
+            source_full.write_bytes(output.getvalue())
 
         image = Image.open(original_full)
         has_alpha = image.mode in ("RGBA", "LA") or (
