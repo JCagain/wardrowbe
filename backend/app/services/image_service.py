@@ -1,3 +1,4 @@
+import os
 import shutil
 import uuid
 from datetime import datetime
@@ -414,37 +415,51 @@ class ImageService:
 
         angle = -90 if direction == "cw" else 90  # PIL rotates counter-clockwise by default
 
-        # 先动副本：损坏就在这里炸掉，工作图一个字节都不该被改写。
+        # 副本的解码 + 旋转先在内存里做完：损坏就在这里炸掉，工作图一个字节
+        # 都不该被改写。落盘走 tmp + os.replace，绝不 truncate 基线本身——
+        # `write_bytes` 是 open('wb') 先截断，ENOSPC 落在写 `_src` 上就不是脱节
+        # 而是把不可变基线整个毁掉（校色从此永远无法重置）。失败可重试：
+        # 基线没被换掉，重试就只把 `_src` 转一次。
         source_full = self.storage_path / f"{image_path.rsplit('.', 1)[0]}_src.jpg"
-        if source_full.exists():
-            source = Image.open(source_full)
-            if source.mode != "RGB":
-                source = source.convert("RGB")
-            # 90° 用 rotate(angle, expand=True)：对 90/270 是逐像素精确映射。
-            # 重编码一次，quality=95（与首次写入同款），把代际损失压到不可见。
-            output = BytesIO()
-            source.rotate(angle, expand=True).save(
-                output, format="JPEG", quality=95, optimize=True
+        source_tmp: Path | None = None
+        try:
+            if source_full.exists():
+                source = Image.open(source_full)
+                if source.mode != "RGB":
+                    source = source.convert("RGB")
+                # 90° 用 rotate(angle, expand=True)：对 90/270 是逐像素精确映射。
+                # 重编码一次，quality=95（与首次写入同款），把代际损失压到不可见。
+                output = BytesIO()
+                source.rotate(angle, expand=True).save(
+                    output, format="JPEG", quality=95, optimize=True
+                )
+                source_tmp = source_full.with_name(source_full.name + ".tmp")
+                source_tmp.write_bytes(output.getvalue())
+
+            image = Image.open(original_full)
+            has_alpha = image.mode in ("RGBA", "LA") or (
+                image.mode == "P" and "transparency" in image.info
             )
-            source_full.write_bytes(output.getvalue())
+            if has_alpha:
+                image = image.convert("RGBA")
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
 
-        image = Image.open(original_full)
-        has_alpha = image.mode in ("RGBA", "LA") or (
-            image.mode == "P" and "transparency" in image.info
-        )
-        if has_alpha:
-            image = image.convert("RGBA")
-        elif image.mode != "RGB":
-            image = image.convert("RGB")
+            rotated = image.rotate(angle, expand=True)
 
-        rotated = image.rotate(angle, expand=True)
+            mask_full = self.storage_path / self._mask_path_for(image_path)
+            if mask_full.exists():
+                mask = mask_service.load_mask(mask_full)
+                mask_service.save_mask(mask.rotate(angle, expand=True), mask_full)
 
-        mask_full = self.storage_path / self._mask_path_for(image_path)
-        if mask_full.exists():
-            mask = mask_service.load_mask(mask_full)
-            mask_service.save_mask(mask.rotate(angle, expand=True), mask_full)
-
-        return self._save_all_sizes(rotated, image_path)
+            paths = self._save_all_sizes(rotated, image_path)
+            # 最后才换基线：上面任何一步失败，`_src` 仍是原样（tmp 由 finally 清掉）。
+            if source_tmp is not None:
+                os.replace(source_tmp, source_full)
+            return paths
+        finally:
+            if source_tmp is not None:
+                source_tmp.unlink(missing_ok=True)
 
     def calibrate_image(
         self,

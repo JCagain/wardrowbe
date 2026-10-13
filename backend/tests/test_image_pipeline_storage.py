@@ -411,8 +411,8 @@ async def test_detect_boxes_stay_in_one_coordinate_space_across_a_rotate(tmp_pat
     assert result.size == after_img.size, "校色输出丢了旋转朝向（裁的是未旋转的副本）"
     l, t, r, b = ref_after.box
     region = result.crop((l, t, r + 1, b + 1))
-    pixels = list(region.convert("RGB").getdata())
-    mean = [sum(p[c] for p in pixels) / len(pixels) for c in range(3)]
+    data = region.convert("RGB").tobytes()
+    mean = [sum(data[c::3]) / (len(data) / 3) for c in range(3)]
     assert max(mean) - min(mean) <= 3, f"参考块区域应中性，实际均值 {mean}"
 
 
@@ -453,7 +453,7 @@ async def test_rotate_without_a_source_still_rotates_working_image_and_mask(
     assert main.size == (400, 600)
     mask = Image.open(tmp_path / out["mask_path"])
     assert mask.size == (400, 600)
-    assert list(main.getchannel("A").getdata()) == list(mask.getdata())
+    assert main.getchannel("A").tobytes() == mask.tobytes()
 
 
 @pytest.mark.asyncio
@@ -474,3 +474,27 @@ async def test_a_corrupt_source_fails_rotate_loudly_without_touching_the_working
     assert (tmp_path / paths["image_path"]).read_bytes() == working_before, (
         "副本旋转失败时工作图不得已经被改写"
     )
+    assert list(tmp_path.rglob("*.tmp")) == [], "失败路径不许留下 .tmp 孤儿"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_size_save_leaves_the_source_bytes_untouched(tmp_path, monkeypatch):
+    # F1：`_src` 是不可变基线。`_save_all_sizes` 抛错（ENOSPC 等）时它必须**逐字节
+    # 不变**——既不能被 write_bytes 先截断毁掉（校色从此永远无法重置），也不能已经
+    # 换成旋转后的版本（失败可重试，重试会再转 90°，尺寸回到原样却朝向已错）。
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(
+        user_id=USER, image_data=_jpeg_bytes(size=(600, 400)), original_filename="coat.jpg"
+    )
+    src = tmp_path / paths["calibration_original_path"]
+    before = src.read_bytes()
+
+    def _disk_full(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(svc, "_save_all_sizes", _disk_full)
+    with pytest.raises(OSError):
+        svc.rotate_image(paths["image_path"], "cw")
+
+    assert src.read_bytes() == before, "`_src` 必须原样保留：不截断、不提前换成旋转版"
+    assert list(tmp_path.rglob("*.tmp")) == [], "失败路径不许留下 .tmp 孤儿"
