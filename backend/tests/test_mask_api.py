@@ -106,17 +106,55 @@ async def _make_user(db_session: AsyncSession) -> User:
 _STROKE = {"x": 10, "y": 10, "radius": 20, "mode": "subtract"}
 
 
+def _stroke_core_alpha_mean(img: Image.Image, stroke: dict, ref_size: tuple[int, int]) -> float:
+    """笔画圆盘**内部**的 alpha 均值（取样框按 derived 尺寸缩放）。
+
+    取样框 = 缩放后的中心 ± 半径的一半，整个框落在圆盘内部。LANCZOS 只在笔画
+    边缘插值，进不了内部，所以拿区域均值比阈值、不逐像素取等值——钉子对
+    重采样不敏感（crop 出界 PIL 补 0，先夹紧）。
+    """
+    sx = img.size[0] / ref_size[0]
+    sy = img.size[1] / ref_size[1]
+    cx = stroke["x"] * sx
+    cy = stroke["y"] * sy
+    half = stroke["radius"] * min(sx, sy) * 0.5
+    box = (
+        max(0, int(cx - half)),
+        max(0, int(cy - half)),
+        min(img.size[0], int(cx + half) + 1),
+        min(img.size[1], int(cy + half) + 1),
+    )
+    region = img.convert("RGBA").getchannel("A").crop(box)
+    values = list(region.getdata())
+    return sum(values) / len(values)
+
+
 @pytest.mark.asyncio
 async def test_editing_the_mask_keeps_the_mask_path_and_writes_the_three_sizes(
     client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
 ):
-    """R3：三档写回 DB，mask_path 不动（走 _persist_image_op 会当场清掉）。"""
+    """R3：三档写回 DB，mask_path 不动（走 _persist_image_op 会当场清掉）。
+
+    另钉 fixes #13：medium/thumbnail 的**内容**必须跟主图一起带上笔画——
+    只重写主图、derived 持旧像素（网格缩略图与详情大图不同抠图）会在这里变红。
+    """
     item = await _make_item_with_mask(db_session, test_user)
     item_id = item.id
     mask_path = item.mask_path
     svc = ImageService()
     mask_file = svc.get_image_path(mask_path)
     assert mask_file.exists()
+
+    ref_size = Image.open(svc.get_image_path(item.image_path)).size
+    before = {
+        key: {
+            "bytes": svc.get_image_path(getattr(item, key)).read_bytes(),
+            "core_alpha_mean": _stroke_core_alpha_mean(
+                Image.open(svc.get_image_path(getattr(item, key))), _STROKE, ref_size
+            ),
+        }
+        for key in ("medium_path", "thumbnail_path")
+    }
 
     resp = await client.post(
         f"/api/v1/items/{item_id}/mask",
@@ -142,9 +180,22 @@ async def test_editing_the_mask_keeps_the_mask_path_and_writes_the_three_sizes(
         assert getattr(refreshed, key) == body[key]
         assert body[key].endswith(".png")
         assert svc.get_image_path(body[key]).exists()
-    # 主图 alpha 跟着改（三档同批重生成，fixes #13）
     main = Image.open(svc.get_image_path(body["image_path"]))
     assert main.getchannel("A").getpixel((10, 10)) == 0
+
+    # #13 的洞：两档 derived 的内容必须带上笔画。字节变了 = 真被重写过；
+    # 圆盘内部 alpha 均值塌下去 = 内容跟上（重写了但没合成 alpha 也过不了）
+    for key in ("medium_path", "thumbnail_path"):
+        rel = body[key]
+        snap = before[key]
+        assert snap["core_alpha_mean"] > 200, f"{key} pre-edit core was not opaque"
+        assert svc.get_image_path(rel).read_bytes() != snap["bytes"], f"{key} was not rewritten"
+        after_mean = _stroke_core_alpha_mean(
+            Image.open(svc.get_image_path(rel)), _STROKE, ref_size
+        )
+        assert after_mean < 64, (
+            f"{key} does not carry the stroke (core alpha mean {after_mean:.1f})"
+        )
 
 
 @pytest.mark.asyncio

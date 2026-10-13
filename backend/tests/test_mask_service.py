@@ -190,6 +190,29 @@ def test_flipping_the_format_removes_the_orphaned_variants(tmp_path):
 # ---------------------------------------------------------------- mask 画笔（Task 6）
 
 
+def _stroke_core_alpha_mean(img: Image.Image, stroke: dict, ref_size: tuple[int, int]) -> float:
+    """笔画圆盘**内部**的 alpha 均值（取样框按 derived 尺寸缩放）。
+
+    取样框 = 缩放后的中心 ± 半径的一半，整个框落在圆盘内部。LANCZOS 只在笔画
+    边缘插值，进不了内部，所以拿区域均值比阈值、不逐像素取等值——钉子对
+    重采样不敏感，且不会把「没重写」误判成通过（crop 出界 PIL 补 0，先夹紧）。
+    """
+    sx = img.size[0] / ref_size[0]
+    sy = img.size[1] / ref_size[1]
+    cx = stroke["x"] * sx
+    cy = stroke["y"] * sy
+    half = stroke["radius"] * min(sx, sy) * 0.5
+    box = (
+        max(0, int(cx - half)),
+        max(0, int(cy - half)),
+        min(img.size[0], int(cx + half) + 1),
+        min(img.size[1], int(cy + half) + 1),
+    )
+    region = img.convert("RGBA").getchannel("A").crop(box)
+    values = list(region.getdata())
+    return sum(values) / len(values)
+
+
 def test_strokes_add_and_subtract_from_the_mask():
     # add 涂白（补抠）、subtract 涂黑（擦多余）；同一笔画列表内按顺序叠加
     mask = Image.new("L", (100, 100), 0)
@@ -230,6 +253,9 @@ def test_strokes_land_on_full_resolution_mask_pixels():
 
 @pytest.mark.anyio
 async def test_updating_the_mask_regenerates_all_three_sizes(tmp_path, monkeypatch):
+    # fixes #13：改 mask 后**三档**必须一起重生成（否则网格缩略图与详情大图
+    # 显示不同抠图）。只重写主图、让 medium/thumbnail 持旧像素在下面两档的
+    # 内容钉子处变红——存在/扩展名检查抓不住那种实现。
     class FakeProvider:
         def remove(self, image):
             rgba = image.convert("RGBA")
@@ -243,11 +269,21 @@ async def test_updating_the_mask_regenerates_all_three_sizes(tmp_path, monkeypat
     paths = await svc.process_and_store(USER, buf.getvalue(), "coat.jpg")
     out = svc.remove_background(paths["image_path"])
 
-    updated = svc.update_mask(out["image_path"], out["mask_path"], [
-        {"x": 10, "y": 10, "radius": 20, "mode": "subtract"},
-    ])
+    stroke = {"x": 10, "y": 10, "radius": 20, "mode": "subtract"}
+    ref_size = Image.open(tmp_path / out["image_path"]).size
+    # derived 两档改前的内容快照：钉「改前 → 改后」，不是只看文件存在
+    before = {
+        key: {
+            "bytes": (tmp_path / out[key]).read_bytes(),
+            "core_alpha_mean": _stroke_core_alpha_mean(
+                Image.open(tmp_path / out[key]), stroke, ref_size
+            ),
+        }
+        for key in ("medium_path", "thumbnail_path")
+    }
 
-    # 三档全部重生成，且主图 alpha 与 mask 一致（fixes #13）
+    updated = svc.update_mask(out["image_path"], out["mask_path"], [stroke])
+
     for key in ("image_path", "medium_path", "thumbnail_path"):
         assert (tmp_path / updated[key]).exists()
         assert updated[key].endswith(".png")
@@ -257,6 +293,19 @@ async def test_updating_the_mask_regenerates_all_three_sizes(tmp_path, monkeypat
     mask = Image.open(tmp_path / updated["mask_path"])
     assert mask.getpixel((10, 10)) == 0
     assert mask.getpixel((200, 150)) == 255   # 减的是左上角，别处没动
+
+    # #13 的洞：medium/thumbnail 的**内容**必须带上笔画。两断言分工——
+    # 字节变了 = 真被重写过（没动过会持旧字节）；圆盘内部均值塌下去 =
+    # 内容跟上了笔画（重写了但没合成 alpha 的也过不了）。
+    for key in ("medium_path", "thumbnail_path"):
+        rel = updated[key]
+        snap = before[key]
+        assert snap["core_alpha_mean"] > 200, f"{key} pre-edit core was not opaque"
+        assert (tmp_path / rel).read_bytes() != snap["bytes"], f"{key} was not rewritten"
+        after_mean = _stroke_core_alpha_mean(Image.open(tmp_path / rel), stroke, ref_size)
+        assert after_mean < 64, (
+            f"{key} does not carry the stroke (core alpha mean {after_mean:.1f})"
+        )
 
 
 @pytest.mark.anyio
