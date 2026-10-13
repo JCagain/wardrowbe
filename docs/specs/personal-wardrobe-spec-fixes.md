@@ -105,7 +105,7 @@
 | 52 | §2 静态消费点 | ⚠️ `color-eyedropper` 的最近色匹配、`analysis-queue-panel` 的 `KNOWN_TYPES`、`lib/studio/canonical-order.ts` 的 `ITEM_ROLE` 只认编译产物 | 全部改运行时取用，否则运行时新增词进不了这些路径 |
 | 53 | §2 排序「正X 第一」 | ⚠️ 新插入按纯亮度排，可能插到正X 前面；**橙黄系按色相黄→橙**无代码表示 | 插入位保证：色系内 **正X 固定第一**，其余渐变；橙黄系按色相（黄→橙） |
 | 54 | §10.18 词表快照 | ⚠️ **实现偏离原文**（已改懒读即时生效，且有测试锁定） | 按 **D1**：承认即时生效，原文 §10.18 作废 |
-| 55 | §6 `AI_API_KEY` | ⚠️ `docker-compose.yml` 转发了 BASE_URL/VISION/TEXT，**没转发 `AI_API_KEY`** | 补进 compose 环境转发 |
+| 55 | §6 `AI_API_KEY` | ~~⚠️ `docker-compose.yml` 没转发 `AI_API_KEY`~~ **已修（2026-10-13）** | ✅ 已补进 `docker-compose.yml` backend + worker 两处 `AI_API_KEY: ${AI_API_KEY:-}` |
 | 56 | §6 embedding 模型配置 | ❌ 无（M2） | 独立配置项（本地 embedding 服务或 API），与视觉端点分开 |
 | 57 | §7 家庭评分路由 | ⚠️ **仍挂载**在 `outfits.py`（`/family-ratings` 三个路由），原文要求「后端路由关闭或不挂」 | 摘下线（代码保留） |
 | 58 | §7 UI 锁 zh-CN | ⚠️ 实现保留 locale 切换（cookie + Accept-Language 会切 8 种语言） | 按 **D4**：真锁死 |
