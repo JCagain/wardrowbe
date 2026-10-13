@@ -26,6 +26,34 @@ def _half_opaque_provider():
     return FakeProvider()
 
 
+def _rembg_like_provider():
+    """像真实 rembg 一样：左半不透明、右半透明，且透明区 RGB 清零。"""
+
+    class FakeProvider:
+        def __init__(self):
+            self.inputs: list[Image.Image] = []
+
+        def remove(self, image):
+            self.inputs.append(image.copy())
+            rgba = image.convert("RGBA")
+            cleared = Image.new("RGBA", rgba.size, (0, 0, 0, 0))
+            keep = Image.new("L", rgba.size, 0)
+            keep.paste(255, (0, 0, rgba.width // 2, rgba.height))
+            return Image.composite(rgba, cleared, keep)
+
+    return FakeProvider()
+
+
+async def _cut(tmp_path, monkeypatch, provider=None):
+    provider = provider or _rembg_like_provider()
+    monkeypatch.setattr("app.services.background_removal.get_provider", lambda: provider)
+    svc = ImageService(storage_path=str(tmp_path))
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 60, 60)).save(buf, format="JPEG", quality=95)
+    paths = await svc.process_and_store(USER, buf.getvalue(), "coat.jpg")
+    return svc, paths, svc.remove_background(paths["image_path"]), provider
+
+
 @pytest.mark.anyio
 async def test_removing_background_stores_transparent_png_and_a_mask_sidecar(tmp_path, monkeypatch):
     monkeypatch.setattr(
@@ -285,7 +313,9 @@ async def test_updating_the_mask_regenerates_all_three_sizes(tmp_path, monkeypat
         for key in ("medium_path", "thumbnail_path")
     }
 
-    updated = svc.update_mask(out["image_path"], out["mask_path"], [stroke])
+    updated = svc.update_mask(
+        out["image_path"], out["mask_path"], out["original_backup_path"], [stroke]
+    )
 
     for key in ("image_path", "medium_path", "thumbnail_path"):
         assert (tmp_path / updated[key]).exists()
@@ -335,9 +365,67 @@ async def test_mask_size_mismatch_raises_and_writes_nothing(tmp_path, monkeypatc
     before = {rel: (tmp_path / rel).read_bytes() for rel in tracked}
 
     with pytest.raises(ValueError):
-        svc.update_mask(out["image_path"], out["mask_path"], [
-            {"x": 5, "y": 5, "radius": 4, "mode": "add"},
-        ])
+        svc.update_mask(
+            out["image_path"],
+            out["mask_path"],
+            out["original_backup_path"],
+            [{"x": 5, "y": 5, "radius": 4, "mode": "add"}],
+        )
 
     for rel, data in before.items():
         assert (tmp_path / rel).read_bytes() == data, f"{rel} was rewritten"
+
+
+@pytest.mark.anyio
+async def test_brush_add_restores_the_true_pixels_not_black(tmp_path, monkeypatch):
+    svc, _, out, _ = await _cut(tmp_path, monkeypatch)
+    stroke = {"x": 300, "y": 150, "radius": 30, "mode": "add"}  # 右半透明区
+
+    updated = svc.update_mask(
+        out["image_path"], out["mask_path"], out["original_backup_path"], [stroke]
+    )
+
+    main = Image.open(tmp_path / updated["image_path"]).convert("RGBA")
+    r, g, b, a = main.getpixel((300, 150))
+    assert a == 255
+    assert (abs(r - 200), abs(g - 60), abs(b - 60)) <= (12, 12, 12), (
+        f"brush-added pixels must be the original colour, got {(r, g, b)}"
+    )
+
+
+@pytest.mark.anyio
+async def test_recutting_feeds_the_provider_the_uncut_pixels(tmp_path, monkeypatch):
+    svc, _, out, provider = await _cut(tmp_path, monkeypatch)
+
+    svc.remove_background(out["image_path"])
+
+    second_input = provider.inputs[-1].convert("RGB")
+    r, g, b = second_input.getpixel((300, 150))
+    assert r > 150, f"re-cut ran on the already-cut (black) image: {(r, g, b)}"
+
+
+@pytest.mark.anyio
+async def test_brush_after_rotate_restores_the_true_pixels(tmp_path, monkeypatch):
+    svc, _, out, _ = await _cut(tmp_path, monkeypatch)
+    svc.rotate_image(out["image_path"], "cw")  # 400×300 → 300×400，右半透明区转到下半
+    stroke = {"x": 150, "y": 300, "radius": 30, "mode": "add"}
+
+    updated = svc.update_mask(
+        out["image_path"], out["mask_path"], out["original_backup_path"], [stroke]
+    )
+
+    r, g, b, a = Image.open(tmp_path / updated["image_path"]).convert("RGBA").getpixel((150, 300))
+    assert a == 255 and r > 150, f"brush after rotate painted {(r, g, b, a)}"
+
+
+@pytest.mark.anyio
+async def test_update_mask_without_a_backup_raises_and_writes_nothing(tmp_path, monkeypatch):
+    svc, _, out, _ = await _cut(tmp_path, monkeypatch)
+    (tmp_path / out["original_backup_path"]).unlink()
+    before = (tmp_path / out["image_path"]).read_bytes()
+
+    with pytest.raises(ValueError, match="Cutout backup not found"):
+        svc.update_mask(out["image_path"], out["mask_path"], out["original_backup_path"],
+                        [{"x": 1, "y": 1, "radius": 5, "mode": "add"}])
+
+    assert (tmp_path / out["image_path"]).read_bytes() == before

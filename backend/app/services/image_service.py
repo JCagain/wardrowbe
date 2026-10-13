@@ -352,7 +352,9 @@ class ImageService:
         if not backup_full.exists():
             shutil.copy2(original_full, backup_full)
 
-        image = Image.open(original_full).convert("RGB")
+        # 永远从抠图前像素抠：工作图若已是抠图产物，透明区 RGB 已被 rembg 清零，
+        # 再抠只会在黑底上抠（重抠 / 画笔改过 mask 后再抠都会走到这里）。
+        image = Image.open(backup_full).convert("RGB")
         result = background_removal.get_provider().remove(image)
 
         mask = result.getchannel("A")
@@ -532,24 +534,32 @@ class ImageService:
         return paths
 
     def update_mask(
-        self, image_path: str, mask_path: str, strokes: list[dict]
+        self, image_path: str, mask_path: str, backup_path: str, strokes: list[dict]
     ) -> dict[str, str]:
-        """改 mask，把 alpha 写回主图并重生成三档（fixes #13）。"""
+        """改 mask，以抠图前像素为 RGB、新 mask 为 alpha 重建主图并重生成三档（fixes #13）。
+
+        RGB 必须取自抠图前备份：rembg 把透明区 RGB 清零，只改 alpha 会让「补抠」
+        补出黑块。
+        """
         main_full = self.storage_path / image_path
         mask_full = self.storage_path / mask_path
+        backup_full = self.storage_path / backup_path
         if not main_full.exists():
             raise ValueError(f"Image not found: {image_path}")
         if not mask_full.exists():
             raise ValueError(f"Mask not found: {mask_path}")
+        if not backup_full.exists():
+            raise ValueError(f"Cutout backup not found: {backup_path}")
 
-        rgba = Image.open(main_full).convert("RGBA")
+        pixels = Image.open(backup_full).convert("RGB")
         new_mask = mask_service.apply_strokes(mask_service.load_mask(mask_full), strokes)
-        if new_mask.size != rgba.size:
+        if new_mask.size != pixels.size:
             # 没有合法路径会造成不一致：remove_background 同数组写两边、rotate
-            # 同步旋转、校色直接清 mask。不一致 = 损坏，静默 resize 是产垃圾。
+            # 同步旋转三者、校色直接作废抠图。不一致 = 损坏，静默 resize 是产垃圾。
             raise ValueError(
-                f"Mask size {new_mask.size} does not match image size {rgba.size}"
+                f"Mask size {new_mask.size} does not match image size {pixels.size}"
             )
+        rgba = pixels.convert("RGBA")
         rgba.putalpha(new_mask)
         mask_service.save_mask(new_mask, mask_full)
 

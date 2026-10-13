@@ -39,7 +39,8 @@ async def edit_item_mask(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ItemResponse:
     item = await get_owned_item(db, item_id, current_user.id)
-    if not item.mask_path:
+    if not item.mask_path or not item.original_image_path:
+        # 补抠的像素取自抠图前备份；任一缺失就无从重建，让用户重抠
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Item has no mask; run background removal first",
@@ -57,6 +58,7 @@ async def edit_item_mask(
             service.update_mask,
             item.image_path,
             item.mask_path,
+            item.original_image_path,
             [s.model_dump() for s in payload.strokes],
         )
     except ValueError as e:

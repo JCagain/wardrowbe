@@ -81,6 +81,7 @@ async def _make_item_with_mask(
     item.medium_path = matte["medium_path"]
     item.thumbnail_path = matte["thumbnail_path"]
     item.mask_path = matte["mask_path"]
+    item.original_image_path = matte["original_backup_path"]
     await db_session.commit()
     await db_session.refresh(item)
     return item
@@ -283,3 +284,21 @@ async def test_editing_the_mask_rejects_foreign_items(
 
     assert resp.status_code == 404, f"{resp.status_code} {resp.text}"
     assert resp.json() == {"detail": "Item not found"}
+
+
+@pytest.mark.asyncio
+async def test_editing_the_mask_requires_the_cutout_backup(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """没有抠图前备份就无处取补抠像素：400，而不是补出黑块。"""
+    item = await _make_item_with_mask(db_session, test_user)
+    item.original_image_path = None
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/mask",
+        json={"strokes": [_STROKE]},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    assert "background removal" in resp.json()["detail"]
