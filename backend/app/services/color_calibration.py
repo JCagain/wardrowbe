@@ -47,6 +47,16 @@ L_GAP_FRAC = 0.08
 GRAY_L_RANGE = (0.25, 0.65)  # 中亮度带 → 灰卡
 SINGLE_WHITE_L = 0.65  # 单块 ≥ 该亮度 → 白纸基准
 
+# ---- 中性闸门（Ruling 24，拿 test.jpg 校准）-------------------------------
+# 参考卡（白/灰/黑）是中性反射体，均值色度贴 0（test.jpg 实测 10.5/5.7/3.6）；
+# 饱和彩块是 40–115（红 82 / 蓝 44 / 品红 115）。阈值**优先相对**——对照全图
+# 色度分位，躲开整体色偏（同一张灰卡暖光下色度能到 47、冷光 11）——再夹进绝对
+# 下限/上限：下限挡「整图极中性」误杀淡色偏的卡，上限挡「整图都艳」把彩块放进来。
+# test.jpg 实测：全图色度中位数 12.57 → 1.6×=20.1，白卡 10.5 过、床单块 15–17 贴边。
+NEUTRAL_CHROMA_FLOOR = 16.0
+NEUTRAL_CHROMA_REL = 1.6  # × 全图色度中位数
+NEUTRAL_CHROMA_ABS_MAX = 80.0  # 饱和彩块永远进不来；色偏下的卡（≤60）仍放行
+
 Box = tuple[int, int, int, int]
 
 
@@ -67,6 +77,13 @@ class _Candidate(NamedTuple):
     area: int
     mean_L: float
     std_L: float
+    mean_chroma: float
+
+
+def _neutral_chroma_max(chroma: np.ndarray) -> float:
+    """中性闸门阈值：相对全图色度中位数，夹在绝对下限/上限之间。"""
+    p50 = float(np.percentile(chroma, 50))
+    return min(NEUTRAL_CHROMA_ABS_MAX, max(NEUTRAL_CHROMA_FLOOR, NEUTRAL_CHROMA_REL * p50))
 
 
 def _local_std(lightness: np.ndarray, w: int) -> np.ndarray:
@@ -108,8 +125,8 @@ def _minrect_fill(points: np.ndarray, area: int) -> float:
     return float(min(1.0, area / best))
 
 
-def _candidates(lightness: np.ndarray) -> list[_Candidate]:
-    """平坦连通域 → 过滤后的候选（含右下 box）。"""
+def _candidates(lightness: np.ndarray, chroma: np.ndarray) -> list[_Candidate]:
+    """平坦连通域 → 过滤后的候选（含右下 box、区域均值亮度/色度）。"""
     from skimage.measure import label, regionprops
 
     height, width = lightness.shape
@@ -136,6 +153,7 @@ def _candidates(lightness: np.ndarray) -> list[_Candidate]:
 
         mask = region.image
         patch = lightness[top:bottom, left:right][mask]
+        patch_chroma = chroma[top:bottom, left:right][mask]
         # 边界像素（凸包与实心区域同）—— 大区域免得拿百万点算凸包
         padded = np.pad(mask, 1)
         inner = (
@@ -155,18 +173,21 @@ def _candidates(lightness: np.ndarray) -> list[_Candidate]:
                 area=area,
                 mean_L=float(patch.mean()),
                 std_L=float(patch.std()),
+                mean_chroma=float(patch_chroma.mean()),
             )
         )
     return out
 
 
 def _find_strip(
-    cands: list[_Candidate], lightness: np.ndarray, diag: float
+    cands: list[_Candidate], lightness: np.ndarray, diag: float, chroma_max: float
 ) -> ReferenceDetection | None:
     """找白-灰-黑三联条：贴边 + 尺寸相近 + 主轴上 L 单调阶梯。
 
     主轴由三块质心 PCA 自求（照片可任意旋转）；中间那块 = 灰卡。
+    三块按定义都是中性反射体，各自都得过中性闸门（Ruling 24）。
     """
+    cands = [c for c in cands if c.mean_chroma <= chroma_max]
     gap_max = STRIP_GAP_FRAC * diag
     span = float(np.percentile(lightness, 98) - np.percentile(lightness, 2))
     gap_min = L_GAP_FRAC * max(span, 1e-6)
@@ -223,8 +244,9 @@ def _find_strip(
     return best[1] if best is not None else None
 
 
-def _fallback(cands: list[_Candidate]) -> ReferenceDetection | None:
-    """单卡兜底：灰卡优先 → 白纸 → 都不像返回 None（不猜白平衡）。"""
+def _fallback(cands: list[_Candidate], chroma_max: float) -> ReferenceDetection | None:
+    """单卡兜底：中性优先 → 灰卡优先 → 白纸；没有中性候选 → None（不猜白平衡）。"""
+    cands = [c for c in cands if c.mean_chroma <= chroma_max]
     if not cands:
         return None
     grayish = [c for c in cands if GRAY_L_RANGE[0] <= c.mean_L < GRAY_L_RANGE[1]]
@@ -252,13 +274,14 @@ def detect_reference(image: Image.Image) -> ReferenceDetection | None:
     # rgb2lab 只对 uint8 自动除以 255；float 输入必须自己归一到 [0,1]。
     lab = rgb2lab(np.asarray(image.convert("RGB"), dtype=np.float64) / 255.0)
     lightness = lab[..., 0] / 100.0  # 现有约定：L 归一到 0..1
+    chroma = np.hypot(lab[..., 1], lab[..., 2])
 
-    cands = _candidates(lightness)
-    if not cands:
-        return None
-
-    strip = _find_strip(cands, lightness, diag=float(np.hypot(*lightness.shape[::-1])))
-    return strip if strip is not None else _fallback(cands)
+    cands = _candidates(lightness, chroma)
+    chroma_max = _neutral_chroma_max(chroma)
+    strip = _find_strip(
+        cands, lightness, diag=float(np.hypot(*lightness.shape[::-1])), chroma_max=chroma_max
+    )
+    return strip if strip is not None else _fallback(cands, chroma_max)
 
 
 # 增益有界（fixes #7）：参考区极暗时 target/mean 趋于无穷，极亮时趋于 0。

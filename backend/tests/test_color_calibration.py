@@ -208,6 +208,41 @@ def test_pure_texture_returns_none():
     assert detect_reference(_textured_scene()) is None
 
 
+def test_saturated_flat_block_is_not_a_reference():
+    """扁平饱和彩色块（红袋/蓝文件夹）不得当灰卡（Ruling 24）。
+
+    占整图 6.3%（在 5–20% 区间），扁平、矩形、长宽比正常 —— 只有中性闸门能拒它。
+    无中性候选存活 → None = 跳过自动校色，不猜白平衡。
+    """
+    img = _textured_scene()
+    ImageDraw.Draw(img).rectangle((200, 150, 399, 299), fill=(220, 30, 40))  # 色度 ≈ 82
+    assert detect_reference(img) is None
+
+
+def test_chromatic_strip_is_not_trusted():
+    """三块彩色卡摆成条：各自都不是中性 → 不得当三联条，也不得把中间那块当灰卡。"""
+    img = _textured_scene()
+    d = ImageDraw.Draw(img)
+    d.rectangle((140, 230, 299, 369), fill=(255, 130, 40))   # L 高、色度 ~70
+    d.rectangle((310, 230, 469, 369), fill=(190, 25, 50))    # L 中
+    d.rectangle((480, 230, 639, 369), fill=(15, 35, 140))    # L 低
+    assert detect_reference(img) is None
+
+
+def test_gray_card_wins_beside_a_saturated_block():
+    """闸门只杀彩块，不误杀卡：旁边有更大的彩块时仍命中中性灰卡。"""
+    img = _textured_scene()
+    card = (300, 200, 499, 359)
+    d = ImageDraw.Draw(img)
+    d.rectangle(card, fill=(128, 128, 128))
+    d.rectangle((500, 380, 719, 579), fill=(220, 30, 40))  # 更大的彩块
+    ref = detect_reference(img)
+    assert ref is not None
+    assert ref.kind == "gray"
+    assert ref.cards is None
+    assert _iou(ref.box, card) > 0.9
+
+
 # ---------------------------------------------------------------- 真图回归
 
 # test.jpg 在项目根，已 gitignore 不入库。容器里跑测时把图 cp 到 /tmp/test.jpg
