@@ -174,6 +174,10 @@ class ItemResponse(ItemBase):
     thumbnail_path: str | None = None
     medium_path: str | None = None
     original_image_path: str | None = None
+    # R34：UI 的 hasMask（D2 门禁——抠图没做完不给打标）只能从这里算。
+    # mask_cleared 不在此——那是「本次校色打掉了 mask」的瞬时标志，只在校色
+    # 响应（CalibrationItemResponse）上。
+    mask_path: str | None = None
     tags: dict = Field(default_factory=dict)
     pattern: str | None = None
     material: str | None = None

@@ -271,6 +271,26 @@
     "bodyPart": "Body Part",
     "type": "Category"
   },
+  "pipeline": {
+    "apply": "Apply",
+    "calibrate": "Calibrate",
+    "cutout": "Cut out",
+    "editMask": "Edit mask",
+    "grayCard": "Gray card",
+    "kelvin": "Color temperature",
+    "maskCleared": "Recalibrated — please cut out the background again",
+    "noReference": "No reference card",
+    "reset": "Reset to original",
+    "state": {
+      "done": "Done",
+      "none": "Not yet",
+      "pending": "In progress",
+      "skipped": "Skipped"
+    },
+    "tag": "Tag",
+    "tint": "Tint",
+    "whitePaper": "White paper"
+  },
   "search": "Search items...",
   "sort": {
     "leastRecentlyWorn": "Least recently worn",

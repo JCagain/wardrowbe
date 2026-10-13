@@ -56,6 +56,9 @@ export interface Item {
   thumbnail_path?: string;
   medium_path?: string;
   original_image_path?: string | null;
+  // R34：抠图 mask 旁挂文件的存储路径；非空即「有抠图」（ImagePipelineSteps 的
+  // hasMask、D2 门禁的唯一依据）。
+  mask_path?: string | null;
   image_url?: string;
   thumbnail_url?: string;
   medium_url?: string;

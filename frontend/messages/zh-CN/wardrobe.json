@@ -271,6 +271,26 @@
     "bodyPart": "部位",
     "type": "类别"
   },
+  "pipeline": {
+    "apply": "应用",
+    "calibrate": "校色",
+    "cutout": "抠图",
+    "editMask": "编辑遮罩",
+    "grayCard": "灰卡",
+    "kelvin": "色温",
+    "maskCleared": "已重抠校色，请重新抠图",
+    "noReference": "不用参考框",
+    "reset": "重置回原图",
+    "state": {
+      "done": "已完成",
+      "none": "未做",
+      "pending": "进行中",
+      "skipped": "已跳过"
+    },
+    "tag": "打标",
+    "tint": "色调",
+    "whitePaper": "白纸"
+  },
   "search": "搜索单品...",
   "sort": {
     "leastRecentlyWorn": "最久未穿",

@@ -25,6 +25,23 @@ export function mapPointerToImage(
   };
 }
 
+/**
+ * 把越界坐标夹回图像边界（T7-A）。`setPointerCapture` 下拖出画布会产生负坐标
+ * 或超界坐标，`mapPointerToImage` 照原样返回，取整后喂给 `MaskStrokeIn` 的 `ge=0`
+ * 就 422——整批 dab 全部回滚。边界作画是画笔最常见的手势。
+ * `ReferenceBoxEditor` 的拖拽 clamp 共用这一处。
+ */
+export function clampToImage(
+  p: { x: number; y: number },
+  naturalWidth: number,
+  naturalHeight: number,
+): { x: number; y: number } {
+  return {
+    x: Math.min(Math.max(p.x, 0), naturalWidth),
+    y: Math.min(Math.max(p.y, 0), naturalHeight),
+  };
+}
+
 /** 显示空间的画笔半径（CSS 像素）；POST 前按 naturalWidth / rect.width 缩放。 */
 const BRUSH_RADIUS_DISPLAY = 12;
 
@@ -64,10 +81,14 @@ export default function MaskBrushCanvas({ imageSrc, itemId, onSaved }: MaskBrush
       const canvas = canvasRef.current;
       if (!img || !canvas) return null;
       const rect = canvas.getBoundingClientRect();
-      const { x, y } = mapPointerToImage(
-        rect,
-        e.clientX,
-        e.clientY,
+      const { x, y } = clampToImage(
+        mapPointerToImage(
+          rect,
+          e.clientX,
+          e.clientY,
+          img.naturalWidth,
+          img.naturalHeight,
+        ),
         img.naturalWidth,
         img.naturalHeight,
       );
@@ -116,10 +137,16 @@ export default function MaskBrushCanvas({ imageSrc, itemId, onSaved }: MaskBrush
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!strokeRef.current.dragging) return;
       const dab = pointFromEvent(e);
-      if (dab) {
-        strokeRef.current.strokes.push(dab);
-        drawDab(dab);
-      }
+      if (!dab) return;
+      // T7-B：距离抽稀——只记与上一个 dab 距离 ≥ radius*0.3 的点。无抽稀时
+      // 长拖拽一个 pointermove 一个 dab，会逼近 MaskEditIn.strokes 的
+      // max_length=2000，然后 422 整批回滚。起点（pointerdown）与终点
+      // （pointerup）必记，不受这道闸门约束。
+      const strokes = strokeRef.current.strokes;
+      const last = strokes[strokes.length - 1];
+      if (last && Math.hypot(dab.x - last.x, dab.y - last.y) < dab.radius * 0.3) return;
+      strokes.push(dab);
+      drawDab(dab);
     },
     [drawDab, pointFromEvent],
   );

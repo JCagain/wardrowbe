@@ -232,6 +232,119 @@ export function useRestoreOriginal() {
   });
 }
 
+// 校色检出结果（POST /items/{id}/calibration/detect）。box/cards 是 [l,t,r,b]，
+// **含右下**（后端 detect_reference 契约；消费方喂 PIL 时才 +1）。
+export interface CalibrationDetection {
+  kind: 'gray' | 'white' | null;
+  box: [number, number, number, number] | null;
+  cards?: Partial<Record<'white' | 'gray' | 'black', [number, number, number, number]>>;
+}
+
+// 校色写端点的响应 = ItemResponse + 本次校色是否打掉了抠图 mask（Ruling 21a 的
+// 唯一用途：UI 据 mask_cleared 弹「已重抠校色，请重新抠图」并把 hasMask 置 false）。
+export interface CalibrationItem extends Item {
+  mask_cleared: boolean;
+}
+
+export function useDetectCalibration() {
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<CalibrationDetection>(`/items/${id}/calibration/detect`);
+    },
+  });
+}
+
+export function useApplyCalibration() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      box,
+      baseline,
+    }: {
+      id: string;
+      box: [number, number, number, number];
+      baseline: 'gray' | 'white';
+    }) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<CalibrationItem>(`/items/${id}/calibration/apply`, { box, baseline });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['outfits'] });
+      queryClient.invalidateQueries({ queryKey: ['calendarOutfits'] });
+    },
+  });
+}
+
+export function useManualWhiteBalance() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async ({ id, kelvin, tint }: { id: string; kelvin: number; tint: number }) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<CalibrationItem>(`/items/${id}/calibration/manual`, { kelvin, tint });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['outfits'] });
+      queryClient.invalidateQueries({ queryKey: ['calendarOutfits'] });
+    },
+  });
+}
+
+export function useResetCalibration() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<CalibrationItem>(`/items/${id}/calibration/reset`);
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item', id] });
+      queryClient.invalidateQueries({ queryKey: ['outfits'] });
+      queryClient.invalidateQueries({ queryKey: ['calendarOutfits'] });
+    },
+  });
+}
+
+export function useRetagItem() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<Item>(`/items/${id}/retag`);
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item', id] });
+    },
+  });
+}
+
 export function useReplaceItemImage() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();

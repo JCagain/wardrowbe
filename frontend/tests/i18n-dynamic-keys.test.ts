@@ -48,6 +48,8 @@ const BODY_FIELDS = ['height', 'weight', 'chest', 'waist', 'hips', 'inseam'] as 
 const SIZE_FIELDS = ['shirt_size', 'pants_size', 'dress_size', 'shoe_size'] as const;
 const STYLE_VALUES = ['bold', 'casual', 'formal', 'minimalist', 'sporty'] as const;
 const WEATHER_CONDITIONS = ['clear', 'cloudy', 'rain', 'snow'] as const;
+// Mirrors CalibrationState in components/image-pipeline-steps.tsx (t(`state.${calibration}`)).
+const CALIBRATION_STATES = ['none', 'pending', 'done', 'skipped'] as const;
 
 const DYNAMIC_KEYS: Array<[string, readonly string[]]> = [
   ['constants.subtypes', Array.from(new Set(Object.values(CLOTHING_SUBTYPES).flat()))],
@@ -58,6 +60,7 @@ const DYNAMIC_KEYS: Array<[string, readonly string[]]> = [
   ['notifications.days', NOTIFICATION_DAYS],
   ['outfits.calendar.weekDays', CALENDAR_WEEKDAYS],
   ['wardrobe.sort', WARDROBE_SORTS],
+  ['wardrobe.pipeline.state', CALIBRATION_STATES],
   ['settings.body.fields', BODY_FIELDS],
   ['settings.body.sizePlaceholders', SIZE_FIELDS],
 ];

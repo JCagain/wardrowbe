@@ -43,6 +43,7 @@ import { normalizePurchaseDate } from '@/lib/purchase-date';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { useTranslations } from 'next-intl';
+import { ImagePipelineSteps } from '@/components/image-pipeline-steps';
 
 interface AddItemDialogProps {
   open: boolean;
@@ -354,6 +355,20 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
+              )}
+
+              {/* R39：录入页只挂步骤条做「上传后的下一步」指引。此时还没有 item，
+                  校色/抠图/打标都得在详情页（有工作图之后）进行，这里不接线，
+                  按钮点了也没有可操作的对象。 */}
+              {preview && (
+                <ImagePipelineSteps
+                  calibration="none"
+                  hasMask={false}
+                  tagged={false}
+                  onCalibrate={() => undefined}
+                  onCutout={() => undefined}
+                  onTag={() => undefined}
+                />
               )}
 
               <div className="space-y-3">

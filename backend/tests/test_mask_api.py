@@ -242,6 +242,32 @@ async def test_editing_the_mask_requires_an_existing_mask(
 
 
 @pytest.mark.asyncio
+async def test_get_item_exposes_mask_path_with_and_without_a_mask(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """R34：GET 单品在有/无 mask 两种情况下都返回 mask_path，值与 DB 一致。
+
+    ImagePipelineSteps 的 hasMask 只能从这里算出来——字段缺席时 UI 无从判断
+    D2 门禁（打标要等抠图）开不开。
+    """
+    masked = await _make_item_with_mask(db_session, test_user)
+    resp = await client.get(f"/api/v1/items/{masked.id}", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "mask_path" in body, "ItemResponse must carry mask_path"
+    assert body["mask_path"] == masked.mask_path
+    assert body["mask_path"] is not None
+
+    plain = await _make_item(db_session, test_user)
+    assert plain.mask_path is None
+    resp2 = await client.get(f"/api/v1/items/{plain.id}", headers=auth_headers)
+    assert resp2.status_code == 200, resp2.text
+    body2 = resp2.json()
+    assert "mask_path" in body2, "mask_path must be present even when there is no mask"
+    assert body2["mask_path"] is None
+
+
+@pytest.mark.asyncio
 async def test_editing_the_mask_rejects_foreign_items(
     client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
 ):

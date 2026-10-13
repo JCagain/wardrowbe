@@ -51,7 +51,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
+import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, useRetagItem, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
@@ -77,6 +77,9 @@ import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { ColorEyedropper } from '@/components/color-eyedropper';
+import { ImagePipelineSteps, type CalibrationState } from '@/components/image-pipeline-steps';
+import { ReferenceBoxEditor, type Baseline, type Detection, type ReferenceBox } from '@/components/reference-box-editor';
+import MaskBrushCanvas from '@/components/mask-brush-canvas';
 // 摘不删（spec §7）：配搭生成对话框已归档至 components/dormant/，入口下线。
 // import { GeneratePairingsDialog } from '@/components/dormant/generate-pairings-dialog';
 import { useFeatures } from '@/lib/hooks/use-features';
@@ -86,6 +89,12 @@ interface ItemDetailDialogProps {
   item: Item | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+// detect 端点回 [l,t,r,b]（含右下），框选器吃对象坐标；换算只在这里，不做 ±1
+function cornersToBox(corners: [number, number, number, number]): ReferenceBox {
+  const [l, t, r, b] = corners;
+  return { l, t, r, b };
 }
 
 // Images now use signed URLs from backend (item.image_url, item.thumbnail_url)
@@ -129,6 +138,19 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   });
   const [showWearHistory, setShowWearHistory] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  // 图片管线会话态（R38）：校色状态不落库——ClothingItem 没有校色状态列，
+  // 拿工作图与 calibration_original_path 比对是假信号。对话框打开/换 item 归
+  // 'none'；检测没检出归 'skipped'；应用成功归 'done'。刷新页面即重来，反正
+  // 「重置回原图」一直可点。
+  const [calibration, setCalibration] = useState<CalibrationState>('none');
+  const [detection, setDetection] = useState<Detection | null>(null);
+  const [showManualWb, setShowManualWb] = useState(false);
+  const [kelvin, setKelvin] = useState(6500);
+  const [tint, setTint] = useState(0);
+  const [showBrush, setShowBrush] = useState(false);
+  // D2 门禁的本地依据：item.mask_path 非空即「有抠图」；mask_cleared 时先本地置
+  // false（R21a），等 refetch 的 mask_path 变 null 追上，不冲突。
+  const [hasMask, setHasMask] = useState(Boolean(item?.mask_path));
 
   const updateItem = useUpdateItem();
   const deleteItem = useDeleteItem();
@@ -148,14 +170,28 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const addImage = useAddItemImage();
   const deleteImage = useDeleteItemImage();
   const setPrimary = useSetPrimaryImage();
+  const detectCalibration = useDetectCalibration();
+  const applyCalibration = useApplyCalibration();
+  const manualWb = useManualWhiteBalance();
+  const resetCalibration = useResetCalibration();
+  const retagItem = useRetagItem();
 
   useEffect(() => {
     if (item) {
       setEditForm(editFormFromItem(item));
       setIsEditing(false);
       setActiveImageIndex(0);
+      // 换 item 就是新的会话：校色状态/框选/滑块/画笔全部重来
+      setCalibration('none');
+      setDetection(null);
+      setShowManualWb(false);
+      setShowBrush(false);
     }
   }, [item?.id]);
+
+  useEffect(() => {
+    setHasMask(Boolean(item?.mask_path));
+  }, [item?.id, item?.mask_path]);
 
   if (!item) return null;
 
@@ -263,8 +299,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
 
   const handleRemoveBackground = async () => {
     try {
-      await removeBackground.mutateAsync({ id: item.id });
+      const result = await removeBackground.mutateAsync({ id: item.id });
       setImageKey((k) => k + 1);
+      // 抠图落盘即有 mask，D2 的打标门禁随之打开
+      setHasMask(Boolean(result.mask_path));
       toast.success(t('actions.backgroundRemoved'));
     } catch (error) {
       console.error('Failed to remove background:', error);
@@ -292,6 +330,95 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     } catch (error) {
       console.error('Failed to replace image:', error);
       toast.error(t('actions.imageReplaceError'));
+    }
+  };
+
+  // R21a：mask_cleared 的唯一用途——本次校色把 mask 打掉了，弹提示并清本地 hasMask
+  const handleMaskCleared = (result: CalibrationItem) => {
+    if (result.mask_cleared) {
+      setHasMask(false);
+      setShowBrush(false);
+      toast.warning(tw('pipeline.maskCleared'));
+    }
+  };
+
+  const handleCalibrate = async () => {
+    if (detectCalibration.isPending) return;
+    try {
+      const found = await detectCalibration.mutateAsync(item.id);
+      if (!found.kind || !found.box) {
+        // 检不出参考卡：跳过自动校色、不猜白平衡（spec §1.4），走色温/色调兜底
+        setDetection(null);
+        setCalibration('skipped');
+        setShowManualWb(true);
+        return;
+      }
+      const cards = found.cards;
+      setCalibration('pending');
+      setDetection({
+        kind: found.kind,
+        box: cornersToBox(found.box),
+        cards: cards
+          ? {
+              ...(cards.white ? { white: cornersToBox(cards.white) } : {}),
+              ...(cards.gray ? { gray: cornersToBox(cards.gray) } : {}),
+              ...(cards.black ? { black: cornersToBox(cards.black) } : {}),
+            }
+          : undefined,
+      });
+    } catch (error) {
+      console.error('Failed to detect calibration reference:', error);
+    }
+  };
+
+  const handleApplyBox = async (box: ReferenceBox, baseline: Baseline) => {
+    try {
+      // 含右下契约：四元组原样回传，唯一的 +1 在后端 calibrate 内部（R35）
+      const result = await applyCalibration.mutateAsync({
+        id: item.id,
+        box: [box.l, box.t, box.r, box.b],
+        baseline,
+      });
+      setCalibration('done');
+      setDetection(null);
+      handleMaskCleared(result);
+      setImageKey((k) => k + 1);
+    } catch (error) {
+      console.error('Failed to apply calibration:', error);
+    }
+  };
+
+  const handleManualWb = async () => {
+    try {
+      const result = await manualWb.mutateAsync({ id: item.id, kelvin, tint });
+      setCalibration('done');
+      setDetection(null);
+      setShowManualWb(false);
+      handleMaskCleared(result);
+      setImageKey((k) => k + 1);
+    } catch (error) {
+      console.error('Failed to apply manual white balance:', error);
+    }
+  };
+
+  const handleResetCalibration = async () => {
+    try {
+      const result = await resetCalibration.mutateAsync(item.id);
+      setCalibration('none');
+      setDetection(null);
+      setShowManualWb(false);
+      handleMaskCleared(result);
+      setImageKey((k) => k + 1);
+    } catch (error) {
+      console.error('Failed to reset calibration:', error);
+    }
+  };
+
+  const handleRetag = async () => {
+    try {
+      await retagItem.mutateAsync(item.id);
+    } catch (error) {
+      console.error('Failed to retag item:', error);
     }
   };
 
@@ -596,6 +723,96 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                     </label>
                   )}
                 </div>
+              )}
+            </div>
+
+            {/* 图片管线（spec §1.4）：校色 → 抠图 → 打标；抠图没做完不给打标（D2） */}
+            <div className="space-y-2">
+              <ImagePipelineSteps
+                calibration={calibration}
+                hasMask={hasMask}
+                tagged={item.tagging_status === 'tagged'}
+                onCalibrate={handleCalibrate}
+                onCutout={handleRemoveBackground}
+                onTag={handleRetag}
+              />
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetCalibration}
+                  disabled={resetCalibration.isPending}
+                >
+                  {tw('pipeline.reset')}
+                </Button>
+                {hasMask && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBrush((s) => !s)}
+                    aria-expanded={showBrush}
+                  >
+                    {tw('pipeline.editMask')}
+                  </Button>
+                )}
+              </div>
+              {detection && (
+                <ReferenceBoxEditor
+                  imageSrc={`${imageUrl}&v=${imageKey}`}
+                  detection={detection}
+                  onApply={handleApplyBox}
+                  onManual={() => {
+                    setDetection(null);
+                    setShowManualWb(true);
+                  }}
+                />
+              )}
+              {showManualWb && (
+                <div className="space-y-2 rounded-md border p-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="wb-kelvin">{tw('pipeline.kelvin')}</Label>
+                    <input
+                      id="wb-kelvin"
+                      type="range"
+                      min={1500}
+                      max={15000}
+                      step={100}
+                      value={kelvin}
+                      onChange={(e) => setKelvin(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wb-tint">{tw('pipeline.tint')}</Label>
+                    <input
+                      id="wb-tint"
+                      type="range"
+                      min={-100}
+                      max={100}
+                      step={1}
+                      value={tint}
+                      onChange={(e) => setTint(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleManualWb}
+                    disabled={manualWb.isPending}
+                  >
+                    {tw('pipeline.apply')}
+                  </Button>
+                </div>
+              )}
+              {showBrush && hasMask && (
+                <MaskBrushCanvas
+                  imageSrc={`${imageUrl}&v=${imageKey}`}
+                  itemId={item.id}
+                  onSaved={() => setImageKey((k) => k + 1)}
+                />
               )}
             </div>
 
