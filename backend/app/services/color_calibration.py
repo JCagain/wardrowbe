@@ -42,6 +42,10 @@ STRIP_AREA_RATIO_LO = 0.5
 STRIP_AREA_RATIO_HI = 2.0
 # 相邻 L 间隔 > 8% 的整图 L 极差（p98-p2，稳健极差）
 L_GAP_FRAC = 0.08
+# 复杂度上限（自检 #6）：只取面积最大的若干个中性候选找条。实拍 test.jpg 全部
+# 候选只有 18 个；杂乱背景（瓷砖/格子布）可到数百，C(n,3) 会把检出拖到分钟级。
+# 超限时卡若不在前列，退回单卡兜底——宁可少一次三联，不可卡住线程。
+STRIP_MAX_CANDIDATES = 30
 
 # ---- 兜底（spec §1.2：灰卡优先、白纸 fallback、都不像 → None 不猜）--------
 GRAY_L_RANGE = (0.25, 0.65)  # 中亮度带 → 灰卡
@@ -182,12 +186,13 @@ def _candidates(lightness: np.ndarray, chroma: np.ndarray) -> list[_Candidate]:
 def _find_strip(
     cands: list[_Candidate], lightness: np.ndarray, diag: float, chroma_max: float
 ) -> ReferenceDetection | None:
-    """找白-灰-黑三联条：贴边 + 尺寸相近 + 主轴上 L 单调阶梯。
+    """找白-灰-黑三联条：贴边 + 尺寸相近 + 主轴上 L 单调阶梯。按邻接表只枚举「中点 + 两个邻居」，不做全三元组。
 
     主轴由三块质心 PCA 自求（照片可任意旋转）；中间那块 = 灰卡。
     三块按定义都是中性反射体，各自都得过中性闸门（Ruling 24）。
     """
     cands = [c for c in cands if c.mean_chroma <= chroma_max]
+    cands = sorted(cands, key=lambda c: c.area, reverse=True)[:STRIP_MAX_CANDIDATES]
     gap_max = STRIP_GAP_FRAC * diag
     span = float(np.percentile(lightness, 98) - np.percentile(lightness, 2))
     gap_min = L_GAP_FRAC * max(span, 1e-6)
@@ -205,29 +210,30 @@ def _find_strip(
         l, t, r, b = c.box
         return np.array([(l + r) / 2.0, (t + b) / 2.0])
 
-    best: tuple[int, ReferenceDetection] | None = None
     n = len(cands)
-    for i in range(n):
-        for j in range(i + 1, n):
-            for k in range(j + 1, n):
-                triple = (cands[i], cands[j], cands[k])
+    # 邻接表：贴边且尺寸相近（中间那块与两端各自满足的关系）
+    linked = [
+        [j for j in range(n) if j != i and adjacent(cands[i], cands[j]) and similar(cands[i], cands[j])]
+        for i in range(n)
+    ]
+
+    best: tuple[int, ReferenceDetection] | None = None
+    for m in range(n):
+        nbrs = linked[m]
+        for x in range(len(nbrs)):
+            for y in range(x + 1, len(nbrs)):
+                triple = (cands[nbrs[x]], cands[m], cands[nbrs[y]])
                 # 主轴 = 质心第一主成分（不假定水平）
                 pts = np.stack([centroid(c) for c in triple])
                 centered = pts - pts.mean(axis=0)
                 _, _, vt = np.linalg.svd(centered, full_matrices=False)
                 order = np.argsort(centered @ vt[0])
                 first, mid, last = (triple[order[0]], triple[order[1]], triple[order[2]])
-                # 中间那块贴着两端即成条（两端彼此可以不贴边）
-                if not (adjacent(first, mid) and similar(first, mid)):
-                    continue
-                if not (adjacent(mid, last) and similar(mid, last)):
+                # 每个三联只在其主轴中点处计一次；中点不是 m 的组合由别的 m 负责
+                if mid is not cands[m]:
                     continue
                 l_first, l_mid, l_last = first.mean_L, mid.mean_L, last.mean_L
-                if l_first > l_mid > l_last:
-                    pass
-                elif l_first < l_mid < l_last:
-                    pass
-                else:
+                if not (l_first > l_mid > l_last or l_first < l_mid < l_last):
                     continue
                 if abs(l_first - l_mid) <= gap_min or abs(l_mid - l_last) <= gap_min:
                     continue

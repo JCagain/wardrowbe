@@ -11,6 +11,7 @@ import pytest
 from PIL import Image, ImageDraw
 from skimage.color import rgb2lab
 
+from app.services import color_calibration as cc
 from app.services.color_calibration import (
     GAIN_MAX,
     GAIN_MIN,
@@ -413,3 +414,44 @@ def test_calibrate_uses_the_box_not_the_whole_image():
     assert not np.allclose(out.mean(axis=(0, 1)), mean, atol=1.0)
     # 漏 +1 会红：输出须等于按「含右下整块」均值算出的预期
     assert np.allclose(out, np.clip(region * gains, 0, 255), atol=1.5)
+
+
+def _count_svd(monkeypatch):
+    calls = {"n": 0}
+    real = np.linalg.svd
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(cc.np.linalg, "svd", counting)
+    return calls
+
+
+def _cand(box, mean_L=0.5):
+    l, t, r, b = box
+    area = (r - l + 1) * (b - t + 1)
+    return cc._Candidate(box=box, area=area, mean_L=mean_L, std_L=0.0, mean_chroma=0.0)
+
+
+def test_find_strip_skips_triples_that_are_not_adjacent(monkeypatch):
+    """60 块互不贴边：旧三重循环做 C(60,3)=34220 次 SVD，新实现一次都不该做。"""
+    calls = _count_svd(monkeypatch)
+    cands = [_cand((x * 100, y * 100, x * 100 + 40, y * 100 + 40))
+             for x in range(10) for y in range(6)]
+    lightness = np.linspace(0.0, 1.0, 10000).reshape(100, 100)
+
+    assert cc._find_strip(cands, lightness, diag=2500.0, chroma_max=20.0) is None
+    assert calls["n"] == 0
+
+
+def test_find_strip_work_is_bounded_when_everything_touches(monkeypatch):
+    """100 块两两重叠（最坏的稠密邻接）：工作量受 STRIP_MAX_CANDIDATES 封顶。"""
+    calls = _count_svd(monkeypatch)
+    cands = [_cand((i, i, i + 100, i + 100)) for i in range(100)]
+    lightness = np.linspace(0.0, 1.0, 10000).reshape(100, 100)
+
+    cc._find_strip(cands, lightness, diag=2500.0, chroma_max=20.0)
+
+    k = cc.STRIP_MAX_CANDIDATES
+    assert calls["n"] <= k * (k - 1) * (k - 2) // 2
