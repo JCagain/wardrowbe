@@ -70,3 +70,5 @@ testing/
 test.jpg
 *.card.jpg
 cards/
+test.*.jpg
+test.*.png
