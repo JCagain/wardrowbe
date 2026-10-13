@@ -26,17 +26,19 @@ describe('mapPointerToImage', () => {
 });
 
 // T7-A：setPointerCapture 下拖出画布会产生负坐标/超界坐标，不夹紧就会被
-// MaskStrokeIn 的 ge=0 整批 422 回滚。边界作画是画笔最常见的手势。
+// MaskStrokeIn 的 ge=0 整批 422 回滚。夹到最后一个像素（含右下契约），
+// 不是 naturalWidth——那已在图外一格，框选 apply 会被后端 400。
 describe('clampToImage', () => {
-  it('returns boundary values for points dragged outside the canvas', () => {
-    expect(clampToImage({ x: -10, y: 700 }, 800, 600)).toEqual({ x: 0, y: 600 });
-    expect(clampToImage({ x: 900, y: -5 }, 800, 600)).toEqual({ x: 800, y: 0 });
+  it('clamps points outside the canvas to the last pixel', () => {
+    expect(clampToImage({ x: -10, y: 700 }, 800, 600)).toEqual({ x: 0, y: 599 });
+    expect(clampToImage({ x: 900, y: -5 }, 800, 600)).toEqual({ x: 799, y: 0 });
     expect(clampToImage({ x: -1, y: -1 }, 800, 600)).toEqual({ x: 0, y: 0 });
+    expect(clampToImage({ x: 800, y: 600 }, 800, 600)).toEqual({ x: 799, y: 599 });
   });
 
   it('leaves interior points alone', () => {
     expect(clampToImage({ x: 400, y: 300 }, 800, 600)).toEqual({ x: 400, y: 300 });
-    expect(clampToImage({ x: 800, y: 600 }, 800, 600)).toEqual({ x: 800, y: 600 });
+    expect(clampToImage({ x: 799, y: 599 }, 800, 600)).toEqual({ x: 799, y: 599 });
   });
 });
 

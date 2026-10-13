@@ -586,3 +586,23 @@ def test_tint_slider_extremes_move_green_visibly(tmp_path, tint, low, high):
                          dtype=np.float64).reshape(-1, 3).mean(axis=0)
     assert low * 128 <= g <= high * 128, f"tint={tint}: green={g:.1f}"
     assert abs(r - 128) <= 3 and abs(b - 128) <= 3
+
+
+@pytest.mark.asyncio
+async def test_apply_accepts_a_box_touching_the_last_pixel(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """含右下契约：r = W-1 是图内最后一列，必须接受；r = W 已在图外，必须拒绝。"""
+    item = await _make_item(db_session, test_user)  # 600×400
+    ok = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [500, 300, 599, 399], "baseline": "gray"},
+        headers=auth_headers,
+    )
+    assert ok.status_code == 200, ok.text
+    bad = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [500, 300, 600, 400], "baseline": "gray"},
+        headers=auth_headers,
+    )
+    assert bad.status_code == 400

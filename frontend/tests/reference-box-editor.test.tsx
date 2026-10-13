@@ -149,7 +149,7 @@ describe('ReferenceBoxEditor', () => {
     expect(onApply.mock.calls[0][0]).toEqual({ l: 100, t: 100, r: 400, b: 320 });
   });
 
-  // 钉子 8（T7-A）：拖出边界 → 框夹在 [0, naturalWidth]×[0, naturalHeight]。
+  // 钉子 8（T7-A）：拖出边界 → 框夹在 [0, naturalWidth-1]×[0, naturalHeight-1]（含右下）。
   it('clamps a dragged box to the image bounds', () => {
     const onApply = vi.fn();
     const { container } = render(
@@ -164,7 +164,7 @@ describe('ReferenceBoxEditor', () => {
     fireEvent.click(screen.getByTestId('box-apply'));
 
     const [box] = onApply.mock.calls[0] as [ReferenceBox];
-    expect(box).toEqual({ l: 0, t: 0, r: NATURAL_W, b: NATURAL_H });
+    expect(box).toEqual({ l: 0, t: 0, r: NATURAL_W - 1, b: NATURAL_H - 1 });
   });
 
   // 钉子 9：baseline 切到白纸 → onApply 第二参是 'white'。

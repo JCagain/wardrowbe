@@ -26,9 +26,10 @@ export function mapPointerToImage(
 }
 
 /**
- * 把越界坐标夹回图像边界（T7-A）。`setPointerCapture` 下拖出画布会产生负坐标
+ * 把越界坐标夹回图像内（T7-A）。`setPointerCapture` 下拖出画布会产生负坐标
  * 或超界坐标，`mapPointerToImage` 照原样返回，取整后喂给 `MaskStrokeIn` 的 `ge=0`
- * 就 422——整批 dab 全部回滚。边界作画是画笔最常见的手势。
+ * 就 422——整批 dab 全部回滚。上界是**最后一个像素** `natural - 1`：框是含右下
+ * 的像素坐标（后端 `0 <= l <= r < width`），夹到 `naturalWidth` 会让贴边的框 400。
  * `ReferenceBoxEditor` 的拖拽 clamp 共用这一处。
  */
 export function clampToImage(
@@ -37,8 +38,8 @@ export function clampToImage(
   naturalHeight: number,
 ): { x: number; y: number } {
   return {
-    x: Math.min(Math.max(p.x, 0), naturalWidth),
-    y: Math.min(Math.max(p.y, 0), naturalHeight),
+    x: Math.min(Math.max(p.x, 0), naturalWidth - 1),
+    y: Math.min(Math.max(p.y, 0), naturalHeight - 1),
   };
 }
 

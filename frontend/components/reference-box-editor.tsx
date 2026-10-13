@@ -65,7 +65,7 @@ function applyHandle(
  *
  * - `<img>` 上覆一层 `<canvas>`：`detection.cards` 三框（白/灰/黑）都画，主参考
  *   （`detection.kind`）高亮且是可拖的那一框；只检出一块时只画 `detection.box`
- * - 四角 + 四边中点可拖，拖出图像边界 clamp 到 [0, naturalWidth]×[0, naturalHeight]
+ * - 四角 + 四边中点可拖，拖出图像边界 clamp 到 [0, naturalWidth-1]×[0, naturalHeight-1]（含右下）
  * - 基准可切 灰卡 / 白纸（决定 `onApply` 的 `baseline`）
  * - 「应用」→ `onApply(box, baseline)`；「不用参考框」→ `onManual()`（改走色温/色调
  *   滑块，spec §1.2 兜底）
