@@ -535,3 +535,29 @@ class ImageService:
         # 按无 alpha 会把扩展名换回 .jpg，写入参路径会把 JPEG 字节塞进 .png。
         (self.storage_path / str(paths["image_path"])).write_bytes(pristine)
         return paths
+
+    def update_mask(
+        self, image_path: str, mask_path: str, strokes: list[dict]
+    ) -> dict[str, str]:
+        """改 mask，把 alpha 写回主图并重生成三档（fixes #13）。"""
+        main_full = self.storage_path / image_path
+        mask_full = self.storage_path / mask_path
+        if not main_full.exists():
+            raise ValueError(f"Image not found: {image_path}")
+        if not mask_full.exists():
+            raise ValueError(f"Mask not found: {mask_path}")
+
+        rgba = Image.open(main_full).convert("RGBA")
+        new_mask = mask_service.apply_strokes(mask_service.load_mask(mask_full), strokes)
+        if new_mask.size != rgba.size:
+            # 没有合法路径会造成不一致：remove_background 同数组写两边、rotate
+            # 同步旋转、校色直接清 mask。不一致 = 损坏，静默 resize 是产垃圾。
+            raise ValueError(
+                f"Mask size {new_mask.size} does not match image size {rgba.size}"
+            )
+        rgba.putalpha(new_mask)
+        mask_service.save_mask(new_mask, mask_full)
+
+        paths = self._save_all_sizes(rgba, image_path)
+        paths["mask_path"] = mask_path
+        return paths

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.item import ClothingItem, ItemStatus
 from app.models.user import User
-from app.schemas.item import CalibrationItemResponse
+from app.schemas.item import CalibrationItemResponse, ItemResponse
 from app.services.color_calibration import detect_reference
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
@@ -37,6 +37,17 @@ class CalibrationApplyIn(BaseModel):
 class ManualWbIn(BaseModel):
     kelvin: float = Field(ge=1500.0, le=15000.0)
     tint: float = Field(ge=-100.0, le=100.0)
+
+
+class MaskStrokeIn(BaseModel):
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+    radius: int = Field(ge=1, le=512)
+    mode: str = Field(pattern="^(add|subtract)$")
+
+
+class MaskEditIn(BaseModel):
+    strokes: list[MaskStrokeIn] = Field(min_length=1, max_length=2000)
 
 
 async def _owned_item(db: AsyncSession, item_id: UUID, user_id: UUID) -> ClothingItem:
@@ -207,3 +218,57 @@ async def reset_calibration(
         (image_path, source_path),
         action="reset calibration",
     )
+
+
+@router.post("/{item_id}/mask", response_model=ItemResponse)
+async def edit_item_mask(
+    item_id: UUID,
+    payload: MaskEditIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ItemResponse:
+    item = await _owned_item(db, item_id, current_user.id)
+    if not item.mask_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Item has no mask; run background removal first",
+        )
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # 同 remove-background：job 拥有三档路径，抢写会撕裂尺寸组
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
+        )
+
+    service = ImageService()
+    try:
+        result = await asyncio.to_thread(
+            service.update_mask,
+            item.image_path,
+            item.mask_path,
+            [s.model_dump() for s in payload.strokes],
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from None
+
+    item.image_path = result["image_path"]
+    item.medium_path = result["medium_path"]
+    item.thumbnail_path = result["thumbnail_path"]
+    # mask_path 不动：我们刚改的就是这张 mask（不能走 _persist_image_op，
+    # 它无条件把 mask_path 清成 None —— 那是校色的语义）
+    await db.commit()
+    # 只刷写过的列：整对象 refresh 会把 get_by_id 预载的 additional_images
+    # 打回未加载，ItemResponse 序列化时懒加载就会炸 greenlet
+    await db.refresh(
+        item,
+        attribute_names=[
+            "image_path",
+            "medium_path",
+            "thumbnail_path",
+            "mask_path",
+            "updated_at",
+        ],
+    )
+    return ItemResponse.model_validate(item)

@@ -1,5 +1,13 @@
 const API_BASE_PATH = '/api/v1';
 
+// mask 画笔一「点」的 dab：x/y/radius 是全分辨率 mask 像素（R1）
+export interface MaskStroke {
+  x: number;
+  y: number;
+  radius: number;
+  mode: 'add' | 'subtract';
+}
+
 interface FetchOptions extends RequestInit {
   params?: Record<string, string>;
 }
@@ -100,6 +108,12 @@ export const api = {
 
   delete: <T>(endpoint: string, options?: FetchOptions) =>
     fetchApi<T>(endpoint, { ...options, method: 'DELETE' }),
+
+  editItemMask: <T>(itemId: string, strokes: MaskStroke[]) =>
+    fetchApi<T>(`/items/${itemId}/mask`, {
+      method: 'POST',
+      body: JSON.stringify({ strokes }),
+    }),
 };
 
 const handledErrors = new WeakSet<object>();

@@ -185,3 +185,107 @@ def test_flipping_the_format_removes_the_orphaned_variants(tmp_path):
     before = tmp_path / "u/item.png"
     svc._save_all_sizes(Image.new("RGBA", (80, 80), (1, 2, 3, 255)), "u/item.png")
     assert before.exists()
+
+
+# ---------------------------------------------------------------- mask 画笔（Task 6）
+
+
+def test_strokes_add_and_subtract_from_the_mask():
+    # add 涂白（补抠）、subtract 涂黑（擦多余）；同一笔画列表内按顺序叠加
+    mask = Image.new("L", (100, 100), 0)
+    out = mask_service.apply_strokes(mask, [
+        {"x": 50, "y": 50, "radius": 10, "mode": "add"},
+        {"x": 50, "y": 50, "radius": 4, "mode": "subtract"},
+    ])
+    assert out.getpixel((50, 50)) == 0      # 中心被减掉
+    assert out.getpixel((56, 50)) == 255    # 外圈仍在
+
+
+def test_later_strokes_override_earlier_ones():
+    # R1 契约：后画的笔画覆盖先画的（顺序反了这两种断言都会翻）
+    mask = Image.new("L", (100, 100), 0)
+    out = mask_service.apply_strokes(mask, [
+        {"x": 50, "y": 50, "radius": 10, "mode": "add"},
+        {"x": 50, "y": 50, "radius": 10, "mode": "subtract"},
+    ])
+    assert out.getpixel((50, 50)) == 0
+
+    out = mask_service.apply_strokes(mask, [
+        {"x": 50, "y": 50, "radius": 10, "mode": "subtract"},
+        {"x": 50, "y": 50, "radius": 10, "mode": "add"},
+    ])
+    assert out.getpixel((50, 50)) == 255
+
+
+def test_strokes_land_on_full_resolution_mask_pixels():
+    # R1：坐标就是全分辨率 mask 像素，apply_strokes 内不做任何缩放
+    # （若把坐标乘个系数，(50,50) 会被画到别处，第一条断言变红）
+    mask = Image.new("L", (100, 100), 0)
+    out = mask_service.apply_strokes(mask, [
+        {"x": 50, "y": 50, "radius": 5, "mode": "add"},
+    ])
+    assert out.getpixel((50, 50)) == 255
+    assert out.getpixel((58, 50)) == 0, "outside the brush radius nothing may change"
+
+
+@pytest.mark.anyio
+async def test_updating_the_mask_regenerates_all_three_sizes(tmp_path, monkeypatch):
+    class FakeProvider:
+        def remove(self, image):
+            rgba = image.convert("RGBA")
+            rgba.putalpha(Image.new("L", rgba.size, 255))
+            return rgba
+
+    monkeypatch.setattr("app.services.background_removal.get_provider", lambda: FakeProvider())
+    svc = ImageService(storage_path=str(tmp_path))
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 60, 60)).save(buf, format="JPEG")
+    paths = await svc.process_and_store(USER, buf.getvalue(), "coat.jpg")
+    out = svc.remove_background(paths["image_path"])
+
+    updated = svc.update_mask(out["image_path"], out["mask_path"], [
+        {"x": 10, "y": 10, "radius": 20, "mode": "subtract"},
+    ])
+
+    # 三档全部重生成，且主图 alpha 与 mask 一致（fixes #13）
+    for key in ("image_path", "medium_path", "thumbnail_path"):
+        assert (tmp_path / updated[key]).exists()
+        assert updated[key].endswith(".png")
+    main = Image.open(tmp_path / updated["image_path"])
+    assert main.getchannel("A").getpixel((10, 10)) == 0
+    # R1：坐标不缩放 —— (10,10) 就是 (10,10)
+    mask = Image.open(tmp_path / updated["mask_path"])
+    assert mask.getpixel((10, 10)) == 0
+    assert mask.getpixel((200, 150)) == 255   # 减的是左上角，别处没动
+
+
+@pytest.mark.anyio
+async def test_mask_size_mismatch_raises_and_writes_nothing(tmp_path, monkeypatch):
+    # R2：mask 与主图尺寸不一致 = 损坏/别的 bug，抛 ValueError 且一个文件都不许动。
+    # 静默 resize 会产垃圾，还会把三档重写掉（两条断言都会翻）。
+    class FakeProvider:
+        def remove(self, image):
+            rgba = image.convert("RGBA")
+            rgba.putalpha(Image.new("L", rgba.size, 255))
+            return rgba
+
+    monkeypatch.setattr("app.services.background_removal.get_provider", lambda: FakeProvider())
+    svc = ImageService(storage_path=str(tmp_path))
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 60, 60)).save(buf, format="JPEG")
+    paths = await svc.process_and_store(USER, buf.getvalue(), "coat.jpg")
+    out = svc.remove_background(paths["image_path"])
+
+    # 旁挂被换成 10×10，和 400×300 的主图对不上
+    mask_service.save_mask(Image.new("L", (10, 10), 255), tmp_path / out["mask_path"])
+
+    tracked = [out["image_path"], out["medium_path"], out["thumbnail_path"], out["mask_path"]]
+    before = {rel: (tmp_path / rel).read_bytes() for rel in tracked}
+
+    with pytest.raises(ValueError):
+        svc.update_mask(out["image_path"], out["mask_path"], [
+            {"x": 5, "y": 5, "radius": 4, "mode": "add"},
+        ])
+
+    for rel, data in before.items():
+        assert (tmp_path / rel).read_bytes() == data, f"{rel} was rewritten"
