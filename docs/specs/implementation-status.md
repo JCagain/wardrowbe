@@ -37,6 +37,15 @@
 | **Ruling 28** | mask 与图像尺寸不一致即报错（400），不静默缩放——没有合法路径会造成不一致。 |
 | **Ruling 38** | 校色状态是**会话态**，不落库。刷新后步骤条显示「未校色」；重置随时可用，不影响正确性。将来若加列，只改详情页初始化处。 |
 | **抠图前备份** | `_orig.jpg` 是**当前抠图**的来源像素：抠图时首次生成；旋转时同步旋转；重新校色或还原原图时作废（删文件、`original_image_path` 置空）；画笔补抠与重抠都从它取 RGB（rembg 会把透明区 RGB 清零）。 |
+| **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
+| **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 调既有 `POST /items/{id}/retag`；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
+| **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
+| **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
+| **R36** | 测试不钉中文串，用结构性 `data-testid` 断言；要验真实译文则 `vi.unmock('next-intl')` 加 provider。 |
+| **R38 / R21a** | 别名：= Ruling 38 / Ruling 21a。 |
+| **R1 / R2 / R3 / R4 / R5**（= Ruling 27–31，mask 画笔任务） | R1 = Ruling 27：笔画坐标为全分辨率 mask 像素，无 `scale` 参数，前端用 `mapPointerToImage` 换算。R2 = Ruling 28（见上）。R3 = Ruling 29：mask 端点写回三档路径，但不得复用会清空 `mask_path` 的 `_persist_image_op`。R4 = Ruling 30：后台任务持有物品路径期间 mask 端点返回 409。R5 = Ruling 31：签名与命令以现有代码为准，不照计划文本（仅过程约定）。 |
+| **T7-A** | 画笔与框选拖动 clamp 到图内（现为 `natural - 1`）。 |
+| **T7-B** | 画笔落点抽稀：与上一记录点距离 ≥ 半径×0.3 才记录，起止点必记，以守住 2000 笔画上限。 |
 | **box 契约** | `(l, t, r, b)` 含右下；合法范围 `0 <= l <= r < width`。前端 clamp 到 `natural - 1`。 |
 
 ## 三、2026-10-13 自检修复
