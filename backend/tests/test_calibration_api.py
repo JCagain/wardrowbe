@@ -570,3 +570,19 @@ async def test_a_failed_image_op_logs_the_traceback(
     records = [r for r in caplog.records if r.name == "app.api.calibration"]
     assert records, "the failure was not logged"
     assert records[-1].exc_info is not None, "the traceback was dropped"
+
+
+@pytest.mark.parametrize("tint,low,high", [(100.0, 1.25, 1.35), (-100.0, 0.65, 0.75)])
+def test_tint_slider_extremes_move_green_visibly(tmp_path, tint, low, high):
+    """色调滑块拉满必须看得出来：绿通道 ±30%，红/蓝不动。"""
+    svc = ImageService(storage_path=str(tmp_path))
+    img = Image.new("RGB", (100, 100), (128, 128, 128))
+    img.save(tmp_path / "w.jpg", format="JPEG", quality=95)
+    img.save(tmp_path / "src.jpg", format="JPEG", quality=95)
+
+    out = svc.manual_white_balance("w.jpg", "src.jpg", kelvin=6500.0, tint=tint)
+
+    r, g, b = np.asarray(Image.open(tmp_path / out["image_path"]).convert("RGB"),
+                         dtype=np.float64).reshape(-1, 3).mean(axis=0)
+    assert low * 128 <= g <= high * 128, f"tint={tint}: green={g:.1f}"
+    assert abs(r - 128) <= 3 and abs(b - 128) <= 3

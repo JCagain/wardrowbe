@@ -26,6 +26,9 @@ SIZES = {
     "original": (2400, 2400),
 }
 
+# 手动白平衡色调轴（绿-品红）：滑块 ±100 → 绿通道 ±30%。正值加绿。
+TINT_GAIN_PER_100 = 0.3
+
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 ALLOWED_MIME_TYPES = {
     "image/jpeg",
@@ -499,7 +502,7 @@ class ImageService:
     ) -> dict[str, str | bool]:
         """色温/色调滑块的手动白平衡。滑块在 UI 上无界，这里把增益夹住。
 
-        6500K 为中性；每 1000K 约 6% 通道偏移。tint 是绿-品红轴。
+        6500K 为中性；每 1000K 约 6% 通道偏移。tint 是绿-品红轴，±100 对应绿通道 ±30%。
         """
         source = self.storage_path / calibration_original_path
         if not source.exists():
@@ -507,7 +510,7 @@ class ImageService:
         base = Image.open(source).convert("RGB")
 
         t = (kelvin - 6500.0) / 1000.0
-        gains = np.array([1.0 + 0.06 * t, 1.0 + 0.01 * tint / 100.0, 1.0 - 0.06 * t])
+        gains = np.array([1.0 + 0.06 * t, 1.0 + TINT_GAIN_PER_100 * tint / 100.0, 1.0 - 0.06 * t])
         gains = np.clip(gains, GAIN_MIN, GAIN_MAX)
         return self._save_calibrated(image_path, apply_gains(base, gains))
 
