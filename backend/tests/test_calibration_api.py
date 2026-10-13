@@ -6,6 +6,7 @@
 - 四个端点都认 owner（漏了 user 校验变红）
 """
 
+import logging
 import uuid
 from io import BytesIO
 from unittest.mock import MagicMock, patch
@@ -512,3 +513,22 @@ async def test_calibration_endpoints_report_nothing_cleared_without_a_mask(
     db_session.expire_all()
     result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
     assert result.scalar_one().mask_path is None, f"{path}: mask_path must stay null"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_image_op_logs_the_traceback(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, caplog
+):
+    """500 路径必须带堆栈：只记 f-string 的错误信息，线上排障无从下手。"""
+    item = await _make_item(db_session, test_user)
+    with patch.object(ImageService, "calibrate_image", side_effect=RuntimeError("boom")), \
+            caplog.at_level(logging.ERROR, logger="app.api.calibration"):
+        resp = await client.post(
+            f"/api/v1/items/{item.id}/calibration/apply",
+            json={"box": [0, 0, 50, 50], "baseline": "gray"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 500
+    records = [r for r in caplog.records if r.name == "app.api.calibration"]
+    assert records, "the failure was not logged"
+    assert records[-1].exc_info is not None, "the traceback was dropped"

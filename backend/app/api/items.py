@@ -48,6 +48,7 @@ from app.schemas.item import (
     TaggingProgressResponse,
     WashHistoryResponse,
 )
+from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
 from app.utils.auth import get_current_user
@@ -1756,9 +1757,7 @@ async def rotate_item_image(
         # `_save_all_sizes` returns the paths it actually wrote — the extension
         # follows the alpha channel (PNG for mattes, JPEG otherwise), so the
         # names can differ from what the item pointed at before the rotation.
-        item.image_path = result["image_path"]
-        item.medium_path = result["medium_path"]
-        item.thumbnail_path = result["thumbnail_path"]
+        assign_size_paths(item, result)
         await db.commit()
         await db.refresh(
             item,
@@ -1819,9 +1818,7 @@ async def remove_item_background(
         # PNG (fixes #8) and never composited onto a solid background (fixes #9).
         # The field is kept (and ignored) so existing callers can keep sending it.
         result = await asyncio.to_thread(image_service.remove_background, item.image_path)
-        item.image_path = result["image_path"]
-        item.medium_path = result["medium_path"]
-        item.thumbnail_path = result["thumbnail_path"]
+        assign_size_paths(item, result)
         item.original_image_path = result["original_backup_path"]
         item.mask_path = result["mask_path"]
         if recovering_from_error:
@@ -1906,9 +1903,7 @@ async def restore_item_original(
 
     # `_save_all_sizes` returns the paths it wrote; restoring a matted PNG's
     # backup (an RGB JPEG) flips the extension back to .jpg.
-    item.image_path = result["image_path"]
-    item.medium_path = result["medium_path"]
-    item.thumbnail_path = result["thumbnail_path"]
+    assign_size_paths(item, result)
     item.original_image_path = None
     # Restoring undoes the matte, so its mask sidecar no longer describes the
     # image. Drop the reference and the file rather than leave a stale mask.
@@ -1982,9 +1977,7 @@ async def replace_item_image(
         "mask_path": item.mask_path,
     }
 
-    item.image_path = image_paths["image_path"]
-    item.medium_path = image_paths["medium_path"]
-    item.thumbnail_path = image_paths["thumbnail_path"]
+    assign_size_paths(item, image_paths)
     item.image_hash = image_paths["image_hash"]
     item.original_image_path = None
     item.calibration_original_path = image_paths["calibration_original_path"]

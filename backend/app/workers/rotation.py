@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.models.item import ClothingItem, ItemStatus
+from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
 from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
@@ -33,9 +34,7 @@ async def rotate_item_image_job(ctx: dict, item_id: str, direction: str) -> dict
         try:
             image_service = ImageService()
             out = await asyncio.to_thread(image_service.rotate_image, item.image_path, direction)
-            item.image_path = out["image_path"]
-            item.medium_path = out["medium_path"]
-            item.thumbnail_path = out["thumbnail_path"]
+            assign_size_paths(item, out)
             # Pipeline finisher: a retired item's terminal status is archived
             # (spec §10.16), not ready.
             item.status = terminal_status(item.lifecycle, ItemStatus.ready)

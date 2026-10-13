@@ -1,10 +1,11 @@
 """主图文件集命名约定：一切派生路径从 base 推，扩展名翻转不改 base。"""
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
-from app.services.image_files import ImageFiles
+from app.services.image_files import ImageFiles, assign_size_paths
 from app.services.image_service import ImageService
 
 USER = uuid.UUID("00000000-0000-0000-0000-000000000021")
@@ -37,3 +38,15 @@ async def test_stored_upload_paths_follow_the_convention(tmp_path):
     files = ImageFiles.of(paths["image_path"])
     assert {k: paths[k] for k in ("image_path", "medium_path", "thumbnail_path")} == files.sizes(".jpg")
     assert paths["calibration_original_path"] == files.source
+
+
+def test_assign_size_paths_writes_exactly_the_three_size_columns():
+    item = SimpleNamespace(image_path="a.jpg", medium_path="a_medium.jpg",
+                           thumbnail_path="a_thumb.jpg", mask_path="a_mask.png")
+    assign_size_paths(item, {
+        "image_path": "a.png", "medium_path": "a_medium.png",
+        "thumbnail_path": "a_thumb.png", "mask_path": "IGNORED", "mask_cleared": True,
+    })
+    assert (item.image_path, item.medium_path, item.thumbnail_path) == (
+        "a.png", "a_medium.png", "a_thumb.png")
+    assert item.mask_path == "a_mask.png"

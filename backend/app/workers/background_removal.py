@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.models.item import ClothingItem, ItemStatus
+from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
 from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
@@ -41,9 +42,7 @@ async def remove_item_background_job(ctx: dict, item_id: str, bg_color_hex: str)
         try:
             image_service = ImageService()
             out = await asyncio.to_thread(image_service.remove_background, item.image_path)
-            item.image_path = out["image_path"]
-            item.medium_path = out["medium_path"]
-            item.thumbnail_path = out["thumbnail_path"]
+            assign_size_paths(item, out)
             item.original_image_path = out["original_backup_path"]
             item.mask_path = out["mask_path"]
             # Pipeline finisher: a retired item's terminal status is archived

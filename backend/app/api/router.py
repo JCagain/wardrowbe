@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
 from app.api.calibration import router as calibration_router
+from app.api.mask import router as mask_router
 # from app.api.families import router as families_router  # 摘不删（spec §7）
 from app.api.health import router as health_router
 from app.api.images import router as images_router
@@ -27,6 +28,7 @@ api_router.include_router(users_router)
 api_router.include_router(items_router)
 api_router.include_router(images_router)
 api_router.include_router(calibration_router)
+api_router.include_router(mask_router)
 api_router.include_router(preferences_router)
 # 摘不删（spec §7）：产品壳路由不挂载，模块保留备查。
 # api_router.include_router(families_router)
