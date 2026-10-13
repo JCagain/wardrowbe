@@ -375,8 +375,8 @@ class ImageService:
         旋转是几何变换：RGBA 主图带着 alpha 一起转（**不**铺白底压成 RGB），
         mask 旁挂用同一角度转，两者继续逐点对应。
 
-        校色前原图副本（`{base}_src.jpg`）同步同角度旋转（fix-spec #7a 的几何
-        同步）：detect 在工作图坐标系给框，calibrate / manual / reset 都从副本
+        校色前原图副本（`{base}_src.jpg`）与抠图前备份（`{base}_orig.jpg`）同步同角度旋转
+        （fix-spec #7a 的几何同步）：detect 在工作图坐标系给框，calibrate / manual / reset 都从副本
         取像素，两边不一致就是坐标空间分裂——白平衡静默取错区域、重置把未旋转
         的副本写回工作图连用户的旋转一起撤销。「重置回原图」= **当前朝向下**的
         校色前像素。副本缺失（keep_source=False 的附加图）则跳过；副本旋转失败
@@ -396,27 +396,33 @@ class ImageService:
 
         angle = -90 if direction == "cw" else 90  # PIL rotates counter-clockwise by default
 
-        # 副本的解码 + 旋转先在内存里做完：损坏就在这里炸掉，工作图一个字节
-        # 都不该被改写。落盘走 tmp + os.replace，绝不 truncate 基线本身——
-        # `write_bytes` 是 open('wb') 先截断，ENOSPC 落在写 `_src` 上就不是脱节
-        # 而是把不可变基线整个毁掉（校色从此永远无法重置）。失败可重试：
-        # 基线没被换掉，重试就只把 `_src` 转一次。
+        # 与工作图同坐标空间的 JPEG 伴随文件：校色前原图副本（fix-spec #7a）与
+        # 抠图前备份（还原重抠 / 画笔补抠 / 重抠的像素来源）。两者都必须跟工作图
+        # 同朝向，否则「还原原图」或画笔会把未旋转的像素写回旋转后的坐标系。
+        #
+        # 解码 + 旋转先在内存里做完：任一伴随文件损坏就在这里炸掉，工作图一个
+        # 字节都不该被改写。落盘走 tmp + os.replace，绝不 truncate 基线本身——
+        # `write_bytes` 是 open('wb') 先截断，ENOSPC 落在写 `_src` 上就是把不可变
+        # 基线整个毁掉。失败可重试：基线没被换掉，重试只会转一次。
         files = ImageFiles.of(image_path)
-        source_full = self.storage_path / files.source
-        source_tmp: Path | None = None
+        companions = [self.storage_path / files.source, self.storage_path / files.backup]
+        staged: list[tuple[Path, Path]] = []
         try:
-            if source_full.exists():
-                source = Image.open(source_full)
-                if source.mode != "RGB":
-                    source = source.convert("RGB")
+            for full in companions:
+                if not full.exists():
+                    continue
+                companion = Image.open(full)
+                if companion.mode != "RGB":
+                    companion = companion.convert("RGB")
                 # 90° 用 rotate(angle, expand=True)：对 90/270 是逐像素精确映射。
                 # 重编码一次，quality=95（与首次写入同款），把代际损失压到不可见。
                 output = BytesIO()
-                source.rotate(angle, expand=True).save(
+                companion.rotate(angle, expand=True).save(
                     output, format="JPEG", quality=95, optimize=True
                 )
-                source_tmp = source_full.with_name(source_full.name + ".tmp")
-                source_tmp.write_bytes(output.getvalue())
+                tmp = full.with_name(full.name + ".tmp")
+                tmp.write_bytes(output.getvalue())
+                staged.append((tmp, full))
 
             image = Image.open(original_full)
             has_alpha = image.mode in ("RGBA", "LA") or (
@@ -435,13 +441,13 @@ class ImageService:
                 mask_service.save_mask(mask.rotate(angle, expand=True), mask_full)
 
             paths = self._save_all_sizes(rotated, image_path)
-            # 最后才换基线：上面任何一步失败，`_src` 仍是原样（tmp 由 finally 清掉）。
-            if source_tmp is not None:
-                os.replace(source_tmp, source_full)
+            # 最后才换基线：上面任何一步失败，伴随文件仍是原样（tmp 由 finally 清掉）。
+            for tmp, full in staged:
+                os.replace(tmp, full)
             return paths
         finally:
-            if source_tmp is not None:
-                source_tmp.unlink(missing_ok=True)
+            for tmp, _ in staged:
+                tmp.unlink(missing_ok=True)
 
     def calibrate_image(
         self,

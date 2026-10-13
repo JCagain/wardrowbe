@@ -498,3 +498,68 @@ async def test_a_failed_size_save_leaves_the_source_bytes_untouched(tmp_path, mo
 
     assert src.read_bytes() == before, "`_src` 必须原样保留：不截断、不提前换成旋转版"
     assert list(tmp_path.rglob("*.tmp")) == [], "失败路径不许留下 .tmp 孤儿"
+
+
+def _quadrant_jpeg() -> bytes:
+    """400×300，左上 100×100 红块、其余灰：旋转方向错了红块会落在别的角。"""
+    img = Image.new("RGB", (400, 300), (128, 128, 128))
+    img.paste((220, 30, 30), (0, 0, 100, 100))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+def _opaque_left_half_provider():
+    class FakeProvider:
+        def remove(self, image):
+            rgba = image.convert("RGBA")
+            alpha = Image.new("L", rgba.size, 0)
+            alpha.paste(255, (0, 0, rgba.width // 2, rgba.height))
+            rgba.putalpha(alpha)
+            return rgba
+
+    return FakeProvider()
+
+
+@pytest.mark.anyio
+async def test_rotate_keeps_the_cutout_backup_in_the_working_orientation(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.background_removal.get_provider", lambda: _opaque_left_half_provider()
+    )
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(USER, _quadrant_jpeg(), "coat.jpg")
+    out = svc.remove_background(paths["image_path"])
+
+    svc.rotate_image(out["image_path"], "cw")
+
+    backup = Image.open(tmp_path / out["original_backup_path"]).convert("RGB")
+    assert backup.size == (300, 400), "the cutout backup was not rotated"
+    # 顺时针 90°：左上红块 → 右上
+    r, g, b = backup.getpixel((250, 50))
+    assert r > 180 and g < 80, f"backup rotated the wrong way: {(r, g, b)}"
+
+    restored = svc.restore_original(out["image_path"], out["original_backup_path"])
+    working = Image.open(tmp_path / restored["image_path"])
+    source = Image.open(tmp_path / paths["calibration_original_path"])
+    assert working.size == source.size == (300, 400), "restore split working and _src orientation"
+
+
+@pytest.mark.anyio
+async def test_a_corrupt_backup_fails_rotate_without_touching_anything(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.background_removal.get_provider", lambda: _opaque_left_half_provider()
+    )
+    svc = ImageService(storage_path=str(tmp_path))
+    paths = await svc.process_and_store(USER, _quadrant_jpeg(), "coat.jpg")
+    out = svc.remove_background(paths["image_path"])
+    (tmp_path / out["original_backup_path"]).write_bytes(b"not an image")
+
+    working_before = (tmp_path / out["image_path"]).read_bytes()
+    source_before = (tmp_path / paths["calibration_original_path"]).read_bytes()
+
+    with pytest.raises(Exception):
+        svc.rotate_image(out["image_path"], "cw")
+
+    assert (tmp_path / out["image_path"]).read_bytes() == working_before
+    assert (tmp_path / paths["calibration_original_path"]).read_bytes() == source_before
+    assert not list(tmp_path.rglob("*.tmp")), "staged temp files were left behind"
