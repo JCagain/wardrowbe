@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import uuid
@@ -13,6 +14,8 @@ from app.config import get_settings
 from app.services import background_removal, mask_service
 from app.services.color_calibration import GAIN_MAX, GAIN_MIN, apply_gains, calibrate
 from app.services.image_files import ImageFiles
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -352,7 +355,17 @@ class ImageService:
         backup_path = files.backup
         backup_full = self.storage_path / backup_path
         # First removal wins：第二次抠图不得用已处理图覆盖真原图
-        if not backup_full.exists():
+        if backup_full.exists() and self._image_size(backup_full) != self._image_size(
+            original_full
+        ):
+            # Ruling 10：旧版本「先抠图后旋转」遗留的备份朝向与工作图不符，照它重抠
+            # 会把旋转悄悄撤销。以工作图为准重新播种（只拦 90/270°，见已知取舍）。
+            logger.warning(
+                "Stale cut-out backup %s does not match working image size; re-seeding",
+                backup_path,
+            )
+            shutil.copy2(original_full, backup_full)
+        elif not backup_full.exists():
             shutil.copy2(original_full, backup_full)
 
         # 永远从抠图前像素抠：工作图若已是抠图产物，透明区 RGB 已被 rembg 清零，
@@ -369,10 +382,22 @@ class ImageService:
         paths["mask_path"] = mask_path
         return paths
 
+    @staticmethod
+    def _image_size(path: Path) -> tuple[int, int]:
+        with Image.open(path) as im:
+            return im.size
+
     def restore_original(self, image_path: str, backup_path: str) -> dict[str, str]:
         backup_full = self.storage_path / backup_path
         if not backup_full.exists():
             raise ValueError(f"Backup not found: {backup_path}")
+
+        working_full = self.storage_path / image_path
+        if working_full.exists() and self._image_size(backup_full) != self._image_size(
+            working_full
+        ):
+            # Ruling 10：备份朝向与工作图不符（旧版本遗留），写回会撤销旋转。
+            raise ValueError("Backup orientation does not match the current image; cannot restore")
 
         image = Image.open(backup_full).convert("RGB")
         paths = self._save_all_sizes(image, image_path)

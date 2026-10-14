@@ -388,7 +388,7 @@ async def test_brush_add_restores_the_true_pixels_not_black(tmp_path, monkeypatc
     main = Image.open(tmp_path / updated["image_path"]).convert("RGBA")
     r, g, b, a = main.getpixel((300, 150))
     assert a == 255
-    assert (abs(r - 200), abs(g - 60), abs(b - 60)) <= (12, 12, 12), (
+    assert max(abs(r - 200), abs(g - 60), abs(b - 60)) <= 12, (
         f"brush-added pixels must be the original colour, got {(r, g, b)}"
     )
 
@@ -429,3 +429,36 @@ async def test_update_mask_without_a_backup_raises_and_writes_nothing(tmp_path, 
                         [{"x": 1, "y": 1, "radius": 5, "mode": "add"}])
 
     assert (tmp_path / out["image_path"]).read_bytes() == before
+
+
+def _make_stale_backup(svc, out):
+    """旧版本遗留：工作图 300x400，备份却是旋转前的 400x300。"""
+    working = svc.storage_path / out["image_path"]
+    backup = svc.storage_path / out["original_backup_path"]
+    Image.new("RGBA", (300, 400), (10, 20, 30, 255)).save(working, format="PNG")
+    Image.new("RGB", (400, 300), (200, 60, 60)).save(backup, format="JPEG")
+    return working, backup
+
+
+@pytest.mark.anyio
+async def test_recut_reseeds_a_stale_backup_instead_of_unrotating(tmp_path, monkeypatch):
+    svc, _, out, _ = await _cut(tmp_path, monkeypatch)
+    working, backup = _make_stale_backup(svc, out)
+
+    result = svc.remove_background(out["image_path"])
+
+    assert Image.open(tmp_path / result["image_path"]).size == (300, 400)
+    assert Image.open(backup).size == (300, 400)
+
+
+@pytest.mark.anyio
+async def test_restore_original_refuses_a_stale_backup(tmp_path, monkeypatch):
+    svc, _, out, _ = await _cut(tmp_path, monkeypatch)
+    working, backup = _make_stale_backup(svc, out)
+    working_bytes, backup_bytes = working.read_bytes(), backup.read_bytes()
+
+    with pytest.raises(ValueError):
+        svc.restore_original(out["image_path"], out["original_backup_path"])
+
+    assert working.read_bytes() == working_bytes
+    assert backup.read_bytes() == backup_bytes
