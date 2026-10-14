@@ -44,6 +44,9 @@
 | **Ruling 47** | 白底合成图是临时产物：写系统临时目录、不进存储目录，`analysis_input()` 在 `finally` 里删除。 |
 | **Ruling 48** | `tag_item_image` 从 DB 行（`image_path`/`mask_path`）经 `resolve_analysis_path` 取输入，不信入队时的 `image_path` 参数（保留仅为队列兼容）；存在性检查针对解析后的工作图。 |
 | **Ruling 49** | 前端步骤条「打标」改调 `useReanalyzeItem`（`POST /items/{id}/analyze`）：queued/already_queued → 已入队提示；deferred（视觉未启用）与 cooldown → 信息提示；出错 → 错误提示。`useRetagItem` 保留（仅 hook 定义，无调用方）。 |
+| **Ruling 51** | 校色端点（detect/apply/manual/reset）在 `calibration_original_path` 为 NULL 时惰性补种 `_src`（`ImageService.ensure_calibration_source`）并落列：盘上已有且尺寸吻合 → 原样收养；否则有尺寸吻合的 `_orig` 备份 → 取备份像素；否则取工作图转 RGB（JPEG q95）；已有但尺寸不符 → 告警后覆盖。取代原先的 400 "no calibration source"。 |
+| **Ruling 52** | `calibration/detect` 读校色副本 `_src`，不读工作图：抠图后工作图背景 RGB 已清零，卡条是黑的，永远检不出。 |
+| **Ruling 53** | 详情对话框在旋转 / 还原原图 / 替换主图 / 设为主图成功后清掉旧检出框（`pending` 退回 `none`）；`restore-original` 补上与 remove-background / mask 同款的「后台 job 在跑 → 409」守卫。 |
 | **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
@@ -78,3 +81,6 @@
 - **`bg_color` 请求字段**：只为兼容旧调用保留，后端不消费。
 - **`docker-compose.prod.yml` 未转发 `AI_API_KEY`**：该文件是摘不删的离线备查，不维护。
 - **过期备份尺寸守卫只拦 90°/270°**：旧版本「先抠图后旋转」遗留、被转了 180° 的备份尺寸与工作图相同，检测不到；对它重抠 / 还原会把 180° 旋转撤销。单人自用，旋转后用户会看到并可再转。
+- **换主图再换回会遗留孤儿旁挂**（Ruling 9）：set-primary 只把 sidecar 列置 NULL、不删文件，换走再换回后旧的 `_src` / `_mask` / `_orig` 留在盘上成孤儿。
+- **`_src` 会在下次校色时按尺寸重新收养**（Ruling 51）：尺寸吻合就接回；但 mask / 备份**不会**重新挂回，所以此时打标用的是不带白底合成的 RGBA，直到重新抠图。
+- **旧物品的 `_src` 是惰性补种的**（Ruling 51）：取自首次校色那一刻的当前像素（旧抠图则取 `_orig` 备份），所以对它们「重置」回到的是首次校色时的像素，而不是相机原图。
