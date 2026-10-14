@@ -40,6 +40,7 @@ class OutfitSource(enum.StrEnum):
     manual = "manual"
     pairing = "pairing"
     external = "external"
+    record = "record"
 
 
 class Outfit(Base):
@@ -65,6 +66,8 @@ class Outfit(Base):
     formality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     palette: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 记录（spec §3.1）：城市名，取自设置里的城市列表；可空
+    city: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Status
     status: Mapped[OutfitStatus] = mapped_column(
@@ -112,6 +115,12 @@ class Outfit(Base):
     items: Mapped[list["OutfitItem"]] = relationship(
         "OutfitItem", back_populates="outfit", cascade="all, delete-orphan"
     )
+    photos: Mapped[list["OutfitPhoto"]] = relationship(
+        "OutfitPhoto",
+        back_populates="outfit",
+        cascade="all, delete-orphan",
+        order_by="OutfitPhoto.position",
+    )
     feedback: Mapped[Optional["UserFeedback"]] = relationship(
         "UserFeedback", back_populates="outfit", uselist=False, cascade="all, delete-orphan"
     )
@@ -150,6 +159,25 @@ class OutfitItem(Base):
     # Relationships
     outfit: Mapped["Outfit"] = relationship("Outfit", back_populates="items")
     item: Mapped["ClothingItem"] = relationship("ClothingItem")
+
+
+class OutfitPhoto(Base):
+    """记录的穿搭照（spec §5 `outfit_photos`）：三档路径，按 position 排序。"""
+
+    __tablename__ = "outfit_photos"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    outfit_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("outfits.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    image_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    medium_path: Mapped[str | None] = mapped_column(String(500))
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    outfit: Mapped["Outfit"] = relationship("Outfit", back_populates="photos")
 
 
 class UserFeedback(Base):

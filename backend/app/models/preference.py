@@ -53,6 +53,9 @@ class UserPreference(Base):
     # AI Settings - list of endpoint configs
     # Each endpoint: {url, vision_model, text_model, name, enabled}
     ai_endpoints: Mapped[list] = mapped_column(JSONB, default=list)
+    # 记录城市（spec §3.1 / §10.6）：[{name, latitude, longitude}]；NULL = 用预设
+    cities: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    default_city: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
