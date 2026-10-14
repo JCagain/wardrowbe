@@ -95,4 +95,16 @@ describe('ItemDetailDialog AI color tags', () => {
     renderWithTags({ colors: ['black'] });
     expect(await screen.findByText('黑')).toBeInTheDocument();
   });
+
+  it('falls back to the slug for a color missing from the vocabulary', async () => {
+    renderWithTags({ primary_colors: ['chartreuse'] });
+    expect(await screen.findByText('chartreuse')).toBeInTheDocument();
+  });
+
+  it('ignores legacy tags.colors once the new keys are present', async () => {
+    renderWithTags({ primary_colors: ['black'], colors: ['white'] });
+    expect(await screen.findByText('黑')).toBeInTheDocument();
+    expect(screen.queryByText('白')).not.toBeInTheDocument();
+    expect(screen.queryByText('white')).not.toBeInTheDocument();
+  });
 });

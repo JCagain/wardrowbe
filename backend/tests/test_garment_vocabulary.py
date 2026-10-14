@@ -181,8 +181,16 @@ def test_prompt_lists_every_active_color_style_season_with_labels(vocab_file):
     for s in data["seasons"]:
         assert f'{s["value"]}={s["label"]}' in prompt
     # 旧硬编码列表彻底消失
+    # Only for values the vocabulary does not (now) contain: a user may later add
+    # e.g. a `preppy` style, which must not turn this red.
+    current = {c["value"] for c in data["colors"]["values"]}
+    current |= {s["value"] for s in data["styles"]}
+    current |= {s["value"] for s in data["seasons"]}
+    current |= {t["value"] for t in data["types"]}
+    current |= set(data["materials"]) | set(data["formality"])
     for legacy in ("light-blue", "burgundy", "bohemian", "preppy", "rugged"):
-        assert legacy not in prompt
+        if legacy not in current:
+            assert legacy not in prompt
     assert "<<" not in prompt
 
 
