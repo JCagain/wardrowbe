@@ -330,3 +330,23 @@ async def test_set_primary_nulls_the_sidecar_columns_but_keeps_the_files(
     assert item.mask_path is None
     for rel in sidecars:
         assert (svc.storage_path / rel).exists(), rel
+
+
+@pytest.mark.asyncio
+async def test_restore_original_conflicts_with_a_running_job(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """restore-original 重写三档：job 在跑时同 mask/remove-background 返回 409，文件不动。"""
+    item = await _make_item_with_mask(
+        db_session, test_user, status=ItemStatus.processing, ai_job_id="job-123"
+    )
+    svc = ImageService()
+    tracked = [item.image_path, item.medium_path, item.thumbnail_path, item.mask_path]
+    before = {rel: svc.get_image_path(rel).read_bytes() for rel in tracked}
+
+    resp = await client.post(f"/api/v1/items/{item.id}/restore-original", headers=auth_headers)
+
+    assert resp.status_code == 409, resp.text
+    assert resp.json() == {"detail": "Item has a background job in progress"}
+    for rel, data in before.items():
+        assert svc.get_image_path(rel).read_bytes() == data, f"{rel} was rewritten"

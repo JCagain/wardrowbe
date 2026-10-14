@@ -1827,6 +1827,13 @@ async def restore_item_original(
             detail="No original image to restore",
         )
 
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # Same guard as remove-background / mask: a live job owns the size files.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
+        )
+
     try:
         image_service = ImageService()
         result = await asyncio.to_thread(
