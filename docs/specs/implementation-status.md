@@ -9,7 +9,7 @@
 
 | fixes # | 内容 | 状态 | commit |
 |---|---|---|---|
-| D2 / 15 / 16 | 打标手动触发、取最佳像素 | ⏳ 未做（image-pipeline 计划 Task 8） | — |
+| D2 / 15 / 16 | 打标手动触发、取最佳像素 | ✅ | 294f390, 06533dd（Ruling 45–49） |
 | D6 / 8 / 11 / 21 | 主图 RGBA PNG + L 模式 mask 旁挂 | ✅ | 4129261, 6ea1e8c, 1c5bff1 |
 | 1 / 2 / 3 | 参考物检出、可手改框与类型、灰卡/白纸两种基准 | ✅ | 95fae2e, 5eda4a4, 0998cba, 60089f7, 6b9145c, 5cd7a0a |
 | 4 | 色温/色调滑块 + 重算 | ✅ | 580402b, 6b9145c, 5cd7a0a（色调增益见 §三） |
@@ -39,8 +39,13 @@
 | **Ruling 28** | mask 与图像尺寸不一致即报错（400），不静默缩放——没有合法路径会造成不一致。 |
 | **Ruling 38** | 校色状态是**会话态**，不落库。刷新后步骤条显示「未校色」；重置随时可用，不影响正确性。将来若加列，只改详情页初始化处。 |
 | **抠图前备份** | `_orig.jpg` 是**当前抠图**的来源像素：抠图时首次生成；旋转时同步旋转；重新校色或还原原图时作废（删文件、`original_image_path` 置空）；画笔补抠与重抠都从它取 RGB（rembg 会把透明区 RGB 清零）。 |
+| **Ruling 45** | 单张与批量上传两条路径都不再自动入队 `tag_item_image`（含批量只为自动打标而建的 redis 池）；`skip_ai` 入参保留但不起作用（D2 兼容）。 |
+| **Ruling 46** | 上传后 `mark_pending(set_ready=True)`：status=ready、tagging_status=pending（`set_ready=False` 会让物品卡在 processing）。 |
+| **Ruling 47** | 白底合成图是临时产物：写系统临时目录、不进存储目录，`analysis_input()` 在 `finally` 里删除。 |
+| **Ruling 48** | `tag_item_image` 从 DB 行（`image_path`/`mask_path`）经 `resolve_analysis_path` 取输入，不信入队时的 `image_path` 参数（保留仅为队列兼容）；存在性检查针对解析后的工作图。 |
+| **Ruling 49** | 前端步骤条「打标」改调 `useReanalyzeItem`（`POST /items/{id}/analyze`）：queued/already_queued → 已入队提示；deferred（视觉未启用）与 cooldown → 信息提示；出错 → 错误提示。`useRetagItem` 保留（仅 hook 定义，无调用方）。 |
 | **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
-| **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 调既有 `POST /items/{id}/retag`；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
+| **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
 | **R36** | 测试不钉中文串，用结构性 `data-testid` 断言；要验真实译文则 `vi.unmock('next-intl')` 加 provider。 |
