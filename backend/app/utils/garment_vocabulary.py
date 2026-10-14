@@ -31,16 +31,35 @@ WASH_BY_PART: dict[str, int] = {
 }
 
 
+def _active(entries: list[dict]) -> list[dict]:
+    # §10.9/§10.12：停用 = 不进选择器；AI 打标签从「当前列表」闭集选，同样不给停用值。
+    return [e for e in entries if not e.get("disabled")]
+
+
+def _labeled(entries: list[dict]) -> str:
+    # slug=中文名：slug 对模型不透明（three-pits、klein、taro），中文名帮它判断；
+    # 输出合同仍是 slug，解析器容忍整串回吐（取 '=' 前）。
+    return ", ".join(f'{e["value"]}={e["label"]}' for e in entries)
+
+
 def render_tagging_prompt(template: str) -> str:
     data = _data()
+    colors = _active(data["colors"]["values"])
     replacements = {
-        "<<TYPES>>": ", ".join(t["value"] for t in data["types"]),
+        "<<TYPES>>": ", ".join(t["value"] for t in _active(data["types"])),
         "<<MATERIALS>>": ", ".join(data["materials"]),
         "<<FORMALITY>>": ", ".join(data["formality"]),
         "<<BODY_PARTS>>": ", ".join(p["value"] for p in data["body_parts"]),
-        "<<COLORS>>": ", ".join(c["value"] for c in data["colors"]["values"]),
-        "<<STYLES>>": ", ".join(s["value"] for s in data["styles"]),
+        "<<COLORS>>": ", ".join(c["value"] for c in colors),
+        "<<STYLES>>": ", ".join(s["value"] for s in _active(data["styles"])),
         "<<SEASONS>>": ", ".join(s["value"] for s in data["seasons"]),
+        "<<COLORS_BY_FAMILY>>": "\n".join(
+            f'- {fam["label"]}: {_labeled(members)}'
+            for fam in data["colors"]["families"]
+            if (members := [c for c in colors if c["family"] == fam["value"]])
+        ),
+        "<<STYLES_LABELED>>": _labeled(_active(data["styles"])),
+        "<<SEASONS_LABELED>>": _labeled(data["seasons"]),
     }
     for token, value in replacements.items():
         template = template.replace(token, value)
@@ -59,6 +78,12 @@ def __getattr__(name: str):
     colors = data["colors"]
     if name == "TYPES":
         return tuple(entry["value"] for entry in types)
+    if name == "ACTIVE_TYPES":
+        return tuple(t["value"] for t in _active(types))
+    if name == "ACTIVE_COLOR_VALUE_SET":
+        return {c["value"] for c in _active(colors["values"])}
+    if name == "ACTIVE_STYLE_VALUES":
+        return tuple(s["value"] for s in _active(data["styles"]))
     if name == "ITEM_ROLE":
         return {entry["value"]: entry["role"] for entry in types}
     if name == "DEFAULT_WASH_INTERVALS":

@@ -152,3 +152,76 @@ def test_legacy_color_aliases_point_at_new_slugs():
     assert LEGACY_COLOR_ALIASES["tan"] == "camel"
     assert LEGACY_COLOR_ALIASES["beige"] == "khaki"
     assert LEGACY_COLOR_ALIASES["light-blue"] == "sky"
+
+
+@pytest.fixture
+def vocab_file(tmp_path, monkeypatch):
+    import shutil
+
+    path = tmp_path / "garment_vocabulary.json"
+    shutil.copy(gv.VOCABULARY_PATH, path)
+    monkeypatch.setattr(gv, "VOCABULARY_PATH", path)
+    return path
+
+
+def _write_vocab(path, data):
+    import os
+
+    before = path.stat().st_mtime_ns
+    path.write_text(json.dumps(data, ensure_ascii=False))
+    # lru_cache is keyed on mtime_ns: guarantee it advances on coarse clocks.
+    if path.stat().st_mtime_ns <= before:
+        os.utime(path, ns=(before + 1_000_000, before + 1_000_000))
+
+
+def test_prompt_lists_every_active_color_style_season_with_labels(vocab_file):
+    from pathlib import Path
+
+    template = (
+        Path(gv.__file__).parent.parent / "prompts" / "clothing_analysis.txt"
+    ).read_text()
+    prompt = render_tagging_prompt(template)
+    data = json.loads(vocab_file.read_text())
+    for c in data["colors"]["values"]:
+        if not c.get("disabled"):
+            assert f'{c["value"]}={c["label"]}' in prompt
+    for s in data["styles"]:
+        if not s.get("disabled"):
+            assert f'{s["value"]}={s["label"]}' in prompt
+    for s in data["seasons"]:
+        assert f'{s["value"]}={s["label"]}' in prompt
+    # 旧硬编码列表彻底消失
+    for legacy in ("light-blue", "burgundy", "bohemian", "preppy", "rugged"):
+        assert legacy not in prompt
+    assert "<<" not in prompt
+
+
+def test_disabled_entries_never_reach_the_prompt_or_active_sets(vocab_file):
+    data = json.loads(vocab_file.read_text())
+    color = data["colors"]["values"][0]
+    style = data["styles"][0]
+    typ = data["types"][0]
+    for e in (color, style, typ):
+        e["disabled"] = True
+    _write_vocab(vocab_file, data)
+
+    assert color["value"] not in gv.ACTIVE_COLOR_VALUE_SET
+    assert style["value"] not in gv.ACTIVE_STYLE_VALUES
+    assert typ["value"] not in gv.ACTIVE_TYPES
+    # 历史值集合不受影响（手改/旧数据仍可显示）
+    assert color["value"] in gv.COLOR_VALUE_SET
+
+    prompt = gv.render_tagging_prompt("<<COLORS_BY_FAMILY>>|<<STYLES_LABELED>>|<<TYPES>>")
+    assert f'{color["value"]}=' not in prompt
+    assert f'{style["value"]}=' not in prompt
+    assert typ["value"] not in prompt.split("|")[2].split(", ")
+
+
+def test_runtime_added_color_reaches_the_prompt_without_restart(vocab_file):
+    # D1：写入即生效
+    data = json.loads(vocab_file.read_text())
+    data["colors"]["values"].append(
+        {"value": "test-mint", "label": "测薄荷", "family": "green", "hex": "#aaffcc"}
+    )
+    _write_vocab(vocab_file, data)
+    assert "test-mint=测薄荷" in gv.render_tagging_prompt("<<COLORS_BY_FAMILY>>")
