@@ -420,6 +420,113 @@ class TestRetag:
         assert response.status_code == 404
 
 
+def test_tag_fields_write_color_arrays_straight_to_the_columns():
+    fields = tagging.tags_to_item_fields(
+        ClothingTags(type="shirt", primary_colors=["black", "white"], secondary_colors=["wine"])
+    )
+    assert fields["primary_colors"] == ["black", "white"]
+    assert fields["secondary_colors"] == ["wine"]
+    assert fields["tags"]["primary_colors"] == ["black", "white"]
+    assert fields["tags"]["secondary_colors"] == ["wine"]
+    assert "colors" not in fields["tags"]
+    assert "primary_color" not in fields["tags"]
+
+
+def test_item_tags_schema_carries_new_color_keys_and_keeps_legacy_ones():
+    dumped = ItemTags(primary_colors=["black"], secondary_colors=["white"]).model_dump()
+    assert dumped["primary_colors"] == ["black"]
+    assert dumped["secondary_colors"] == ["white"]
+    legacy = ItemTags(primary_color="red", colors=["red"]).model_dump()
+    assert legacy["primary_color"] == "red"
+    assert legacy["colors"] == ["red"]
+
+
+class TestTagsBlobNewColorKeys:
+    async def _item(self, db_session, test_user, **kw):
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="unknown",
+            image_path=f"test/{uuid4().hex}.jpg",
+            status=ItemStatus.ready,
+            **kw,
+        )
+        db_session.add(item)
+        await db_session.commit()
+        return item
+
+    @pytest.mark.asyncio
+    async def test_tags_blob_with_new_color_keys_projects_onto_columns(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user)
+        resp = await client.patch(
+            f"/api/v1/items/{item.id}",
+            json={"tags": {"primary_colors": ["black", "chartreuse"], "secondary_colors": ["white"]}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["primary_colors"] == ["black"]
+        assert body["secondary_colors"] == ["white"]
+
+    @pytest.mark.asyncio
+    async def test_explicit_color_columns_win_over_the_tags_blob(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user)
+        resp = await client.patch(
+            f"/api/v1/items/{item.id}",
+            json={
+                "primary_colors": ["navy"],
+                "secondary_colors": [],
+                "tags": {"primary_colors": ["black"], "secondary_colors": ["white"]},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["primary_colors"] == ["navy"]
+        assert resp.json()["secondary_colors"] == []
+
+    @pytest.mark.asyncio
+    async def test_tags_blob_with_empty_new_color_keys_does_not_clear_columns(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, primary_colors=["black"])
+        resp = await client.patch(
+            f"/api/v1/items/{item.id}",
+            json={"tags": {"primary_colors": [], "secondary_colors": []}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["primary_colors"] == ["black"]
+
+    @pytest.mark.asyncio
+    async def test_disabled_vocab_color_is_dropped_from_blob_projection(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession, vocab_file
+    ):
+        import json
+        import os
+
+        data = json.loads(vocab_file.read_text())
+        for c in data["colors"]["values"]:
+            if c["value"] == "white":
+                c["disabled"] = True
+        before = vocab_file.stat().st_mtime_ns
+        vocab_file.write_text(json.dumps(data, ensure_ascii=False))
+        if vocab_file.stat().st_mtime_ns <= before:
+            os.utime(vocab_file, ns=(before + 1_000_000, before + 1_000_000))
+
+        item = await self._item(db_session, test_user)
+        resp = await client.patch(
+            f"/api/v1/items/{item.id}",
+            json={"tags": {"primary_colors": ["black"], "secondary_colors": ["white"]}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["primary_colors"] == ["black"]
+        assert resp.json()["secondary_colors"] == []
+
+
 class TestTagsToColumnsProjection:
     @pytest.mark.asyncio
     async def test_update_projects_nested_tag_fields_onto_columns(

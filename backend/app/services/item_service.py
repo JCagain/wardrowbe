@@ -378,7 +378,20 @@ class ItemService:
             # carrying only null color keys must not fire the splitter (two
             # Nones would clear the columns).
             if "primary_colors" not in update_data and "secondary_colors" not in update_data:
-                if tag_data.get("primary_color") is not None or tag_data.get("colors") is not None:
+                blob_primary = tag_data.get("primary_colors")
+                blob_secondary = tag_data.get("secondary_colors")
+                if blob_primary or blob_secondary:
+                    from app.utils.garment_vocabulary import ACTIVE_COLOR_VALUE_SET
+
+                    valid = ACTIVE_COLOR_VALUE_SET
+                    primary = [c for c in dict.fromkeys(blob_primary or []) if c in valid]
+                    item.primary_colors = primary
+                    item.secondary_colors = [
+                        c
+                        for c in dict.fromkeys(blob_secondary or [])
+                        if c in valid and c not in primary
+                    ]
+                elif tag_data.get("primary_color") is not None or tag_data.get("colors") is not None:
                     primary_list, secondary_list = migrate_legacy_colors(
                         tag_data.get("primary_color"), tag_data.get("colors")
                     )

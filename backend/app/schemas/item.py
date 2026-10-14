@@ -18,15 +18,16 @@ from app.utils.signed_urls import sign_image_url
 
 
 class ItemTags(BaseModel):
-    # AI-tagging display metadata. The AI JSON contract still names colors /
-    # primary_color (see app.services.ai_service); these keys live only in the
-    # tags JSONB blob, never on the item's own color columns.
+    # AI 打标展示元数据；颜色真值在列上。primary_colors/secondary_colors 为现合同；
+    # colors/primary_color 仅为 10-14 前打标物品的旧 blob 只读兼容。
     #
     # extra="allow" is load-bearing: a detail-dialog save round-trips the whole
     # blob through this schema, and Pydantic's default extra="ignore" silently
     # dropped every key the schema did not name before the JSONB column was
     # overwritten without them.
     model_config = ConfigDict(extra="allow")
+    primary_colors: list[str] = Field(default_factory=list)
+    secondary_colors: list[str] = Field(default_factory=list)
     colors: list[str] = Field(default_factory=list)
     primary_color: str | None = None
     pattern: str | None = None
