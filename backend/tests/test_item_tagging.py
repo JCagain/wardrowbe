@@ -483,7 +483,7 @@ class TestWorkerTaggingOrigin:
         await db_session.commit()
 
         stub_tags = ClothingTags(
-            type="shirt", primary_color="blue", colors=["blue"], confidence=0.9
+            type="shirt", primary_colors=["blue"], confidence=0.9
         )
 
         class _StubAI:
@@ -523,7 +523,7 @@ class TestWorkerTaggingOrigin:
         await db_session.commit()
 
         stub_tags = ClothingTags(
-            type="shirt", primary_color="blue", colors=["blue"], confidence=0.9
+            type="shirt", primary_colors=["blue"], confidence=0.9
         )
 
         class _StubAI:
@@ -564,7 +564,7 @@ class TestWorkerTaggingOrigin:
         await db_session.commit()
 
         stub_tags = ClothingTags(
-            type="pants", primary_color="black", colors=["black"], confidence=0.7
+            type="pants", primary_colors=["black"], confidence=0.7
         )
 
         class _StubAI:

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.utils import garment_vocabulary as gv
-from app.utils.color_migration import LEGACY_COLOR_ALIASES
+from app.utils.color_migration import LEGACY_COLOR_ALIASES, migrate_legacy_colors
 from app.utils.garment_vocabulary import render_tagging_prompt
 from app.utils.prompts import load_prompt
 
@@ -36,8 +36,8 @@ class TextGenerationResult(BaseModel):
 class ClothingTags(BaseModel):
     type: str = "unknown"
     subtype: str | None = None
-    primary_color: str | None = None
-    colors: list[str] = []
+    primary_colors: list[str] = []
+    secondary_colors: list[str] = []
     pattern: str | None = None
     material: str | None = None
     style: list[str] = []
@@ -80,7 +80,7 @@ def compute_tag_completeness(tags: "ClothingTags") -> float:
     score = 0.0
     if tags.type and tags.type != "unknown":
         score += 0.25
-    if tags.primary_color:
+    if tags.primary_colors:
         score += 0.20
     if tags.pattern:
         score += 0.15
@@ -92,7 +92,7 @@ def compute_tag_completeness(tags: "ClothingTags") -> float:
         score += 0.05
     if tags.style:
         score += 0.05
-    if tags.colors:
+    if tags.secondary_colors:
         score += 0.05
     return round(score, 2)
 
@@ -143,7 +143,7 @@ def _response_rejects_reasoning_effort(response: httpx.Response) -> bool:
     return response.status_code == 400 and _message_rejects_reasoning_effort(response.text)
 
 
-_CONFIDENCE_FIELDS = {"type", "primary_color", "pattern", "material", "formality"}
+_CONFIDENCE_FIELDS = {"type", "primary_colors", "pattern", "material", "formality"}
 
 
 def compute_confidence_from_logprobs(logprobs_content: list[dict] | None) -> float | None:
@@ -185,7 +185,7 @@ def compute_confidence_from_logprobs(logprobs_content: list[dict] | None) -> flo
 
     weights = {
         "type": 0.30,
-        "primary_color": 0.25,
+        "primary_colors": 0.25,
         "pattern": 0.15,
         "material": 0.15,
         "formality": 0.15,
@@ -309,11 +309,11 @@ class AIService:
     def _parse_tags_from_response(self, response_text: str) -> ClothingTags:
         # Resolved per call: the vocabulary is runtime-mutable and a soft-vocab
         # write must reach validation without restarting this process.
-        valid_types = set(gv.TYPES)
-        valid_colors = set(gv.COLOR_VALUE_SET)
+        valid_types = set(gv.ACTIVE_TYPES)
+        valid_colors = set(gv.ACTIVE_COLOR_VALUE_SET)
         valid_materials = set(gv.MATERIALS)
         valid_formality = set(gv.FORMALITY)
-        valid_styles = set(gv.STYLE_VALUES)
+        valid_styles = set(gv.ACTIVE_STYLE_VALUES)
         valid_seasons = set(gv.SEASON_VALUES)
 
         def extract_json(text: str) -> dict | None:
@@ -370,10 +370,14 @@ class AIService:
             **LEGACY_COLOR_ALIASES,
         }
 
+        def _slug(raw: str) -> str:
+            # The prompt offers "slug=中文名"; the model may echo the whole string.
+            return raw.split("=", 1)[0].strip().lower()
+
         def validate_value(value: str | None, valid_set: set) -> str | None:
-            if value is None:
+            if not isinstance(value, str):
                 return None
-            value_lower = value.lower().strip()
+            value_lower = _slug(value)
             if value_lower in valid_set:
                 return value_lower
             alias = COLOR_ALIASES.get(value_lower)
@@ -388,7 +392,7 @@ class AIService:
             for v in values:
                 if not isinstance(v, str):
                     continue
-                value = v.lower().strip()
+                value = _slug(v)
                 if value not in valid_set and aliases:
                     value = aliases.get(value, value)
                 if value in valid_set:
@@ -417,10 +421,40 @@ class AIService:
                 logger.warning(f"AI returned unsupported item type: {tags.unrecognized_type!r}")
 
         tags.subtype = data.get("subtype") if data.get("subtype") else None
-        tags.primary_color = validate_value(data.get("primary_color"), valid_colors)
-        # The color list goes through the same alias table as the single value —
-        # ["burgundy", "sky blue"] must not silently lose everything but "navy".
-        tags.colors = validate_list(data.get("colors", []), valid_colors, aliases=COLOR_ALIASES)
+        def _dedupe(values: list[str]) -> list[str]:
+            return list(dict.fromkeys(values))
+
+        if "primary_colors" in data or "secondary_colors" in data:
+            primary = _dedupe(
+                validate_list(data.get("primary_colors") or [], valid_colors, aliases=COLOR_ALIASES)
+            )
+            secondary = [
+                c
+                for c in _dedupe(
+                    validate_list(
+                        data.get("secondary_colors") or [], valid_colors, aliases=COLOR_ALIASES
+                    )
+                )
+                if c not in primary
+            ]
+        else:
+            # Legacy contract: the model ignored the new format and answered with
+            # primary_color/colors. Natural-language aliases ("sky blue") are
+            # resolved here; migrate_legacy_colors handles the legacy slugs.
+            def _pre(raw):
+                if not isinstance(raw, str):
+                    return None
+                slug = _slug(raw)
+                return slug if slug in valid_colors else COLOR_ALIASES.get(slug, slug)
+
+            legacy_secondary = data.get("colors")
+            primary, secondary = migrate_legacy_colors(
+                _pre(data.get("primary_color")),
+                [_pre(c) for c in legacy_secondary] if isinstance(legacy_secondary, list) else [],
+                valid=valid_colors,
+            )
+        tags.primary_colors = primary
+        tags.secondary_colors = secondary
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)
         tags.material = validate_value(data.get("material"), valid_materials)
         tags.formality = validate_value(data.get("formality"), valid_formality)
@@ -430,7 +464,7 @@ class AIService:
         tags.confidence = compute_tag_completeness(tags)
 
         logger.info(
-            f"Parsed tags: type={tags.type}, color={tags.primary_color}, pattern={tags.pattern}"
+            f"Parsed tags: type={tags.type}, colors={tags.primary_colors}, pattern={tags.pattern}"
         )
         return tags
 

@@ -107,7 +107,7 @@ async def test_worker_analyzes_the_db_row_cutout_not_the_stale_arg(
         seen["path"] = Path(path)
         seen["pixel"] = Image.open(path).convert("RGB").getpixel((0, 0))
         seen["center"] = Image.open(path).convert("RGB").getpixel((20, 20))
-        return ClothingTags(type="shirt", primary_color="red", colors=["red"], confidence=0.9)
+        return ClothingTags(type="shirt", primary_colors=["red"], confidence=0.9)
 
     with (
         patch("app.workers.tagging.get_db_session", return_value=db_session),

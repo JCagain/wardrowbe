@@ -123,22 +123,22 @@ def test_ai_validation_sets_come_from_the_vocabulary():
     """
     from app.services.ai_service import AIService
 
-    color = sorted(gv.COLOR_VALUE_SET)[0]
-    style = gv.STYLE_VALUES[0]
+    color = sorted(gv.ACTIVE_COLOR_VALUE_SET)[0]
+    style = gv.ACTIVE_STYLE_VALUES[0]
     season = gv.SEASON_VALUES[0]
     tags = AIService()._parse_tags_from_response(
         json.dumps(
             {
                 "type": "shirt",
-                "primary_color": color,
-                "colors": [color],
+                "primary_colors": [color],
+                "secondary_colors": [],
                 "style": [style],
                 "season": [season],
             }
         )
     )
-    assert tags.primary_color == color
-    assert tags.colors == [color]
+    assert tags.primary_colors == [color]
+    assert tags.secondary_colors == []
     assert tags.style == [style]
     assert tags.season == [season]
 

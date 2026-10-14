@@ -132,7 +132,7 @@ class TestWorkerFailsLoudly:
             patch.object(AIService, "analyze_image", new_callable=AsyncMock) as analyze,
         ):
             analyze.return_value = type(
-                "T", (), {"type": "top", "primary_color": "blue", "raw_response": None}
+                "T", (), {"type": "top", "primary_colors": ["blue"], "raw_response": None}
             )()
             # Surfaced as Retry so arq reschedules: arq only reschedules on
             # Retry, a plain raise would fail the job outright.
@@ -207,7 +207,7 @@ class TestAiStartedAtLifecycle:
             patch.object(AIService, "analyze_image", new_callable=AsyncMock) as analyze,
         ):
             analyze.return_value = ClothingTags(
-                type="shirt", primary_color="blue", colors=["blue"], confidence=0.9
+                type="shirt", primary_colors=["blue"], confidence=0.9
             )
             await tag_item_image({"job_try": 1}, str(item.id), __file__)
 
@@ -594,7 +594,7 @@ class TestAnalysisDuration:
             patch.object(AIService, "analyze_image", new_callable=AsyncMock) as analyze,
         ):
             analyze.return_value = ClothingTags(
-                type="shirt", primary_color="blue", colors=["blue"], confidence=0.9
+                type="shirt", primary_colors=["blue"], confidence=0.9
             )
             await tag_item_image({"job_try": 1}, str(item.id), __file__)
 

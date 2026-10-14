@@ -31,12 +31,13 @@ class TestTagParsing:
         """
         tags = service._parse_tags_from_response(response)
         assert tags.type == "shirt"
-        assert tags.primary_color == "blue"
-        assert tags.colors == ["blue", "white"]
+        assert tags.primary_colors == ["blue"]
+        # a primary color is never repeated in the secondary list
+        assert tags.secondary_colors == ["white"]
         assert tags.pattern == "striped"
         assert tags.material == "cotton"
         # Confidence is now computed by compute_tag_completeness (not AI self-reported)
-        # type(0.25) + primary_color(0.20) + pattern(0.15) + formality(0.15) + material(0.10) + colors(0.05) = 0.90
+        # type(0.25) + primary_colors(0.20) + pattern(0.15) + formality(0.15) + material(0.10) + secondary_colors(0.05) = 0.90
         assert tags.confidence == 0.9
 
     def test_parse_json_in_markdown(self):
@@ -56,7 +57,7 @@ class TestTagParsing:
         """
         tags = service._parse_tags_from_response(response)
         assert tags.type == "pants"
-        assert tags.primary_color == "black"
+        assert tags.primary_colors == ["black"]
         assert tags.material == "denim"
 
     def test_parse_invalid_type(self):
@@ -100,10 +101,10 @@ class TestTagParsing:
         """
         tags = service._parse_tags_from_response(response)
         # Invalid colors should be removed
-        assert tags.primary_color is None
-        assert "blue" in tags.colors
-        assert "black" in tags.colors
-        assert "invalid_color" not in tags.colors
+        assert tags.primary_colors == []
+        assert "blue" in tags.secondary_colors
+        assert "black" in tags.secondary_colors
+        assert "invalid_color" not in tags.secondary_colors
 
     def test_parse_grey_to_gray(self):
         """Test that 'grey' is normalized to 'gray'."""
@@ -115,7 +116,7 @@ class TestTagParsing:
         }
         """
         tags = service._parse_tags_from_response(response)
-        assert tags.primary_color == "gray"
+        assert tags.primary_colors == ["gray"]
 
     def test_parse_invalid_json(self):
         """Test parsing completely invalid response."""
@@ -183,7 +184,8 @@ class TestClothingTags:
         """Test default values for ClothingTags."""
         tags = ClothingTags()
         assert tags.type == "unknown"
-        assert tags.colors == []
+        assert tags.primary_colors == []
+        assert tags.secondary_colors == []
         assert tags.style == []
         assert tags.confidence == 0.0
 
@@ -192,8 +194,8 @@ class TestClothingTags:
         tags = ClothingTags(
             type="jacket",
             subtype="blazer",
-            primary_color="navy",
-            colors=["navy", "white"],
+            primary_colors=["navy"],
+            secondary_colors=["white"],
             pattern="solid",
             material="wool",
             style=["formal", "classic"],
@@ -204,8 +206,8 @@ class TestClothingTags:
         )
         assert tags.type == "jacket"
         assert tags.subtype == "blazer"
-        assert tags.primary_color == "navy"
-        assert len(tags.colors) == 2
+        assert tags.primary_colors == ["navy"]
+        assert tags.secondary_colors == ["white"]
         assert tags.confidence == 0.92
 
 
@@ -702,12 +704,69 @@ class TestColorAliases:
         }
         """
         tags = service._parse_tags_from_response(response)
-        assert tags.primary_color == "wine"
-        assert tags.colors == ["wine", "sky", "navy"]
+        assert tags.primary_colors == ["wine"]
+        assert tags.secondary_colors == ["sky", "navy"]
 
     def test_primary_color_alias_is_mapped_not_dropped(self):
         service = AIService()
         response = '{"type": "shirt", "primary_color": "army-green", "colors": ["dark-brown"]}'
         tags = service._parse_tags_from_response(response)
-        assert tags.primary_color == "army"
-        assert tags.colors == ["coffee"]
+        assert tags.primary_colors == ["army"]
+        assert tags.secondary_colors == ["coffee"]
+
+
+@pytest.fixture
+def service():
+    return AIService()
+
+
+class TestClosedSetColorContract:
+    def test_parses_primary_and_secondary_color_arrays(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["black","white"],"secondary_colors":["wine"]}'
+        )
+        assert tags.primary_colors == ["black", "white"]
+        assert tags.secondary_colors == ["wine"]
+
+    def test_slug_equals_label_echo_is_accepted(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["black=黑"],"style":[" casual=休闲 "],"season":["all-season=四季"]}'
+        )
+        assert tags.primary_colors == ["black"]
+        assert tags.season == ["all-season"]
+
+    def test_a_primary_color_is_not_repeated_as_secondary(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["black","black"],"secondary_colors":["black","white"]}'
+        )
+        assert tags.primary_colors == ["black"]
+        assert tags.secondary_colors == ["white"]
+
+    def test_unknown_colors_are_dropped_not_written(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["chartreuse"],"secondary_colors":["neon"]}'
+        )
+        assert tags.primary_colors == []
+        assert tags.secondary_colors == []
+
+    def test_legacy_single_color_keys_still_parse(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_color":"burgundy","colors":["burgundy","sky blue"]}'
+        )
+        assert tags.primary_colors == ["wine"]
+        assert tags.secondary_colors == ["sky"]
+
+    def test_disabled_values_are_rejected_from_ai_output(self, service):
+        import app.utils.garment_vocabulary as gv
+
+        # monkeypatch would restore the module-__getattr__-derived value as a real
+        # attribute on undo and shadow __getattr__ for every later test, so set and
+        # delete by hand.
+        gv.ACTIVE_COLOR_VALUE_SET = set(gv.ACTIVE_COLOR_VALUE_SET) - {"black"}
+        try:
+            tags = service._parse_tags_from_response(
+                '{"type":"shirt","primary_colors":["black","white"]}'
+            )
+        finally:
+            del gv.ACTIVE_COLOR_VALUE_SET
+        assert tags.primary_colors == ["white"]

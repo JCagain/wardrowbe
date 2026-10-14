@@ -19,7 +19,6 @@ from app.models.preference import UserPreference
 from app.services.ai_service import AIService, ClothingTags
 from app.services.image_files import ImageFiles
 from app.utils import garment_vocabulary as gv
-from app.utils.color_migration import migrate_legacy_colors
 from app.utils.item_lifecycle import terminal_status
 from app.workers.db import get_db_session
 
@@ -105,7 +104,8 @@ def tags_to_item_fields(tags: ClothingTags, raw_response: str | None = None) -> 
     """Convert ClothingTags to item database fields."""
     # Build the tags JSONB object for frontend display
     tags_jsonb = {
-        "colors": tags.colors or [],
+        "primary_colors": tags.primary_colors or [],
+        "secondary_colors": tags.secondary_colors or [],
         "pattern": tags.pattern,
         "material": tags.material,
         "style": tags.style or [],
@@ -120,10 +120,8 @@ def tags_to_item_fields(tags: ClothingTags, raw_response: str | None = None) -> 
     if tags.logprobs_confidence is not None:
         tags_jsonb["logprobs_confidence"] = tags.logprobs_confidence
 
-    # Column writes use the new arrays: the AI JSON contract still emits
-    # primary_color/colors (kept in tags_jsonb above), so split and normalize
-    # through the same helper the DB data migration used.
-    primary_list, secondary_list = migrate_legacy_colors(tags.primary_color, tags.colors)
+    # Columns take the parsed arrays directly (already vocabulary-validated).
+    primary_list, secondary_list = tags.primary_colors, tags.secondary_colors
 
     fields = {
         "type": tags.type,
@@ -306,7 +304,7 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
             )
 
         logger.info(
-            f"AI analysis complete for item {item_id}: type={tags.type}, color={tags.primary_color}"
+            f"AI analysis complete for item {item_id}: type={tags.type}, colors={tags.primary_colors}"
         )
 
         # Update item in database

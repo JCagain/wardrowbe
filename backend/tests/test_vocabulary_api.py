@@ -171,10 +171,9 @@ class TestVocabularyApi:
 
         from app.services.ai_service import AIService
         tags = AIService()._parse_tags_from_response(
-            '{"type": "shirt", "primary_color": "haze", "colors": ["haze"]}'
+            '{"type": "shirt", "primary_colors": ["haze"]}'
         )
-        assert tags.primary_color == "haze"
-        assert tags.colors == ["haze"]
+        assert tags.primary_colors == ["haze"]
 
     @pytest.mark.asyncio
     async def test_add_type_reaches_prompt_and_body_part_map(self, client, auth_headers, vocab_snapshot):
