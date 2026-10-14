@@ -2200,6 +2200,15 @@ async def set_primary_image(
     item_image.thumbnail_path = old_primary["thumbnail_path"]
     item_image.medium_path = old_primary["medium_path"]
 
+    # Ruling 9: the sidecar columns described the OLD primary; a later calibration
+    # would overwrite the new primary from the old `_src`. Null the columns only —
+    # never delete files (`_src` is irreplaceable); the old sidecars become orphans.
+    item.calibration_original_path = None
+    item.original_image_path = None
+    item.mask_path = None
+
     await db.flush()
-    await db.refresh(item)
+    # A bare refresh() expires additional_images, which then lazy-loads during
+    # serialization (MissingGreenlet -> 422); name it so it is re-fetched here.
+    await db.refresh(item, attribute_names=["updated_at", "additional_images"])
     return ItemResponse.model_validate(item)

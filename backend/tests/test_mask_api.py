@@ -302,3 +302,31 @@ async def test_editing_the_mask_requires_the_cutout_backup(
     )
     assert resp.status_code == 400
     assert "background removal" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_set_primary_nulls_the_sidecar_columns_but_keeps_the_files(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """Ruling 9：换主图后旁挂列仍描述旧主图 -> 置 None；文件一个不删（_src 不可再生）。"""
+    from app.models.item import ItemImage
+
+    item = await _make_item_with_mask(db_session, test_user)
+    svc = ImageService()
+    sidecars = [item.calibration_original_path, item.original_image_path, item.mask_path]
+    assert all(sidecars)
+    gallery = ItemImage(item_id=item.id, image_path=f"gallery/{uuid.uuid4()}.jpg", position=1)
+    db_session.add(gallery)
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/images/{gallery.id}/set-primary", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    await db_session.refresh(item)
+    assert item.calibration_original_path is None
+    assert item.original_image_path is None
+    assert item.mask_path is None
+    for rel in sidecars:
+        assert (svc.storage_path / rel).exists(), rel
