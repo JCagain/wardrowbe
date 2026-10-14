@@ -149,9 +149,7 @@
       "yourWardrobe": "您的衣橱"
     },
     "validation": {
-      "needItem": "请选择至少一件单品",
-      "needItemAndOccasion": "请选择至少一件单品和一个场合",
-      "needOccasion": "请选择一个场合"
+      "needItem": "请选择至少一件单品"
     },
     "wearToday": "今天穿",
     "worn": {

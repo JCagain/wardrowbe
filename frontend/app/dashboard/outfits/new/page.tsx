@@ -184,10 +184,6 @@ export default function StudioEditorPage() {
       toast.error(t('new.validation.needItem'));
       return;
     }
-    if (!state.occasion) {
-      toast.error(t('new.validation.needOccasion'));
-      return;
-    }
 
     if (isEditMode && editId) {
       try {
@@ -239,7 +235,7 @@ export default function StudioEditorPage() {
 
   const mutationPending = isEditMode ? patchMutation.isPending : createMutation.isPending;
   const canSave =
-    state.items.length > 0 && state.occasion !== null && !mutationPending;
+    state.items.length > 0 && !mutationPending;
 
   const editPhase = isEditMode
     ? computeEditLoadPhase({
@@ -371,13 +367,7 @@ export default function StudioEditorPage() {
           </div>
           {!canSave && !mutationPending && (
             <p className="text-xs text-muted-foreground mt-1 text-right">
-              {state.items.length === 0 && state.occasion === null
-                ? t('new.validation.needItemAndOccasion')
-                : state.items.length === 0
-                  ? t('new.validation.needItem')
-                  : state.occasion === null
-                    ? t('new.validation.needOccasion')
-                    : ''}
+              {t('new.validation.needItem')}
             </p>
           )}
         </div>

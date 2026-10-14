@@ -149,9 +149,7 @@
       "yourWardrobe": "Your Wardrobe"
     },
     "validation": {
-      "needItem": "Pick at least one item",
-      "needItemAndOccasion": "Pick at least one item and an occasion",
-      "needOccasion": "Pick an occasion"
+      "needItem": "Pick at least one item"
     },
     "wearToday": "Wear Today",
     "worn": {

@@ -13,7 +13,7 @@ function useSetTokenIfAvailable() {
 
 export interface StudioCreatePayload {
   items: string[];
-  occasion: string;
+  occasion?: string | null;
   name?: string;
   scheduled_for?: string | null;
   mark_worn?: boolean;

@@ -1242,7 +1242,7 @@ class StudioCreateRequest(OutfitAttributeFields):
     model_config = ConfigDict(extra="forbid")
 
     items: list[UUID] = Field(min_length=1, max_length=20)
-    occasion: str = Field(max_length=50)
+    occasion: Annotated[str | None, Field(max_length=50)] = None
     name: Annotated[str | None, Field(max_length=100)] = None
     scheduled_for: date | None = None
     mark_worn: bool = False
@@ -1250,8 +1250,12 @@ class StudioCreateRequest(OutfitAttributeFields):
 
     @field_validator("occasion")
     @classmethod
-    def validate_occasion(cls, v: str) -> str:
+    def validate_occasion(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         v = v.strip().lower()
+        if not v:
+            return None
         if v not in VALID_OCCASIONS:
             raise ValueError(
                 f"Invalid occasion '{v}'. Must be one of: {', '.join(sorted(VALID_OCCASIONS))}"
@@ -1330,8 +1334,11 @@ async def create_studio_outfit(
         ) from None
 
     await db.commit()
-    await _run_learning_safely(db, outfit.id, current_user.id)
-    await clear_suggestions(current_user.id, outfit.occasion)
+    # OutfitPerformance.occasion is NOT NULL: occasion-less outfits skip learning
+    # (otherwise the swallowed IntegrityError leaves the session in a failed txn).
+    if outfit.occasion:
+        await _run_learning_safely(db, outfit.id, current_user.id)
+        await clear_suggestions(current_user.id, outfit.occasion)
 
     full = await service.get_full_outfit(outfit.id)
     return outfit_to_response(full)

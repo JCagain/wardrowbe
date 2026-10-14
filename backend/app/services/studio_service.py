@@ -141,7 +141,7 @@ class StudioService:
         self,
         user: User,
         item_ids: list[UUID],
-        occasion: str,
+        occasion: str | None,
         name: str | None,
         scheduled_for: date | None,
         mark_worn: bool,
