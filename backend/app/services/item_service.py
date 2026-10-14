@@ -377,6 +377,8 @@ class ItemService:
             # blob that still carries the original AI color keys. A blob
             # carrying only null color keys must not fire the splitter (two
             # Nones would clear the columns).
+            # The detail dialog always sends both explicit column keys; that is
+            # what keeps stale AI blob colors from overwriting user edits.
             if "primary_colors" not in update_data and "secondary_colors" not in update_data:
                 blob_primary = tag_data.get("primary_colors")
                 blob_secondary = tag_data.get("secondary_colors")
@@ -384,13 +386,20 @@ class ItemService:
                     from app.utils.garment_vocabulary import ACTIVE_COLOR_VALUE_SET
 
                     valid = ACTIVE_COLOR_VALUE_SET
+                    # Per column: assign only when that key yields something
+                    # after vocabulary filtering — a one-sided or all-invalid
+                    # blob must not wipe the other column.
                     primary = [c for c in dict.fromkeys(blob_primary or []) if c in valid]
-                    item.primary_colors = primary
-                    item.secondary_colors = [
+                    if primary:
+                        item.primary_colors = primary
+                    effective_primary = item.primary_colors or []
+                    secondary = [
                         c
                         for c in dict.fromkeys(blob_secondary or [])
-                        if c in valid and c not in primary
+                        if c in valid and c not in effective_primary
                     ]
+                    if secondary:
+                        item.secondary_colors = secondary
                 elif tag_data.get("primary_color") is not None or tag_data.get("colors") is not None:
                     primary_list, secondary_list = migrate_legacy_colors(
                         tag_data.get("primary_color"), tag_data.get("colors")

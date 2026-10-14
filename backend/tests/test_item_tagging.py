@@ -500,6 +500,67 @@ class TestTagsBlobNewColorKeys:
         assert resp.status_code == 200, resp.json()
         assert resp.json()["primary_colors"] == ["black"]
 
+    async def _patch_blob(self, client, auth_headers, item, blob):
+        resp = await client.patch(
+            f"/api/v1/items/{item.id}", json={"tags": blob}, headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.json()
+        return resp.json()
+
+    @pytest.mark.asyncio
+    async def test_one_sided_secondary_blob_leaves_primary(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, primary_colors=["black"])
+        body = await self._patch_blob(client, auth_headers, item, {"secondary_colors": ["white"]})
+        assert body["primary_colors"] == ["black"]
+        assert body["secondary_colors"] == ["white"]
+
+    @pytest.mark.asyncio
+    async def test_empty_secondary_blob_leaves_secondary(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, secondary_colors=["white"])
+        body = await self._patch_blob(
+            client, auth_headers, item, {"primary_colors": ["navy"], "secondary_colors": []}
+        )
+        assert body["primary_colors"] == ["navy"]
+        assert body["secondary_colors"] == ["white"]
+
+    @pytest.mark.asyncio
+    async def test_all_invalid_primary_blob_leaves_primary(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, primary_colors=["black"])
+        body = await self._patch_blob(client, auth_headers, item, {"primary_colors": ["chartreuse"]})
+        assert body["primary_colors"] == ["black"]
+
+    @pytest.mark.asyncio
+    async def test_secondary_filtered_against_current_primary(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, primary_colors=["black"])
+        body = await self._patch_blob(
+            client, auth_headers, item, {"secondary_colors": ["black", "white"]}
+        )
+        assert body["primary_colors"] == ["black"]
+        assert body["secondary_colors"] == ["white"]
+
+    @pytest.mark.asyncio
+    async def test_new_keys_win_over_legacy_keys_in_same_blob(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user)
+        body = await self._patch_blob(
+            client,
+            auth_headers,
+            item,
+            {"primary_colors": ["black"], "secondary_colors": ["white"],
+             "primary_color": "red", "colors": ["red", "blue"]},
+        )
+        assert body["primary_colors"] == ["black"]
+        assert body["secondary_colors"] == ["white"]
+
     @pytest.mark.asyncio
     async def test_disabled_vocab_color_is_dropped_from_blob_projection(
         self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession, vocab_file
