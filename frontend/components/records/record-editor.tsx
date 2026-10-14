@@ -60,6 +60,13 @@ interface Props {
   onDeleted?: () => void;
 }
 
+let photoCounter = 0;
+function newPhotoId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  photoCounter += 1;
+  return `local-${photoCounter}`;
+}
+
 function numOrNull(v: string): number | null {
   if (v.trim() === '') return null;
   const n = Number(v);
@@ -92,7 +99,8 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const cityInitialized = useRef(isEdit);
-  const skipNextWeatherFetch = useRef(isEdit);
+  const lastWeatherKey = useRef(isEdit ? `${record!.city ?? ''}|${record!.date}` : '');
+  const photoUrls = useRef(new Map<string, string>());
 
   // 新建：默认城市一到就选上（spec §3.1 默认城市）
   useEffect(() => {
@@ -101,29 +109,35 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
     setCity(prefs.default_city ?? null);
   }, [prefs]);
 
-  // 城市或日期变 → 预填天气；编辑页首次挂载不覆盖已存天气
+  // 城市或日期变 → 预填天气；以「上次取过的 城市|日期」去重，
+  // 编辑页挂载（含 StrictMode 重跑）因 key 相同而不覆盖已存天气
   useEffect(() => {
-    if (skipNextWeatherFetch.current) {
-      skipNextWeatherFetch.current = false;
+    const key = `${city ?? ''}|${date}`;
+    if (key === lastWeatherKey.current) return;
+    lastWeatherKey.current = key;
+    if (!city) {
+      setWeatherLoading(false);
       return;
     }
-    if (!city) return;
-    let cancelled = false;
     setWeatherLoading(true);
     fetchRecordWeather(city, date)
       .then((w) => {
-        if (!cancelled && w) setWeather(w);
+        if (lastWeatherKey.current === key && w) setWeather(w);
       })
       .catch(() => {})
       .finally(() => {
-        if (!cancelled) setWeatherLoading(false);
+        if (lastWeatherKey.current === key) setWeatherLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [city, date]);
 
-  useEffect(() => () => localPhotos.forEach((p) => URL.revokeObjectURL(p.src)), [localPhotos]);
+  // 本地照片的 blob URL：移除时单张回收，卸载时回收剩余
+  useEffect(() => {
+    const urls = photoUrls.current;
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls.clear();
+    };
+  }, []);
 
   const cityOptions = useMemo(() => {
     const names = (prefs?.cities ?? []).map((c) => c.name);
@@ -146,10 +160,13 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
 
   const handleAddPhotos = async (files: File[]) => {
     if (!isEdit) {
-      setLocalPhotos((prev) => [
-        ...prev,
-        ...files.map((file) => ({ key: `${file.name}-${crypto.randomUUID()}`, file, src: URL.createObjectURL(file) })),
-      ]);
+      const added = files.map((file) => {
+        const key = `${file.name}-${newPhotoId()}`;
+        const src = URL.createObjectURL(file);
+        photoUrls.current.set(key, src);
+        return { key, file, src };
+      });
+      setLocalPhotos((prev) => [...prev, ...added]);
       return;
     }
     for (const file of files) {
@@ -163,6 +180,11 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
 
   const handleRemovePhoto = async (key: string) => {
     if (!isEdit) {
+      const url = photoUrls.current.get(key);
+      if (url) {
+        URL.revokeObjectURL(url);
+        photoUrls.current.delete(key);
+      }
       setLocalPhotos((prev) => prev.filter((p) => p.key !== key));
       return;
     }
@@ -389,7 +411,7 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
 
       <div className="flex justify-between">
         {isEdit ? (
-          <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
+          <Button type="button" variant="destructive" data-testid="record-delete" onClick={() => setConfirmDelete(true)}>
             {t('delete')}
           </Button>
         ) : (
@@ -421,7 +443,7 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>{t('delete')}</AlertDialogAction>
+            <AlertDialogAction data-testid="record-delete-confirm" onClick={handleDelete}>{t('delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
