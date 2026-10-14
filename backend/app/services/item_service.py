@@ -400,6 +400,11 @@ class ItemService:
                     ]
                     if secondary:
                         item.secondary_colors = secondary
+                    elif primary:
+                        # Invariant: primary is never repeated in secondary.
+                        item.secondary_colors = [
+                            c for c in (item.secondary_colors or []) if c not in primary
+                        ]
                 elif tag_data.get("primary_color") is not None or tag_data.get("colors") is not None:
                     primary_list, secondary_list = migrate_legacy_colors(
                         tag_data.get("primary_color"), tag_data.get("colors")

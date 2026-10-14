@@ -547,6 +547,15 @@ class TestTagsBlobNewColorKeys:
         assert body["secondary_colors"] == ["white"]
 
     @pytest.mark.asyncio
+    async def test_new_primary_prunes_existing_secondary_overlap(
+        self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
+    ):
+        item = await self._item(db_session, test_user, secondary_colors=["white", "navy"])
+        body = await self._patch_blob(client, auth_headers, item, {"primary_colors": ["white"]})
+        assert body["primary_colors"] == ["white"]
+        assert body["secondary_colors"] == ["navy"]
+
+    @pytest.mark.asyncio
     async def test_new_keys_win_over_legacy_keys_in_same_blob(
         self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
     ):
