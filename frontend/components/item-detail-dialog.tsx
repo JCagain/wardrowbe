@@ -285,10 +285,18 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     }
   };
 
+  // 图像被改写（旋转/还原/替换/换主图）后，旧检出框不再对应像素：清框，
+  // 并把依附它的 'pending' 退回 'none'（done/skipped 是已发生的事实，保留）。
+  const clearStaleDetection = () => {
+    setDetection(null);
+    setCalibration((c) => (c === 'pending' ? 'none' : c));
+  };
+
   const handleRotate = async (direction: 'cw' | 'ccw') => {
     try {
       await rotateImage.mutateAsync({ id: item.id, direction });
       setImageKey((k) => k + 1);
+      clearStaleDetection();
       toast.success(t('actions.imageRotated'));
     } catch (error) {
       console.error('Failed to rotate image:', error);
@@ -313,6 +321,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     try {
       await restoreOriginal.mutateAsync(item.id);
       setImageKey((k) => k + 1);
+      clearStaleDetection();
       toast.success(t('actions.originalRestored'));
     } catch (error) {
       console.error('Failed to restore original image:', error);
@@ -324,6 +333,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     try {
       await replaceImage.mutateAsync({ itemId: item.id, file });
       setImageKey((k) => k + 1);
+      clearStaleDetection();
       setActiveImageIndex(0);
       toast.success(t('actions.imageReplaced'));
     } catch (error) {
@@ -691,7 +701,15 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                             className="bg-primary text-primary-foreground rounded-full p-0.5 hover:bg-primary/90"
                             title={t('titles.setAsPrimary')}
                             onClick={() => {
-                              setPrimary.mutate({ itemId: item.id, imageId: img.id });
+                              setPrimary.mutate(
+                                { itemId: item.id, imageId: img.id },
+                                {
+                                  onSuccess: () => {
+                                    setImageKey((k) => k + 1);
+                                    clearStaleDetection();
+                                  },
+                                },
+                              );
                               setActiveImageIndex(0);
                             }}
                           >

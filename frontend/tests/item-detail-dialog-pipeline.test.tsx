@@ -138,4 +138,19 @@ describe('ItemDetailDialog pipeline feedback', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(1));
     expect(toastMock.success).not.toHaveBeenCalled();
   });
+
+  it('drops a stale detection box after a successful rotate', async () => {
+    setMut(
+      'useDetectCalibration',
+      vi.fn().mockResolvedValue({ kind: 'gray', box: [10, 10, 60, 60] }),
+    );
+    setMut('useRotateImage', vi.fn().mockResolvedValue({}));
+    renderDialog();
+    fireEvent.click(screen.getByTestId('pipeline-calibrate'));
+    await screen.findByTestId('box-apply');
+
+    fireEvent.click(screen.getByTitle('titles.rotateRight'));
+
+    await waitFor(() => expect(screen.queryByTestId('box-apply')).toBeNull());
+  });
 });
