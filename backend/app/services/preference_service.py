@@ -5,12 +5,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.preference import UserPreference
-from app.schemas.preference import PreferenceUpdate
+from app.schemas.preference import DEFAULT_CITIES, PreferenceUpdate
 
 
 class PreferenceService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def effective_cities(preferences: UserPreference) -> list[dict]:
+        if preferences.cities is None:
+            return [c.model_dump() for c in DEFAULT_CITIES]
+        return list(preferences.cities)
+
+    async def add_city(
+        self, user_id: uuid.UUID, name: str, latitude: float, longitude: float
+    ) -> UserPreference:
+        preferences = await self.get_or_create_preferences(user_id)
+        cities = self.effective_cities(preferences)
+        cities.append({"name": name, "latitude": latitude, "longitude": longitude})
+        preferences.cities = cities
+        flag_modified(preferences, "cities")
+        await self.db.commit()
+        await self.db.refresh(preferences)
+        return preferences
+
+    async def remove_city(self, user_id: uuid.UUID, name: str) -> UserPreference:
+        preferences = await self.get_or_create_preferences(user_id)
+        cities = self.effective_cities(preferences)
+        remaining = [c for c in cities if c["name"] != name]
+        if len(remaining) == len(cities):
+            raise LookupError(name)
+        preferences.cities = remaining
+        flag_modified(preferences, "cities")
+        if preferences.default_city == name:
+            preferences.default_city = None
+        await self.db.commit()
+        await self.db.refresh(preferences)
+        return preferences
 
     async def get_preferences(self, user_id: uuid.UUID) -> UserPreference | None:
         result = await self.db.execute(
@@ -58,6 +90,11 @@ class PreferenceService:
 
         update_data = data.model_dump(exclude_unset=True)
         update_data = self._strip_color_overlaps(update_data, preferences)
+
+        if update_data.get("default_city") is not None:
+            names = {c["name"] for c in self.effective_cities(preferences)}
+            if update_data["default_city"] not in names:
+                raise ValueError(f"Unknown city: {update_data['default_city']}")
 
         for field, value in update_data.items():
             if field == "style_profile" and value is not None:

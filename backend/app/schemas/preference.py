@@ -9,6 +9,25 @@ class AIEndpoint(BaseModel):
     enabled: bool = Field(default=True, description="Whether this endpoint is active")
 
 
+class City(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+# spec §3.1 / §10.6：预设城市（坐标为市中心，天气按日粒度取，精度足够）。
+DEFAULT_CITIES: list[City] = [
+    City(name="杭州", latitude=30.2741, longitude=120.1551),
+    City(name="香港", latitude=22.3193, longitude=114.1694),
+    City(name="合肥", latitude=31.8206, longitude=117.2272),
+    City(name="深圳", latitude=22.5431, longitude=114.0579),
+]
+
+
+class CityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+
+
 class StyleProfile(BaseModel):
     casual: int = Field(default=50, ge=0, le=100, description="Casual style preference 0-100")
     formal: int = Field(default=50, ge=0, le=100, description="Formal style preference 0-100")
@@ -72,6 +91,10 @@ class PreferenceBase(BaseModel):
         description="AI endpoints in priority order (first available is used)",
     )
 
+    # 记录城市（spec §3.1）
+    cities: list[City] = Field(default_factory=lambda: list(DEFAULT_CITIES))
+    default_city: str | None = None
+
 
 class PreferenceCreate(PreferenceBase):
     pass
@@ -91,6 +114,7 @@ class PreferenceUpdate(BaseModel):
     prefer_underused_items: bool | None = None
     variety_level: str | None = Field(default=None, pattern="^(low|moderate|high)$")
     ai_endpoints: list[AIEndpoint] | None = None
+    default_city: str | None = Field(default=None, max_length=50)
 
 
 class PreferenceResponse(PreferenceBase):

@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.preference import PreferenceResponse, PreferenceUpdate
+from app.schemas.preference import CityCreate, PreferenceResponse, PreferenceUpdate
 from app.services.preference_service import PreferenceService
+from app.services.weather_service import GeocodingServiceError, WeatherService
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/users/me/preferences", tags=["Preferences"])
@@ -55,6 +56,8 @@ def _build_preference_response(preferences) -> PreferenceResponse:
         if preferences.variety_level is not None
         else "moderate",
         ai_endpoints=preferences.ai_endpoints if preferences.ai_endpoints is not None else [],
+        cities=PreferenceService.effective_cities(preferences),
+        default_city=preferences.default_city,
     )
 
 
@@ -75,7 +78,12 @@ async def update_preferences(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> PreferenceResponse:
     service = PreferenceService(db)
-    preferences = await service.update_preferences(current_user.id, data)
+    try:
+        preferences = await service.update_preferences(current_user.id, data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        ) from None
     return _build_preference_response(preferences)
 
 
@@ -86,6 +94,46 @@ async def reset_preferences(
 ) -> PreferenceResponse:
     service = PreferenceService(db)
     preferences = await service.reset_preferences(current_user.id)
+    return _build_preference_response(preferences)
+
+
+@router.post("/cities", response_model=PreferenceResponse)
+async def add_city(
+    data: CityCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> PreferenceResponse:
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="城市名不能为空")
+    service = PreferenceService(db)
+    preferences = await service.get_or_create_preferences(current_user.id)
+    if name in {c["name"] for c in PreferenceService.effective_cities(preferences)}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="城市已存在")
+    try:
+        found = await WeatherService().geocode_location_name(name)
+    except GeocodingServiceError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="城市查询服务暂不可用"
+        ) from None
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="找不到该城市")
+    latitude, longitude, _ = found
+    preferences = await service.add_city(current_user.id, name, latitude, longitude)
+    return _build_preference_response(preferences)
+
+
+@router.delete("/cities/{name}", response_model=PreferenceResponse)
+async def remove_city(
+    name: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> PreferenceResponse:
+    service = PreferenceService(db)
+    try:
+        preferences = await service.remove_city(current_user.id, name)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="城市不存在") from None
     return _build_preference_response(preferences)
 
 
