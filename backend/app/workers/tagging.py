@@ -358,6 +358,12 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
                     # default/unknown)" rule the old primary_color column had.
                     if not item.primary_colors or item.primary_colors == ["unknown"]:
                         setattr(item, field, value)
+                        # Same invariant as Ruling 57: a color now in primary must
+                        # not linger in an existing secondary.
+                        if item.secondary_colors and value:
+                            item.secondary_colors = [
+                                c for c in item.secondary_colors if c not in value
+                            ]
                 else:
                     # For other fields (secondary_colors, body_part, pattern,
                     # material, style, etc.), only set if not already set

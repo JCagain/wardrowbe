@@ -316,6 +316,21 @@ class AIService:
         valid_styles = set(gv.ACTIVE_STYLE_VALUES)
         valid_seasons = set(gv.SEASON_VALUES)
 
+        # Chinese label -> slug, from the ACTIVE vocabulary only: a model that
+        # answers with the label alone ("黑") must not be silently dropped, but a
+        # disabled entry's label must stay unmapped. Built per call (runtime-mutable).
+        def _label_map(labels: dict[str, str], active: set) -> dict[str, str]:
+            return {
+                label.strip().lower(): value for value, label in labels.items() if value in active
+            }
+
+        color_labels = _label_map(
+            {c["value"]: c["label"] for c in gv.COLOR_VALUES}, valid_colors
+        )
+        style_labels = _label_map(gv.STYLE_LABELS, valid_styles)
+        season_labels = _label_map(gv.SEASON_LABELS, valid_seasons)
+        type_labels = _label_map(gv.TYPE_LABELS, valid_types)
+
         def extract_json(text: str) -> dict | None:
             try:
                 return json.loads(text.strip())
@@ -374,18 +389,27 @@ class AIService:
             # The prompt offers "slug=中文名"; the model may echo the whole string.
             return raw.split("=", 1)[0].strip().lower()
 
-        def validate_value(value: str | None, valid_set: set) -> str | None:
+        def validate_value(
+            value: str | None, valid_set: set, labels: dict[str, str] | None = None
+        ) -> str | None:
             if not isinstance(value, str):
                 return None
             value_lower = _slug(value)
             if value_lower in valid_set:
                 return value_lower
+            if labels and value_lower in labels:
+                return labels[value_lower]
             alias = COLOR_ALIASES.get(value_lower)
             if alias and alias in valid_set:
                 return alias
             return None
 
-        def validate_list(values: list, valid_set: set, aliases: dict[str, str] | None = None) -> list:
+        def validate_list(
+            values: list,
+            valid_set: set,
+            aliases: dict[str, str] | None = None,
+            labels: dict[str, str] | None = None,
+        ) -> list:
             if not values:
                 return []
             out = []
@@ -393,6 +417,8 @@ class AIService:
                 if not isinstance(v, str):
                     continue
                 value = _slug(v)
+                if value not in valid_set and labels and value in labels:
+                    value = labels[value]
                 if value not in valid_set and aliases:
                     value = aliases.get(value, value)
                 if value in valid_set:
@@ -411,7 +437,7 @@ class AIService:
         tags.raw_response = response_text
 
         raw_type = data.get("type")
-        item_type = validate_value(raw_type, valid_types)
+        item_type = validate_value(raw_type, valid_types, type_labels)
         if item_type:
             tags.type = item_type
         else:
@@ -430,7 +456,9 @@ class AIService:
             return x if isinstance(x, list) else []
 
         def _colors(raw) -> list[str]:
-            return _dedupe(validate_list(_as_list(raw), valid_colors, aliases=COLOR_ALIASES))
+            return _dedupe(validate_list(
+                    _as_list(raw), valid_colors, aliases=COLOR_ALIASES, labels=color_labels
+                ))
 
         # Per field: the new key wins when it yields something; otherwise fall back
         # to the legacy primary_color/colors the model may still emit.
@@ -442,13 +470,18 @@ class AIService:
         else:
             secondary = _colors(data.get("colors"))
         secondary = [c for c in secondary if c not in primary]
+        if not primary and secondary:
+            # Ruling 6: log only. Never promote secondary to primary.
+            logger.warning(
+                "AI returned secondary_colors %s without any primary color", secondary
+            )
         tags.primary_colors = primary
         tags.secondary_colors = secondary
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)
         tags.material = validate_value(data.get("material"), valid_materials)
         tags.formality = validate_value(data.get("formality"), valid_formality)
-        tags.style = _dedupe(validate_list(_as_list(data.get("style")), valid_styles))
-        tags.season = _dedupe(validate_list(_as_list(data.get("season")), valid_seasons))
+        tags.style = _dedupe(validate_list(_as_list(data.get("style")), valid_styles, labels=style_labels))
+        tags.season = _dedupe(validate_list(_as_list(data.get("season")), valid_seasons, labels=season_labels))
         tags.fit = validate_value(data.get("fit"), VALID_FIT)
         tags.confidence = compute_tag_completeness(tags)
 

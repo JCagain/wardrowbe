@@ -604,6 +604,35 @@ class TestAnalysisDuration:
         assert item.ai_completed_at >= item.ai_started_at
 
     @pytest.mark.asyncio
+    async def test_ai_primary_prunes_overlap_from_existing_secondary(
+        self, db_session: AsyncSession, test_user
+    ):
+        # Same invariant as Ruling 57: a color now in primary leaves secondary.
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="unknown",
+            image_path="t/overlap.jpg",
+            status=ItemStatus.processing,
+            secondary_colors=["blue", "white"],
+        )
+        db_session.add(item)
+        await db_session.commit()
+
+        with (
+            patch("app.workers.tagging.get_db_session", return_value=db_session),
+            patch.object(db_session, "close", new_callable=AsyncMock),
+            patch.object(AIService, "analyze_image", new_callable=AsyncMock) as analyze,
+        ):
+            analyze.return_value = ClothingTags(
+                type="shirt", primary_colors=["blue"], confidence=0.9
+            )
+            await tag_item_image({"job_try": 1}, str(item.id), __file__)
+
+        await db_session.refresh(item)
+        assert item.primary_colors == ["blue"]
+        assert item.secondary_colors == ["white"]
+
+    @pytest.mark.asyncio
     async def test_new_attempt_clears_previous_completion_time(
         self, db_session: AsyncSession, test_user
     ):

@@ -772,6 +772,60 @@ class TestClosedSetColorContract:
         )
         assert tags.primary_colors == ["white"]
 
+    def test_chinese_label_only_answers_map_to_slugs(self, service, vocab_file):
+        import json
+
+        data = json.loads(vocab_file.read_text())
+        style = next(s for s in data["styles"] if not s.get("disabled"))
+        tags = service._parse_tags_from_response(
+            json.dumps(
+                {
+                    "type": "shirt",
+                    "primary_colors": ["黑"],
+                    "secondary_colors": ["克莱因蓝"],
+                    "style": [style["label"]],
+                    "season": ["春"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        assert tags.primary_colors == ["black"]
+        assert tags.secondary_colors == ["klein"]
+        assert tags.style == [style["value"]]
+        assert tags.season == ["spring"]
+
+    def test_disabled_entry_label_is_not_mapped(self, service, vocab_file):
+        import json
+        import os
+
+        data = json.loads(vocab_file.read_text())
+        for c in data["colors"]["values"]:
+            if c["value"] == "black":
+                c["disabled"] = True
+        vocab_file.write_text(json.dumps(data, ensure_ascii=False))
+        os.utime(vocab_file, ns=(10**18 + 5, 10**18 + 5))
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["黑","白"]}'
+        )
+        assert tags.primary_colors == ["white"]
+
+    def test_chinese_label_maps_type_too(self, service):
+        tags = service._parse_tags_from_response('{"type":"衬衫"}')
+        assert tags.type == "shirt"
+
+    def test_empty_primary_with_secondary_logs_warning_without_promoting(
+        self, service, caplog
+    ):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            tags = service._parse_tags_from_response(
+                '{"type":"shirt","primary_colors":[],"secondary_colors":["white"]}'
+            )
+        assert tags.primary_colors == []
+        assert tags.secondary_colors == ["white"]
+        assert any("secondary_colors" in r.message and r.levelno == logging.WARNING for r in caplog.records)
+
     @pytest.mark.parametrize("bad", ["5", "true", "null", '{"a":1}', '[1,null,{"x":2}]'])
     def test_malformed_color_values_do_not_crash(self, service, bad):
         tags = service._parse_tags_from_response(
