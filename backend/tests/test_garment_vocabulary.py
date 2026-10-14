@@ -154,16 +154,6 @@ def test_legacy_color_aliases_point_at_new_slugs():
     assert LEGACY_COLOR_ALIASES["light-blue"] == "sky"
 
 
-@pytest.fixture
-def vocab_file(tmp_path, monkeypatch):
-    import shutil
-
-    path = tmp_path / "garment_vocabulary.json"
-    shutil.copy(gv.VOCABULARY_PATH, path)
-    monkeypatch.setattr(gv, "VOCABULARY_PATH", path)
-    return path
-
-
 def _write_vocab(path, data):
     import os
 

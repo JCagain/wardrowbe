@@ -756,17 +756,69 @@ class TestClosedSetColorContract:
         assert tags.primary_colors == ["wine"]
         assert tags.secondary_colors == ["sky"]
 
-    def test_disabled_values_are_rejected_from_ai_output(self, service):
-        import app.utils.garment_vocabulary as gv
+    def test_disabled_values_are_rejected_from_ai_output(self, service, vocab_file):
+        import json
 
-        # monkeypatch would restore the module-__getattr__-derived value as a real
-        # attribute on undo and shadow __getattr__ for every later test, so set and
-        # delete by hand.
-        gv.ACTIVE_COLOR_VALUE_SET = set(gv.ACTIVE_COLOR_VALUE_SET) - {"black"}
-        try:
-            tags = service._parse_tags_from_response(
-                '{"type":"shirt","primary_colors":["black","white"]}'
-            )
-        finally:
-            del gv.ACTIVE_COLOR_VALUE_SET
+        data = json.loads(vocab_file.read_text())
+        for c in data["colors"]["values"]:
+            if c["value"] == "black":
+                c["disabled"] = True
+        vocab_file.write_text(json.dumps(data, ensure_ascii=False))
+        import os
+
+        os.utime(vocab_file, ns=(10**18, 10**18))  # force the mtime-keyed cache to reload
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":["black","white"]}'
+        )
         assert tags.primary_colors == ["white"]
+
+    @pytest.mark.parametrize("bad", ["5", "true", "null", '{"a":1}', '[1,null,{"x":2}]'])
+    def test_malformed_color_values_do_not_crash(self, service, bad):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":%s,"secondary_colors":%s,"style":%s,"season":%s}'
+            % (bad, bad, bad, bad)
+        )
+        assert tags.primary_colors == []
+        assert tags.secondary_colors == []
+        assert tags.style == []
+        assert tags.season == []
+
+    def test_bare_string_is_a_one_element_list(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":"black","secondary_colors":"white","style":"casual","season":"summer"}'
+        )
+        assert tags.primary_colors == ["black"]
+        assert tags.secondary_colors == ["white"]
+        assert tags.style == ["casual"]
+        assert tags.season == ["summer"]
+
+    def test_legacy_primary_fills_in_when_new_primary_is_null(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":null,"primary_color":"black"}'
+        )
+        assert tags.primary_colors == ["black"]
+
+    def test_mixed_new_secondary_with_legacy_primary(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","secondary_colors":["white"],"primary_color":"black"}'
+        )
+        assert tags.primary_colors == ["black"]
+        assert tags.secondary_colors == ["white"]
+
+    def test_style_and_season_are_deduped(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","style":["casual","casual"],"season":["summer","summer"]}'
+        )
+        assert tags.style == ["casual"]
+        assert tags.season == ["summer"]
+
+    def test_logprobs_confidence_counts_primary_colors_array(self):
+        from app.services.ai_service import compute_confidence_from_logprobs
+
+        def t(token, lp=-0.1):
+            return {"token": token, "logprob": lp}
+
+        only_colors = [t('"primary_colors"'), t(":"), t("["), t('"black"', -0.5), t("]")]
+        got = compute_confidence_from_logprobs(only_colors)
+        assert got is not None
+        assert abs(got - 0.6065) < 0.01  # exp(-0.5)

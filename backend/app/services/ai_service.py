@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.utils import garment_vocabulary as gv
-from app.utils.color_migration import LEGACY_COLOR_ALIASES, migrate_legacy_colors
+from app.utils.color_migration import LEGACY_COLOR_ALIASES
 from app.utils.garment_vocabulary import render_tagging_prompt
 from app.utils.prompts import load_prompt
 
@@ -424,42 +424,31 @@ class AIService:
         def _dedupe(values: list[str]) -> list[str]:
             return list(dict.fromkeys(values))
 
-        if "primary_colors" in data or "secondary_colors" in data:
-            primary = _dedupe(
-                validate_list(data.get("primary_colors") or [], valid_colors, aliases=COLOR_ALIASES)
-            )
-            secondary = [
-                c
-                for c in _dedupe(
-                    validate_list(
-                        data.get("secondary_colors") or [], valid_colors, aliases=COLOR_ALIASES
-                    )
-                )
-                if c not in primary
-            ]
-        else:
-            # Legacy contract: the model ignored the new format and answered with
-            # primary_color/colors. Natural-language aliases ("sky blue") are
-            # resolved here; migrate_legacy_colors handles the legacy slugs.
-            def _pre(raw):
-                if not isinstance(raw, str):
-                    return None
-                slug = _slug(raw)
-                return slug if slug in valid_colors else COLOR_ALIASES.get(slug, slug)
+        def _as_list(x) -> list:
+            if isinstance(x, str):
+                return [x]
+            return x if isinstance(x, list) else []
 
-            legacy_secondary = data.get("colors")
-            primary, secondary = migrate_legacy_colors(
-                _pre(data.get("primary_color")),
-                [_pre(c) for c in legacy_secondary] if isinstance(legacy_secondary, list) else [],
-                valid=valid_colors,
-            )
+        def _colors(raw) -> list[str]:
+            return _dedupe(validate_list(_as_list(raw), valid_colors, aliases=COLOR_ALIASES))
+
+        # Per field: the new key wins when it yields something; otherwise fall back
+        # to the legacy primary_color/colors the model may still emit.
+        primary = _colors(data.get("primary_colors"))
+        if not primary:
+            primary = _colors(data.get("primary_color"))[:1]
+        if isinstance(data.get("secondary_colors"), (list, str)):
+            secondary = _colors(data.get("secondary_colors"))
+        else:
+            secondary = _colors(data.get("colors"))
+        secondary = [c for c in secondary if c not in primary]
         tags.primary_colors = primary
         tags.secondary_colors = secondary
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)
         tags.material = validate_value(data.get("material"), valid_materials)
         tags.formality = validate_value(data.get("formality"), valid_formality)
-        tags.style = validate_list(data.get("style", []), valid_styles)
-        tags.season = validate_list(data.get("season", []), valid_seasons)
+        tags.style = _dedupe(validate_list(_as_list(data.get("style")), valid_styles))
+        tags.season = _dedupe(validate_list(_as_list(data.get("season")), valid_seasons))
         tags.fit = validate_value(data.get("fit"), VALID_FIT)
         tags.confidence = compute_tag_completeness(tags)
 

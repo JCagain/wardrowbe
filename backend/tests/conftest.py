@@ -198,3 +198,16 @@ def sample_tags() -> dict[str, Any]:
         "season": ["spring", "fall", "all-season"],
         "confidence": 0.85,
     }
+
+
+@pytest.fixture
+def vocab_file(tmp_path, monkeypatch):
+    """Temp copy of the vocabulary JSON that the live loader reads."""
+    import shutil
+
+    from app.utils import garment_vocabulary as gv
+
+    path = tmp_path / "garment_vocabulary.json"
+    shutil.copy(gv.VOCABULARY_PATH, path)
+    monkeypatch.setattr(gv, "VOCABULARY_PATH", path)
+    return path
