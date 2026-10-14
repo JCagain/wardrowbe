@@ -190,6 +190,7 @@
     "archiveReason": "Retirement Reason",
     "brand": "Brand",
     "invalidPurchaseDate": "Purchase date must be YYYY or YYYY-MM",
+    "primaryColorRequired": "At least one primary color is required",
     "name": "Name",
     "notes": "Description",
     "placeholders": {

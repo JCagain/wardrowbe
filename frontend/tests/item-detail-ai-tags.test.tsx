@@ -41,7 +41,7 @@ vi.mock('@/lib/hooks/use-translated-constants', () => ({
   useMaterialLabel: () => (v: string) => v,
   useSubtypeLabel: () => (v: string) => v,
 }));
-vi.mock('@/lib/hooks/use-vocabulary', () => ({ useVocabManagement: () => ({}) }));
+vi.mock('@/lib/hooks/use-vocabulary', () => ({ useVocabManagement: () => ({ handlersFor: () => ({}), openAdd: vi.fn() }) }));
 vi.mock('@/lib/hooks/use-features', () => ({ useFeatures: () => ({ data: {} }) }));
 vi.mock('next/image', () => ({
   // eslint-disable-next-line @next/next/no-img-element
@@ -81,6 +81,7 @@ function renderWithTags(tags: Record<string, unknown>) {
 
 beforeEach(() => {
   m.muts = {};
+  toastMock.error.mockClear();
 });
 
 describe('ItemDetailDialog AI color tags', () => {
@@ -106,5 +107,29 @@ describe('ItemDetailDialog AI color tags', () => {
     expect(await screen.findByText('黑')).toBeInTheDocument();
     expect(screen.queryByText('白')).not.toBeInTheDocument();
     expect(screen.queryByText('white')).not.toBeInTheDocument();
+  });
+});
+
+describe('ItemDetailDialog primary color required', () => {
+  async function openEditAndSave(primary: string[]) {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    m.muts = { useUpdateItem: { mutateAsync, mutate: vi.fn(), isPending: false } };
+    const item = { ...ITEM, primary_colors: primary } as unknown as Item;
+    render(<ItemDetailDialog item={item} open onOpenChange={vi.fn()} />);
+    fireEvent.click(await screen.findByTitle('actions.editItem'));
+    fireEvent.click(await screen.findByRole('button', { name: /save/i }));
+    return mutateAsync;
+  }
+
+  it('refuses to save with no primary color and shows an error toast', async () => {
+    const mutateAsync = await openEditAndSave([]);
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('primaryColorRequired'));
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('saves normally when a primary color is set', async () => {
+    const mutateAsync = await openEditAndSave(['black']);
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(toastMock.error).not.toHaveBeenCalledWith('primaryColorRequired');
   });
 });

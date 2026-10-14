@@ -181,6 +181,53 @@ class TestItemCRUD:
         assert data["brand"] == "Test Brand"
 
     @pytest.mark.asyncio
+    async def test_update_rejects_empty_primary_colors(
+        self, client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+    ):
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="shirt",
+            name="Keep",
+            primary_colors=["black"],
+            image_path="test/item.jpg",
+            status=ItemStatus.ready,
+        )
+        db_session.add(item)
+        await db_session.commit()
+        await db_session.refresh(item)
+
+        response = await client.patch(
+            f"/api/v1/items/{item.id}",
+            json={"name": "Changed", "primary_colors": []},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+        await db_session.refresh(item)
+        assert item.name == "Keep"
+        assert item.primary_colors == ["black"]
+
+    @pytest.mark.asyncio
+    async def test_update_without_primary_colors_key_is_unaffected(
+        self, client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+    ):
+        item = ClothingItem(
+            user_id=test_user.id,
+            type="shirt",
+            name="Old",
+            image_path="test/item.jpg",
+            status=ItemStatus.ready,
+        )
+        db_session.add(item)
+        await db_session.commit()
+        await db_session.refresh(item)
+
+        response = await client.patch(
+            f"/api/v1/items/{item.id}", json={"favorite": True}, headers=auth_headers
+        )
+        assert response.status_code == 200, response.json()
+        assert response.json()["favorite"] is True
+
+    @pytest.mark.asyncio
     async def test_update_item_not_found(self, client: AsyncClient, test_user, auth_headers):
         """Test updating a non-existent item."""
         response = await client.patch(

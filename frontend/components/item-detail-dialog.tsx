@@ -195,6 +195,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   if (!item) return null;
 
   const handleSave = async () => {
+    if (editForm.primary_colors.length === 0) {
+      toast.error(t('primaryColorRequired'));
+      return;
+    }
     let purchaseDate: string | null = null;
     try {
       // null (not undefined) so clearing the field actually clears it server-side.

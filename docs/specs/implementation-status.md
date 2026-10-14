@@ -54,6 +54,7 @@
 | **Ruling 56** | AI 仍回旧 `primary_color` / `colors` 时按字段走旧键兼容解析；`tags` blob 自 2026-10-14 起写新键（`primary_colors` / `secondary_colors`），旧键只读兼容。 |
 | **Ruling 57** | `tags` blob 的颜色投影按列进行：只有过滤后非空的值才写入，空不等于清空；新指派主色而无可用辅色时，从现有辅色里剔除与新主色重叠的颜色。 |
 | **Ruling 58** | `pattern` / `fit` 仍是代码内固定集合（spec §1.4 输出清单不含二者，不在本次闭集化范围）。 |
+| **Ruling 59** | 主色至少一个：AI 只给辅色（主色空、辅色非空）时辅色整体升为主色、辅色清空（`_parse_tags_from_response`，info 日志；主辅都空仍 warning，**取代原 Ruling 6 的「只记 warning 不提升」**）；手改保存强制至少一个主色（含未打标物品）——后端 `ItemUpdate.primary_colors` 显式给出空列表 → 422（未带该键不触发），详情对话框保存前拦截并 toast `primaryColorRequired`；上传不强制；`tags` blob 投影本就不会写空主色（Ruling 57）。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |

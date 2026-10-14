@@ -190,6 +190,7 @@
     "archiveReason": "退役原因",
     "brand": "品牌",
     "invalidPurchaseDate": "购买时间需为 2024 或 2024-03 格式",
+    "primaryColorRequired": "至少选一个主色",
     "name": "名称",
     "notes": "描述",
     "placeholders": {

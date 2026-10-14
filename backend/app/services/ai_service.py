@@ -471,10 +471,11 @@ class AIService:
             secondary = _colors(data.get("colors"))
         secondary = [c for c in secondary if c not in primary]
         if not primary and secondary:
-            # Ruling 6: log only. Never promote secondary to primary.
-            logger.warning(
-                "AI returned secondary_colors %s without any primary color", secondary
-            )
+            # Ruling 59: an item needs at least one primary color; promote.
+            logger.info("AI returned only secondary colors %s; promoted to primary", secondary)
+            primary, secondary = secondary, []
+        elif not primary:
+            logger.warning("AI returned no primary color and no secondary colors")
         tags.primary_colors = primary
         tags.secondary_colors = secondary
         tags.pattern = validate_value(data.get("pattern"), VALID_PATTERNS)

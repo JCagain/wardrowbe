@@ -101,10 +101,10 @@ class TestTagParsing:
         """
         tags = service._parse_tags_from_response(response)
         # Invalid colors should be removed
-        assert tags.primary_colors == []
-        assert "blue" in tags.secondary_colors
-        assert "black" in tags.secondary_colors
-        assert "invalid_color" not in tags.secondary_colors
+        # Invalid primary dropped -> valid secondaries are promoted (Ruling 59)
+        assert tags.primary_colors == ["blue", "black"]
+        assert tags.secondary_colors == []
+        assert "invalid_color" not in tags.primary_colors
 
     def test_parse_grey_to_gray(self):
         """Test that 'grey' is normalized to 'gray'."""
@@ -742,6 +742,31 @@ class TestClosedSetColorContract:
         assert tags.primary_colors == ["black"]
         assert tags.secondary_colors == ["white"]
 
+    def test_secondary_only_is_promoted_to_primary(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","primary_colors":[],"secondary_colors":["black","white"]}'
+        )
+        assert tags.primary_colors == ["black", "white"]
+        assert tags.secondary_colors == []
+
+    def test_secondary_only_without_primary_key_is_promoted(self, service):
+        tags = service._parse_tags_from_response(
+            '{"type":"shirt","secondary_colors":["black","white"]}'
+        )
+        assert tags.primary_colors == ["black", "white"]
+        assert tags.secondary_colors == []
+
+    def test_both_empty_stays_empty_and_warns(self, service, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            tags = service._parse_tags_from_response(
+                '{"type":"shirt","primary_colors":[],"secondary_colors":[]}'
+            )
+        assert tags.primary_colors == []
+        assert tags.secondary_colors == []
+        assert any("no primary color" in r.getMessage().lower() for r in caplog.records)
+
     def test_unknown_colors_are_dropped_not_written(self, service):
         tags = service._parse_tags_from_response(
             '{"type":"shirt","primary_colors":["chartreuse"],"secondary_colors":["neon"]}'
@@ -813,18 +838,16 @@ class TestClosedSetColorContract:
         tags = service._parse_tags_from_response('{"type":"衬衫"}')
         assert tags.type == "shirt"
 
-    def test_empty_primary_with_secondary_logs_warning_without_promoting(
-        self, service, caplog
-    ):
+    def test_empty_primary_with_secondary_promotes_and_logs_info(self, service, caplog):
         import logging
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             tags = service._parse_tags_from_response(
                 '{"type":"shirt","primary_colors":[],"secondary_colors":["white"]}'
             )
-        assert tags.primary_colors == []
-        assert tags.secondary_colors == ["white"]
-        assert any("secondary_colors" in r.message and r.levelno == logging.WARNING for r in caplog.records)
+        assert tags.primary_colors == ["white"]
+        assert tags.secondary_colors == []
+        assert any("promoted" in r.getMessage() and r.levelno == logging.INFO for r in caplog.records)
 
     @pytest.mark.parametrize("bad", ["5", "true", "null", '{"a":1}', '[1,null,{"x":2}]'])
     def test_malformed_color_values_do_not_crash(self, service, bad):

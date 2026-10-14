@@ -122,6 +122,14 @@ class ItemUpdate(BaseModel):
     tags: ItemTags | None = None
     body_part: str | None = None
     primary_colors: list[str] = Field(default_factory=list)
+
+    @field_validator("primary_colors")
+    @classmethod
+    def _primary_colors_not_empty(cls, v: list[str]) -> list[str]:
+        # Only runs when the client sends the key (defaults aren't validated).
+        if not v:
+            raise ValueError("primary_colors must contain at least one color")
+        return v
     secondary_colors: list[str] = Field(default_factory=list)
     temp_low: float | None = None
     temp_high: float | None = None
