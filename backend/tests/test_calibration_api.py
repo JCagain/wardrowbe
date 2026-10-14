@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.item import ClothingItem, ItemStatus
 from app.models.user import User
 from app.services.color_calibration import apply_gains
+from app.services.image_files import ImageFiles
 from app.services.image_service import ImageService
 
 USER = uuid.UUID("00000000-0000-0000-0000-000000000009")
@@ -338,21 +339,6 @@ async def test_detect_requires_authentication(
 
 
 @pytest.mark.asyncio
-async def test_apply_rejects_an_item_without_a_calibration_source(
-    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
-):
-    item = await _make_item(db_session, test_user, calibration_original_path=None)
-
-    resp = await client.post(
-        f"/api/v1/items/{item.id}/calibration/apply",
-        json={"box": [0, 0, 50, 50], "baseline": "gray"},
-        headers=auth_headers,
-    )
-
-    assert resp.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_manual_rejects_kelvin_outside_the_slider_range(
     client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
 ):
@@ -606,3 +592,155 @@ async def test_apply_accepts_a_box_touching_the_last_pixel(
         headers=auth_headers,
     )
     assert bad.status_code == 400
+
+
+# ------------------------------------------------ Ruling 51/52：惰性播种 `_src`
+
+
+async def _reload(db_session: AsyncSession, item_id) -> ClothingItem:
+    db_session.expire_all()
+    result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
+    return result.scalar_one()
+
+
+async def _legacy_item(db_session: AsyncSession, user: User, **kw) -> ClothingItem:
+    """分支前上传的物品：没有 calibration_original_path 列（`_src` 文件也被删掉）。"""
+    item = await _make_item(db_session, user, **kw)
+    ImageService().get_image_path(ImageFiles.of(item.image_path).source).unlink()
+    item.calibration_original_path = None
+    await db_session.commit()
+    return item
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("apply", {"box": [0, 0, 50, 50], "baseline": "gray"}),
+        ("manual", {"kelvin": 5000.0, "tint": 0.0}),
+    ],
+)
+async def test_legacy_item_without_a_source_is_seeded_lazily(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, path, payload
+):
+    item = await _legacy_item(db_session, test_user, image_data=_jpeg_textured())
+    item_id = item.id
+    src = ImageService().get_image_path(ImageFiles.of(item.image_path).source)
+    assert not src.exists()
+
+    resp = await client.post(
+        f"/api/v1/items/{item_id}/calibration/{path}", json=payload, headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert src.exists()
+    refreshed = await _reload(db_session, item_id)
+    assert refreshed.calibration_original_path == ImageFiles.of(refreshed.image_path).source
+
+
+@pytest.mark.asyncio
+async def test_reset_on_a_legacy_item_is_a_noop_equivalent(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _legacy_item(db_session, test_user, image_data=_jpeg_textured())
+    svc = ImageService()
+    before = np.asarray(Image.open(svc.get_image_path(item.image_path)).convert("RGB")).astype(int)
+
+    resp = await client.post(f"/api/v1/items/{item.id}/calibration/reset", headers=auth_headers)
+
+    assert resp.status_code == 200, resp.text
+    after = np.asarray(Image.open(svc.get_image_path(resp.json()["image_path"])).convert("RGB"))
+    assert np.abs(after.astype(int) - before).mean() < 6  # 纯噪声图的 JPEG 重编码漂移
+
+
+@pytest.mark.asyncio
+async def test_a_matching_existing_source_is_adopted_untouched(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """set-primary 来回换后列为 NULL，但 `_src` 还在盘上且尺寸吻合：原样收养。"""
+    item = await _make_item(db_session, test_user, image_data=_jpeg_textured())
+    src = ImageService().get_image_path(ImageFiles.of(item.image_path).source)
+    before = src.read_bytes()
+    item.calibration_original_path = None
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/manual",
+        json={"kelvin": 5000.0, "tint": 0.0},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert src.read_bytes() == before
+    refreshed = await _reload(db_session, item.id)
+    assert refreshed.calibration_original_path == ImageFiles.of(refreshed.image_path).source
+
+
+@pytest.mark.asyncio
+async def test_legacy_cutout_source_is_built_from_the_backup_pixels(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    item = await _legacy_item(db_session, test_user, image_data=_jpeg_bytes(color=(200, 60, 60)))
+    svc = ImageService()
+    provider = MagicMock()
+    provider.remove.side_effect = lambda img: Image.new("RGBA", img.size, (0, 0, 0, 0))
+    with patch("app.services.background_removal.get_provider", return_value=provider):
+        matte = svc.remove_background(item.image_path)
+    item.image_path = matte["image_path"]
+    item.medium_path = matte["medium_path"]
+    item.thumbnail_path = matte["thumbnail_path"]
+    item.mask_path = matte["mask_path"]
+    item.original_image_path = matte["original_backup_path"]
+    await db_session.commit()
+    item_id = item.id
+
+    resp = await client.post(
+        f"/api/v1/items/{item_id}/calibration/manual",
+        json={"kelvin": 6500.0, "tint": 0.0},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    src = svc.get_image_path(ImageFiles.of(matte["image_path"]).source)
+    px = Image.open(src).convert("RGB").getpixel((10, 10))
+    assert px[0] > 150, f"source built from the zeroed cut-out, got {px}"
+
+
+@pytest.mark.asyncio
+async def test_a_mismatched_source_is_overwritten_with_a_warning(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, caplog
+):
+    item = await _make_item(db_session, test_user, image_data=_jpeg_bytes(size=(600, 400)))
+    src = ImageService().get_image_path(ImageFiles.of(item.image_path).source)
+    Image.new("RGB", (300, 500), (1, 2, 3)).save(src, format="JPEG")
+    item.calibration_original_path = None
+    await db_session.commit()
+
+    with caplog.at_level(logging.WARNING):
+        resp = await client.post(
+            f"/api/v1/items/{item.id}/calibration/manual",
+            json={"kelvin": 6500.0, "tint": 0.0},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert Image.open(src).size == (600, 400)
+    assert any("does not match" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_detect_reads_the_source_not_the_blacked_out_cutout(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """抠图后工作图背景 RGB 被清零，灰卡变黑；detect 必须读 `_src`。"""
+    item = await _make_item(db_session, test_user, image_data=_jpeg_with_gray_card())
+    svc = ImageService()
+    working = svc.get_image_path(item.image_path)
+    Image.new("RGB", Image.open(working).size, (0, 0, 0)).save(working, format="JPEG")
+
+    resp = await client.post(
+        f"/api/v1/items/{item.id}/calibration/detect", headers=auth_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["kind"] == "gray"

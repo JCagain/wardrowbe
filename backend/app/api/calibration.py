@@ -1,6 +1,6 @@
 """校色 API（spec §1.2）：检出参考区、应用白平衡、手动白平衡、重置回原图。
 
-四个端点都校验物品归属。写盘以 `calibration_original_path`（`_src.jpg`）为
+四个端点都校验物品归属；副本缺失时惰性补种（Ruling 51）。写盘以 `calibration_original_path`（`_src.jpg`）为
 不可变基准（fixes #6）：校色只重写工作图与三档，永远不碰副本。
 """
 
@@ -51,17 +51,34 @@ async def get_owned_item(db: AsyncSession, item_id: UUID, user_id: UUID) -> Clot
     return item
 
 
-def _calibration_paths(item: ClothingItem) -> tuple[str, str]:
-    """校色三写的前置条件：工作图与不可变副本在位，且没有在跑的后台任务。"""
+async def _ensure_source(db: AsyncSession, item: ClothingItem) -> str:
+    """列为 NULL 时惰性补种 `_src` 并落列（Ruling 51）；返回副本相对路径。"""
+    if item.calibration_original_path:
+        return item.calibration_original_path
+    try:
+        source_path = await asyncio.to_thread(
+            ImageService().ensure_calibration_source, item.image_path
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+    except Exception:
+        logger.exception("Failed to seed calibration source")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to prepare calibration source",
+        ) from None
+    item.calibration_original_path = source_path
+    await db.commit()
+    await db.refresh(item, attribute_names=["calibration_original_path"])
+    return source_path
+
+
+def _check_writable(item: ClothingItem) -> str:
+    """校色三写的前置条件：工作图在位，且没有在跑的后台任务。"""
     if not item.image_path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Item has no image",
-        )
-    if not item.calibration_original_path:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Item has no calibration source",
         )
 
     if item.status == ItemStatus.processing and item.ai_job_id:
@@ -71,7 +88,7 @@ def _calibration_paths(item: ClothingItem) -> tuple[str, str]:
             status_code=status.HTTP_409_CONFLICT,
             detail="Item has a background job in progress",
         )
-    return item.image_path, item.calibration_original_path
+    return item.image_path
 
 
 async def _persist_image_op(
@@ -135,10 +152,11 @@ async def detect_calibration_region(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Item has no image",
         )
-    image_path = item.image_path
+    # 读校色副本而不是工作图：抠图后工作图背景 RGB 已清零，卡条是黑的（Ruling 52）
+    source_path = await _ensure_source(db, item)
 
     def _detect() -> dict:
-        image = Image.open(ImageService().get_image_path(image_path)).convert("RGB")
+        image = Image.open(ImageService().get_image_path(source_path)).convert("RGB")
         found = detect_reference(image)
         if found is None:
             return {"kind": None, "box": None}
@@ -161,7 +179,8 @@ async def apply_calibration(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CalibrationItemResponse:
     item = await get_owned_item(db, item_id, current_user.id)
-    image_path, source_path = _calibration_paths(item)
+    image_path = _check_writable(item)
+    source_path = await _ensure_source(db, item)
 
     # box 含右下（detect_reference 契约），原样下传：转换只发生在 calibrate 内部
     return await _persist_image_op(
@@ -181,7 +200,8 @@ async def manual_white_balance(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CalibrationItemResponse:
     item = await get_owned_item(db, item_id, current_user.id)
-    image_path, source_path = _calibration_paths(item)
+    image_path = _check_writable(item)
+    source_path = await _ensure_source(db, item)
 
     # 滑块范围由 Pydantic 卡；增益夹紧仍留在服务层（防御纵深）
     return await _persist_image_op(
@@ -200,7 +220,8 @@ async def reset_calibration(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CalibrationItemResponse:
     item = await get_owned_item(db, item_id, current_user.id)
-    image_path, source_path = _calibration_paths(item)
+    image_path = _check_writable(item)
+    source_path = await _ensure_source(db, item)
 
     return await _persist_image_op(
         db,

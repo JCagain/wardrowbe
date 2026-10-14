@@ -486,6 +486,42 @@ class ImageService:
             for tmp, _ in staged:
                 tmp.unlink(missing_ok=True)
 
+    def ensure_calibration_source(self, image_path: str) -> str:
+        """保证 `{base}_src.jpg` 在位且与工作图同尺寸，返回其相对路径（Ruling 51）。
+
+        分支前上传的物品、以及 set-primary 之后的物品，`calibration_original_path`
+        列为 NULL。惰性补种：
+          a. 盘上已有尺寸吻合的 `_src` → 原样收养（set-primary 来回换的情形）；
+          b. 否则有尺寸吻合的抠图前备份 → 用备份像素（旧抠图的工作图背景 RGB 已清零）；
+          c. 否则用工作图转 RGB。
+          d. 已有 `_src` 但尺寸不符 → 告警后按 b/c 覆盖。
+        """
+        working = self.storage_path / image_path
+        if not working.exists():
+            raise ValueError(f"Image not found: {image_path}")
+        files = ImageFiles.of(image_path)
+        source = self.storage_path / files.source
+        backup = self.storage_path / files.backup
+        working_size = self._image_size(working)
+
+        if source.exists():
+            if self._image_size(source) == working_size:
+                return files.source
+            logger.warning(
+                "Calibration source %s does not match working image size; overwriting",
+                files.source,
+            )
+
+        pixels_from = working
+        if backup.exists() and self._image_size(backup) == working_size:
+            pixels_from = backup
+        with Image.open(pixels_from) as im:
+            rgb = im.convert("RGB")
+        buf = BytesIO()
+        rgb.save(buf, format="JPEG", quality=95, optimize=True)
+        source.write_bytes(buf.getvalue())
+        return files.source
+
     def calibrate_image(
         self,
         image_path: str,
