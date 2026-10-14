@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const addCity = vi.fn();
 const removeCity = vi.fn();
 const updatePrefs = vi.fn();
+let addPending = false;
 
 vi.mock('next-intl', () => ({ useTranslations: () => (k: string) => k }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -18,7 +19,7 @@ vi.mock('@/lib/hooks/use-preferences', () => ({
     },
   }),
   useUpdatePreferences: () => ({ mutate: updatePrefs, isPending: false }),
-  useAddCity: () => ({ mutateAsync: addCity, isPending: false }),
+  useAddCity: () => ({ mutateAsync: addCity, isPending: addPending }),
   useRemoveCity: () => ({ mutate: removeCity, isPending: false }),
 }));
 
@@ -28,6 +29,7 @@ beforeEach(() => {
   addCity.mockReset();
   removeCity.mockReset();
   updatePrefs.mockReset();
+  addPending = false;
 });
 
 describe('CitySettingsCard', () => {
@@ -48,5 +50,14 @@ describe('CitySettingsCard', () => {
     render(<CitySettingsCard />);
     fireEvent.click(screen.getAllByTestId('city-remove')[1]);
     expect(removeCity).toHaveBeenCalledWith('香港', expect.anything());
+  });
+
+  it('Enter does not submit while an add is pending', () => {
+    addPending = true;
+    render(<CitySettingsCard />);
+    const input = screen.getByTestId('city-add-input');
+    fireEvent.change(input, { target: { value: '上海' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(addCity).not.toHaveBeenCalled();
   });
 });

@@ -117,6 +117,51 @@ describe('RecordEditor (new)', () => {
     await waitFor(() => expect(fetchWeather).toHaveBeenCalledTimes(2));
     expect((screen.getByTestId('record-temp-high') as HTMLInputElement).value).toBe('30');
   });
+
+  it('prefill then a null response for a new date empties the prefilled fields', async () => {
+    fetchWeather.mockResolvedValueOnce({ temp_high: 24, temp_low: 16, condition: 'rain' });
+    await mount(<RecordEditor today="2026-10-14" onSaved={vi.fn()} />);
+    await waitFor(() =>
+      expect((screen.getByTestId('record-temp-high') as HTMLInputElement).value).toBe('24')
+    );
+    fetchWeather.mockResolvedValueOnce(null);
+    fireEvent.change(screen.getByTestId('record-date'), { target: { value: '2026-07-01' } });
+    await waitFor(() => expect(fetchWeather).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect((screen.getByTestId('record-temp-high') as HTMLInputElement).value).toBe('');
+      expect((screen.getByTestId('record-temp-low') as HTMLInputElement).value).toBe('');
+      expect(screen.getByTestId('record-condition')).toHaveAttribute('data-value', '');
+    });
+  });
+
+  it('prefill then clearing the city empties the prefilled fields', async () => {
+    fetchWeather.mockResolvedValue({ temp_high: 24, temp_low: 16, condition: 'rain' });
+    await mount(<RecordEditor today="2026-10-14" onSaved={vi.fn()} />);
+    await waitFor(() =>
+      expect((screen.getByTestId('record-temp-high') as HTMLInputElement).value).toBe('24')
+    );
+    // Radix popper 需要可 new 的 ResizeObserver；jsdom 缺 scrollIntoView
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const trigger = screen.getByTestId('record-city');
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+    });
+    const options = await screen.findAllByRole('option');
+    await act(async () => {
+      fireEvent.click(options[0]); // noCity
+    });
+    await waitFor(() => expect(screen.getByTestId('record-city')).toHaveAttribute('data-value', ''));
+    expect((screen.getByTestId('record-temp-high') as HTMLInputElement).value).toBe('');
+    expect(screen.getByTestId('record-condition')).toHaveAttribute('data-value', '');
+  });
 });
 
 describe('RecordEditor (edit)', () => {

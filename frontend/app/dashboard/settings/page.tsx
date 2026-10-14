@@ -25,6 +25,7 @@ import {
   isNetworkLocationFallbackEnabled,
   resolveNetworkLocation,
 } from '@/lib/location';
+import { syncFormWithPreferences } from '@/lib/settings-sync';
 import { Preferences, StyleProfile, AIEndpoint } from '@/lib/types';
 import { useClothingColors, useOccasions } from '@/lib/hooks/use-translated-constants';
 import { toF, toCelsius } from '@/lib/temperature';
@@ -182,6 +183,8 @@ export default function SettingsPage() {
 
   const [formData, setFormData] = useState<Partial<Preferences>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const hasChangesRef = useRef(false);
+  hasChangesRef.current = hasChanges;
   const [endpointTests, setEndpointTests] = useState<Record<number, EndpointTestResult>>({});
 
   // Location and timezone state
@@ -476,8 +479,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (preferences) {
-      setFormData(preferences);
-      setHasChanges(false);
+      // 城市卡片的增删/默认城市会让 preferences 重新拉取：有未保存改动时只并入城市字段
+      setFormData((prev) => syncFormWithPreferences(prev, preferences, hasChangesRef.current));
+      if (!hasChangesRef.current) setHasChanges(false);
     }
   }, [preferences]);
 

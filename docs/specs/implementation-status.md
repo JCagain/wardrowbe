@@ -56,7 +56,7 @@
 | **Ruling 57** | `tags` blob 的颜色投影按列进行：只有过滤后非空的值才写入，空不等于清空；新指派主色而无可用辅色时，从现有辅色里剔除与新主色重叠的颜色。 |
 | **Ruling 58** | `pattern` / `fit` 仍是代码内固定集合（spec §1.4 输出清单不含二者，不在本次闭集化范围）。 |
 | **Ruling 59** | 主色至少一个：AI 只给辅色（主色空、辅色非空）时辅色整体升为主色、辅色清空（`_parse_tags_from_response`，info 日志；主辅都空仍 warning，**取代此前「只记 warning 不提升」的做法**）；手改保存强制至少一个主色（含未打标物品）——后端 `ItemUpdate.primary_colors` 显式给出空列表 → 422（未带该键不触发），详情对话框保存前拦截并 toast `primaryColorRequired`；上传不强制；`tags` blob 投影本就不会写空主色（Ruling 57）。 |
-| **Ruling 60** | 记录存 `outfits`（`source = record`），走独立路由 `/records` + `RecordService`；studio/lookbook 的「已穿不可改关联」等约束不适用于记录。旧「历史」页即记录主页。 |
+| **Ruling 60** | 记录存 `outfits`（`source = record`），走独立路由 `/records` + `RecordService`；studio/lookbook 的「已穿不可改关联」等约束不适用于记录。旧「历史」页即记录主页。通用 /outfits 列表、日历、批量删除与按 id 的各路由一律排除 source=record（按 id 访问记录返回 404），记录只能经 /records 改删，保证计数与文件清理不被绕过。 |
 | **Ruling 61** | 记录照片 1..N（用户裁定 2026-10-14：开发库无旧记录，按 spec 字面）：新建至少 1 张，编辑时删到最后一张 → 409。照片只做 EXIF 转正 + 三档 + 手动 90° 旋转（用户裁定），不校色不抠图、不留 `_src`。 |
 | **Ruling 62** | 天气只存 `temp_high` / `temp_low` / `condition`（用户裁定），`condition` 为 10 值闭集 slug（WMO 码映射），中文名走前端 i18n。预填由前端在城市/日期变化时调 `GET /records/weather`，后端保存时只存表单值、不自行补拉——「清空」不会被覆盖。forecast 端点覆盖过去 60 天 ~ 未来 15 天，更早走 archive；更远的未来不拉；任何失败返回 null。 |
 | **Ruling 63** | 城市存 `user_preferences.cities`（NULL = 预设四城，带坐标），记录只存城市名；新增城市经 Nominatim 地理编码取坐标，找不到 422、服务不可用 502。删除城市不影响旧记录的城市名，但其天气查询返回 null。 |

@@ -38,7 +38,7 @@ export function CitySettingsCard() {
 
   const handleAdd = async () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || addCity.isPending) return;
     try {
       await addCity.mutateAsync(trimmed);
       setName('');
@@ -73,7 +73,10 @@ export function CitySettingsCard() {
                 aria-label={t('remove', { name: c.name })}
                 className="text-muted-foreground hover:text-foreground"
                 onClick={() =>
-                  removeCity.mutate(c.name, { onSuccess: () => toast.success(t('removed')) })
+                  removeCity.mutate(c.name, {
+                    onSuccess: () => toast.success(t('removed')),
+                    onError: () => toast.error(t('unavailable')),
+                  })
                 }
               >
                 <X className="h-3 w-3" />
@@ -101,7 +104,12 @@ export function CitySettingsCard() {
           <Label>{t('default')}</Label>
           <Select
             value={prefs?.default_city ?? NO_DEFAULT}
-            onValueChange={(v) => update.mutate({ default_city: v === NO_DEFAULT ? null : v })}
+            onValueChange={(v) =>
+              update.mutate(
+                { default_city: v === NO_DEFAULT ? null : v },
+                { onError: () => toast.error(t('unavailable')) }
+              )
+            }
           >
             <SelectTrigger className="w-[200px]">
               <SelectValue />

@@ -16,9 +16,9 @@
     "woreInstead": "实际穿了："
   },
   "empty": {
-    "description": "开始获取穿搭建议后，推荐记录将显示在这里。",
+    "description": "上传一张穿搭照，开始记录",
     "getFirstSuggestion": "获取你的第一个建议",
-    "title": "暂无推荐记录"
+    "title": "还没有记录"
   },
   "loadError": "加载历史记录失败，请重试。",
   "noOutfitsForDate": "{date}没有穿搭",
@@ -91,6 +91,6 @@
     "sent": "已发送",
     "viewed": "已查看"
   },
-  "subtitle": "查看过去的穿搭推荐",
+  "subtitle": "查看和记录每天的穿搭",
   "title": "历史记录"
 }

@@ -95,3 +95,18 @@ def test_day_weather_to_dict():
     assert DayWeather(20.0, None, "sunny").to_dict() == {
         "temp_high": 20.0, "temp_low": None, "condition": "sunny",
     }
+
+
+@pytest.mark.asyncio
+async def test_non_dict_json_body_returns_none():
+    with patch("httpx.AsyncClient.get", return_value=_resp([1, 2, 3])):
+        result = await WeatherService().get_weather_for_date(30.27, 120.15, date(2026, 10, 10), TODAY)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_weather_code_gives_none_condition():
+    body = {"daily": {"temperature_2m_max": [20.0], "temperature_2m_min": [10.0], "weather_code": ["abc"]}}
+    with patch("httpx.AsyncClient.get", return_value=_resp(body)):
+        result = await WeatherService().get_weather_for_date(30.27, 120.15, date(2026, 10, 10), TODAY)
+    assert result == DayWeather(temp_high=20.0, temp_low=10.0, condition=None)

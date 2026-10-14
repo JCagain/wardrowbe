@@ -99,6 +99,8 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const cityInitialized = useRef(isEdit);
+  // 当前天气值是否来自自动预填（手改或清空后为 false；编辑页挂载时已存天气算用户填的）
+  const weatherFromPrefill = useRef(false);
   const lastWeatherKey = useRef(isEdit ? `${record!.city ?? ''}|${record!.date}` : '');
   const photoUrls = useRef(new Map<string, string>());
 
@@ -115,16 +117,31 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
     const key = `${city ?? ''}|${date}`;
     if (key === lastWeatherKey.current) return;
     lastWeatherKey.current = key;
+    const dropStalePrefill = () => {
+      if (weatherFromPrefill.current) {
+        weatherFromPrefill.current = false;
+        setWeather(EMPTY_WEATHER);
+      }
+    };
     if (!city) {
       setWeatherLoading(false);
+      dropStalePrefill();
       return;
     }
     setWeatherLoading(true);
     fetchRecordWeather(city, date)
       .then((w) => {
-        if (lastWeatherKey.current === key && w) setWeather(w);
+        if (lastWeatherKey.current !== key) return;
+        if (w) {
+          weatherFromPrefill.current = true;
+          setWeather(w);
+        } else {
+          dropStalePrefill();
+        }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (lastWeatherKey.current === key) dropStalePrefill();
+      })
       .finally(() => {
         if (lastWeatherKey.current === key) setWeatherLoading(false);
       });
@@ -321,7 +338,10 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
               variant="ghost"
               size="sm"
               data-testid="record-clear-weather"
-              onClick={() => setWeather(EMPTY_WEATHER)}
+              onClick={() => {
+                weatherFromPrefill.current = false;
+                setWeather(EMPTY_WEATHER);
+              }}
             >
               {t('clearWeather')}
             </Button>
@@ -334,7 +354,10 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
             aria-label={t('tempHigh')}
             placeholder={t('tempHigh')}
             value={weather.temp_high ?? ''}
-            onChange={(e) => setWeather((w) => ({ ...w, temp_high: numOrNull(e.target.value) }))}
+            onChange={(e) => {
+              weatherFromPrefill.current = false;
+              setWeather((w) => ({ ...w, temp_high: numOrNull(e.target.value) }));
+            }}
           />
           <Input
             data-testid="record-temp-low"
@@ -342,11 +365,17 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
             aria-label={t('tempLow')}
             placeholder={t('tempLow')}
             value={weather.temp_low ?? ''}
-            onChange={(e) => setWeather((w) => ({ ...w, temp_low: numOrNull(e.target.value) }))}
+            onChange={(e) => {
+              weatherFromPrefill.current = false;
+              setWeather((w) => ({ ...w, temp_low: numOrNull(e.target.value) }));
+            }}
           />
           <Select
             value={weather.condition ?? NONE}
-            onValueChange={(v) => setWeather((w) => ({ ...w, condition: v === NONE ? null : v }))}
+            onValueChange={(v) => {
+              weatherFromPrefill.current = false;
+              setWeather((w) => ({ ...w, condition: v === NONE ? null : v }));
+            }}
           >
             <SelectTrigger data-testid="record-condition" data-value={weather.condition ?? ''}>
               <SelectValue placeholder={t('condition')} />

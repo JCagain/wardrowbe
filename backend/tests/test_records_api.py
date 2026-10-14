@@ -153,6 +153,16 @@ async def test_patch_to_zero_items_and_back(client, auth_headers, db_session, it
 
 
 @pytest.mark.asyncio
+async def test_patch_removing_only_record_item_clears_last_worn(client, auth_headers, db_session, items):
+    rid = (await _create(client, auth_headers, {"date": "2026-10-01", "item_ids": [str(items[0].id)]})).json()["id"]
+    assert (await _item(db_session, items[0].id)).last_worn_at == date(2026, 10, 1)
+    r = await client.patch(f"{BASE}/{rid}", json={"item_ids": []}, headers=auth_headers)
+    assert r.status_code == 200, r.text
+    item = await _item(db_session, items[0].id)
+    assert item.last_worn_at is None and item.wear_count == 0
+
+
+@pytest.mark.asyncio
 async def test_wear_count_never_negative(client, auth_headers, db_session, items):
     rid = (await _create(client, auth_headers, {"item_ids": [str(items[0].id)]})).json()["id"]
     item = await _item(db_session, items[0].id)

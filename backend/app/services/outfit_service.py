@@ -104,6 +104,10 @@ class OutfitService:
                 clauses.append(Outfit.source == source_values[0])
             elif source_values:
                 clauses.append(Outfit.source.in_(source_values))
+            if OutfitSource.record not in source_values:
+                clauses.append(Outfit.source != OutfitSource.record)
+        else:
+            clauses.append(Outfit.source != OutfitSource.record)
 
         if filters.is_lookbook is True:
             clauses.append(Outfit.scheduled_for.is_(None))

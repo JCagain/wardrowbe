@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.models.outfit import (
     FamilyOutfitRating,
     Outfit,
     OutfitItem,
+    OutfitSource,
     OutfitStatus,
     UserFeedback,
 )
@@ -82,7 +83,32 @@ def get_user_today(user: User) -> date:
     return datetime.now(UTC).astimezone(user_tz).date()
 
 
-router = APIRouter(prefix="/outfits", tags=["Outfits"])
+
+
+async def _reject_record_outfit(
+    request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+) -> None:
+    """Records (source=record) are managed only via /records; here they are 404."""
+    raw = request.path_params.get("outfit_id")
+    if raw is None:
+        return
+    try:
+        outfit_id = UUID(str(raw))
+    except ValueError:
+        return
+    result = await db.execute(
+        select(Outfit.id).where(Outfit.id == outfit_id, Outfit.source == OutfitSource.record)
+    )
+    if result.first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Outfit not found", "error_code": "OUTFIT_NOT_FOUND"},
+        )
+
+
+router = APIRouter(
+    prefix="/outfits", tags=["Outfits"], dependencies=[Depends(_reject_record_outfit)]
+)
 
 
 class WeatherOverrideRequest(BaseModel):
@@ -769,7 +795,11 @@ async def bulk_delete_outfits(
         try:
             result = await db.execute(
                 select(Outfit).where(
-                    and_(Outfit.id == outfit_id, Outfit.user_id == current_user.id)
+                    and_(
+                        Outfit.id == outfit_id,
+                        Outfit.user_id == current_user.id,
+                        Outfit.source != OutfitSource.record,
+                    )
                 )
             )
             outfit = result.scalar_one_or_none()

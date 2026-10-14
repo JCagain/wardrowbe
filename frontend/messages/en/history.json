@@ -16,9 +16,9 @@
     "woreInstead": "Wore instead:"
   },
   "empty": {
-    "description": "Your outfit recommendation history will appear here once you start receiving suggestions.",
+    "description": "Upload an outfit photo to start logging",
     "getFirstSuggestion": "Get Your First Suggestion",
-    "title": "No recommendation history"
+    "title": "No records yet"
   },
   "loadError": "Failed to load history. Please try again.",
   "noOutfitsForDate": "No outfits for {date}",
@@ -91,6 +91,6 @@
     "sent": "Sent",
     "viewed": "Viewed"
   },
-  "subtitle": "View your past outfit recommendations",
+  "subtitle": "See and log what you wear each day",
   "title": "History"
 }

@@ -540,15 +540,25 @@ class WeatherService:
                 logger.warning(f"Day weather lookup failed for {day}: {e}")
                 return None
 
-        daily = data.get("daily") or {}
+        if not isinstance(data, dict):
+            logger.warning(f"Day weather lookup for {day}: unexpected body type")
+            return None
+        daily = data.get("daily")
+        if not isinstance(daily, dict):
+            return None
 
         def first(key: str):
-            values = daily.get(key) or []
-            return values[0] if values else None
+            values = daily.get(key)
+            if not isinstance(values, list) or not values:
+                return None
+            return values[0]
 
-        high = first("temperature_2m_max")
-        low = first("temperature_2m_min")
-        code = first("weather_code")
+        def number(v):
+            return v if isinstance(v, int | float) and not isinstance(v, bool) else None
+
+        high = number(first("temperature_2m_max"))
+        low = number(first("temperature_2m_min"))
+        code = number(first("weather_code"))
         if high is None and low is None and code is None:
             return None
         return DayWeather(
