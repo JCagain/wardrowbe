@@ -52,7 +52,7 @@ class TestTaggingDefaults:
 
 class TestCreateGating:
     @pytest.mark.asyncio
-    async def test_default_enqueues_and_stays_pending(self, client: AsyncClient, auth_headers):
+    async def test_default_does_not_enqueue_and_is_ready_pending(self, client: AsyncClient, auth_headers):
         with patch("app.api.items.create_pool", new_callable=AsyncMock) as mock_create_pool:
             mock_redis = AsyncMock()
             mock_redis.enqueue_job.return_value.job_id = "job-1"
@@ -65,9 +65,9 @@ class TestCreateGating:
 
         assert response.status_code == 201, response.json()
         data = response.json()
-        assert data["status"] == "processing"
+        assert data["status"] == "ready"
         assert data["tagging_status"] == "pending"
-        mock_redis.enqueue_job.assert_called_once()
+        mock_redis.enqueue_job.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skip_ai_marks_ready_and_pending(self, client: AsyncClient, auth_headers):
@@ -165,7 +165,7 @@ class TestBulkCreateGating:
         mock_create_pool.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_default_queues_and_stays_pending(self, client: AsyncClient, auth_headers):
+    async def test_default_does_not_queue_and_is_ready_pending(self, client: AsyncClient, auth_headers):
         files = [("images", ("shirt.jpg", _make_test_image_bytes(), "image/jpeg"))]
         with patch("app.api.items.create_pool", new_callable=AsyncMock) as mock_create_pool:
             mock_redis = AsyncMock()
@@ -179,9 +179,9 @@ class TestBulkCreateGating:
 
         assert response.status_code == 201, response.json()
         data = response.json()
-        assert data["results"][0]["item"]["status"] == "processing"
+        assert data["results"][0]["item"]["status"] == "ready"
         assert data["results"][0]["item"]["tagging_status"] == "pending"
-        mock_redis.enqueue_job.assert_called_once()
+        mock_redis.enqueue_job.assert_not_called()
 
 
 class TestBulkAnalyzeGating:
@@ -460,6 +460,17 @@ class TestTagsToColumnsProjection:
 
 
 class TestWorkerTaggingOrigin:
+    @pytest.fixture(autouse=True)
+    def _storage_with_item_images(self, tmp_path, monkeypatch):
+        # The worker resolves its input from the item row under storage_path (Ruling 48).
+        from PIL import Image as _Image
+
+        settings = tagging.get_settings().model_copy(update={"storage_path": str(tmp_path)})
+        monkeypatch.setattr(tagging, "get_settings", lambda: settings)
+        (tmp_path / "test").mkdir()
+        for name in ("worker-auto", "worker-retired", "worker-race"):
+            _Image.new("RGB", (8, 8)).save(tmp_path / "test" / f"{name}.jpg")
+
     @pytest.mark.asyncio
     async def test_happy_path_stamps_auto(self, db_session: AsyncSession, test_user, monkeypatch):
         item = ClothingItem(

@@ -1,17 +1,23 @@
 import asyncio
 import logging
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
 from arq import Retry
+from PIL import Image
 from sqlalchemy import select, update
 
 from app.config import get_settings
 from app.models.item import ClothingItem, ItemStatus, TaggedBy, TaggingStatus
 from app.models.preference import UserPreference
 from app.services.ai_service import AIService, ClothingTags
+from app.services.image_files import ImageFiles
 from app.utils import garment_vocabulary as gv
 from app.utils.color_migration import migrate_legacy_colors
 from app.utils.item_lifecycle import terminal_status
@@ -186,6 +192,48 @@ async def update_item_status_to_error(ctx: dict, item_id: str, error_msg: str) -
         logger.error(f"Failed to update item {item_id} status to error: {e}")
 
 
+def resolve_analysis_path(item: ClothingItem, storage_path: Path) -> Path:
+    """打标输入取「当前最佳像素」（fixes #16）。
+
+    有 mask 时用抠图结果合成白底，避免背景色污染颜色判断；否则直接用工作图
+    （工作图已经承载了校色结果）。合成图是临时产物，写在系统临时目录、不进
+    存储目录（Ruling 47）；调用方负责删除——用 `analysis_input` 自动清理。
+    """
+    work = storage_path / item.image_path
+    mask_rel = item.mask_path or None
+    if not mask_rel or not (storage_path / mask_rel).exists() or not work.exists():
+        return work
+
+    from app.services.mask_service import composite_on_white
+
+    with Image.open(work) as src:
+        flat = composite_on_white(src.convert("RGBA"))
+    tmp = tempfile.NamedTemporaryFile(
+        prefix=f"{Path(ImageFiles.of(item.image_path).base).name}_analyze_",
+        suffix=".jpg",
+        delete=False,
+    )
+    try:
+        with tmp:
+            flat.save(tmp, format="JPEG", quality=95)
+    except Exception:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise
+    return Path(tmp.name)
+
+
+@contextmanager
+def analysis_input(item: ClothingItem, storage_path: Path) -> Iterator[Path]:
+    """`resolve_analysis_path` + 临时合成图的清理（Ruling 47）。"""
+    work = storage_path / item.image_path
+    resolved = resolve_analysis_path(item, storage_path)
+    try:
+        yield resolved
+    finally:
+        if resolved != work:
+            resolved.unlink(missing_ok=True)
+
+
 async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, Any]:
     """
     Analyze an item's image and update it with AI-generated tags.
@@ -193,7 +241,7 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
     Args:
         ctx: arq context
         item_id: UUID of the item to tag
-        image_path: Path to the image file
+        image_path: kept for queue compatibility; the input is re-derived from the item row
 
     Returns:
         Dict with status and tags
@@ -206,16 +254,9 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
         return {"status": "skipped", "reason": "vision disabled", "item_id": item_id}
 
     try:
-        # Verify image exists
-        path = Path(image_path)
-        if not path.exists():
-            error_msg = f"Image not found: {image_path}"
-            logger.error(error_msg)
-            await update_item_status_to_error(ctx, item_id, error_msg)
-            return {"status": "error", "error": "Image not found"}
-
         # Get user's AI endpoints from preferences, and mark this attempt as started
         ai_endpoints = None
+        analysis_item = None
         db = get_db_session(ctx)
         try:
             # Get the item to find user_id
@@ -223,6 +264,10 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
             item = result.scalar_one_or_none()
             if item is None:
                 raise ItemVanishedError(f"Item {item_id} not visible to worker")
+
+            # Ruling 48: the input comes from the DB row, not the enqueued
+            # `image_path` arg, which can be stale once the primary became a cut-out.
+            analysis_item = SimpleNamespace(image_path=item.image_path, mask_path=item.mask_path)
 
             # Overwritten on every attempt (not set-once), so a retry's backoff wait
             # reads as "queued for retry," not "still analyzing."
@@ -246,11 +291,19 @@ async def tag_item_image(ctx: dict, item_id: str, image_path: str) -> dict[str, 
         finally:
             await db.close()
 
+        storage = Path(get_settings().storage_path)
+        if not (storage / analysis_item.image_path).exists():
+            error_msg = f"Image not found: {analysis_item.image_path}"
+            logger.error(error_msg)
+            await update_item_status_to_error(ctx, item_id, error_msg)
+            return {"status": "error", "error": "Image not found"}
+
         # Analyze with AI (uses custom endpoints if available)
         ai_service = AIService(endpoints=ai_endpoints)
-        tags = await asyncio.wait_for(
-            ai_service.analyze_image(path), timeout=_tagging_call_budget(ai_service)
-        )
+        with analysis_input(analysis_item, storage) as path:
+            tags = await asyncio.wait_for(
+                ai_service.analyze_image(path), timeout=_tagging_call_budget(ai_service)
+            )
 
         logger.info(
             f"AI analysis complete for item {item_id}: type={tags.type}, color={tags.primary_color}"

@@ -578,7 +578,7 @@ class TestBulkCreateSkipAI:
         mock_redis.enqueue_job.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_default_queues_ai_tagging(self, client: AsyncClient, auth_headers):
+    async def test_default_does_not_queue_ai_tagging(self, client: AsyncClient, auth_headers):
         files = [("images", ("shirt.jpg", _make_test_image_bytes(), "image/jpeg"))]
         with patch("app.api.items.create_pool", new_callable=AsyncMock) as mock_create_pool:
             mock_redis = AsyncMock()
@@ -593,11 +593,12 @@ class TestBulkCreateSkipAI:
         assert response.status_code == 201
         data = response.json()
         assert data["successful"] == 1
-        assert data["results"][0]["item"]["status"] == "processing"
-        mock_redis.enqueue_job.assert_called_once()
+        assert data["results"][0]["item"]["status"] == "ready"
+        assert data["results"][0]["item"]["tagging_status"] == "pending"
+        mock_redis.enqueue_job.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_default_queues_persists_ai_job_id(
+    async def test_default_leaves_ai_job_id_empty(
         self, client: AsyncClient, auth_headers, db_session: AsyncSession
     ):
         files = [("images", ("shirt.jpg", _make_test_image_bytes(), "image/jpeg"))]
@@ -614,7 +615,8 @@ class TestBulkCreateSkipAI:
         assert response.status_code == 201
         item_id = UUID(response.json()["results"][0]["item"]["id"])
         result = await db_session.execute(select(ClothingItem).where(ClothingItem.id == item_id))
-        assert result.scalar_one().ai_job_id == "fake-job-id"
+        assert result.scalar_one().ai_job_id is None
+        mock_redis.enqueue_job.assert_not_called()
 
 
 class TestCancelAnalysis:

@@ -9,7 +9,7 @@ import pytest
 from arq import Retry
 from httpx import AsyncClient
 from PIL import Image, ImageDraw
-from sqlalchemy import update
+from sqlalchemy import event, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item import ClothingItem, ItemStatus
@@ -17,6 +17,24 @@ from app.services.ai_service import AIService, ClothingTags
 from app.workers import tagging as tagging_module
 from app.workers.tagging import tag_item_image
 from app.workers.worker import WorkerSettings, stale_processing_cutoff_seconds
+
+
+@pytest.fixture(autouse=True)
+def _storage_with_item_images(tmp_path, monkeypatch):
+    """The worker now resolves its input from the item row under storage_path
+    (Ruling 48), so every ClothingItem inserted here gets a real image file."""
+    settings = tagging_module.get_settings().model_copy(update={"storage_path": str(tmp_path)})
+    monkeypatch.setattr(tagging_module, "get_settings", lambda: settings)
+
+    def _write(mapper, connection, target):
+        if target.image_path:
+            f = tmp_path / target.image_path
+            f.parent.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (8, 8), (1, 2, 3)).save(f, format="JPEG")
+
+    event.listen(ClothingItem, "before_insert", _write)
+    yield
+    event.remove(ClothingItem, "before_insert", _write)
 
 
 def _image_bytes(i: int = 0) -> bytes:
@@ -60,12 +78,12 @@ def _patch_commit(recorder: _OrderRecorder):
     return patch.object(AsyncSession, "commit", recording_commit)
 
 
-class TestEnqueueHappensAfterCommit:
-    """The worker runs in a separate process against its own connection, so a job
-    enqueued before the row is committed can dequeue against an invisible row."""
+class TestUploadNeverEnqueues:
+    """D2 (Ruling 45): upload no longer auto-tags; the manual analyze endpoint owns
+    enqueue (and its commit-before-enqueue ordering)."""
 
     @pytest.mark.asyncio
-    async def test_single_upload_commits_before_enqueue(
+    async def test_single_upload_does_not_enqueue(
         self, client: AsyncClient, auth_headers, db_session: AsyncSession
     ):
         rec = _OrderRecorder()
@@ -81,11 +99,11 @@ class TestEnqueueHappensAfterCommit:
             )
 
         assert resp.status_code == 201
-        assert "enqueue" in rec.events
-        assert rec.events.index("commit") < rec.events.index("enqueue"), rec.events
+        assert resp.json()["status"] == "ready"
+        assert "enqueue" not in rec.events
 
     @pytest.mark.asyncio
-    async def test_bulk_upload_commits_before_every_enqueue(
+    async def test_bulk_upload_does_not_enqueue(
         self, client: AsyncClient, auth_headers, db_session: AsyncSession
     ):
         rec = _OrderRecorder()
@@ -99,10 +117,8 @@ class TestEnqueueHappensAfterCommit:
 
         assert resp.status_code == 201
         assert resp.json()["successful"] == 3
-        assert rec.events.count("enqueue") == 3
-        for idx, event in enumerate(rec.events):
-            if event == "enqueue":
-                assert "commit" in rec.events[:idx], f"enqueue at {idx} with no prior commit"
+        assert "enqueue" not in rec.events
+        pool.assert_not_called()
 
 
 class TestWorkerFailsLoudly:

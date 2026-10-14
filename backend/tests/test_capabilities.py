@@ -233,7 +233,12 @@ async def test_tag_item_image_runs_ai_when_enabled(monkeypatch):
     """Regression: vision on still reaches the AI path (constructs a client)."""
     from app.workers import tagging
 
-    monkeypatch.setattr(tagging, "get_settings", lambda: Settings())
+    import os
+
+    # The input is resolved from the item row under storage_path (Ruling 48).
+    monkeypatch.setattr(
+        tagging, "get_settings", lambda: Settings(storage_path=os.path.dirname(__file__))
+    )
 
     constructed = {"called": False}
 
@@ -255,7 +260,12 @@ async def test_tag_item_image_runs_ai_when_enabled(monkeypatch):
     # out to let the run reach the AI path at all.
     class _Result:
         def scalar_one_or_none(self):
-            return SimpleNamespace(user_id=uuid4(), ai_endpoints=None)
+            return SimpleNamespace(
+                user_id=uuid4(),
+                ai_endpoints=None,
+                image_path=os.path.basename(__file__),
+                mask_path=None,
+            )
 
     class _Session:
         async def execute(self, *args, **kwargs):
@@ -269,7 +279,7 @@ async def test_tag_item_image_runs_ai_when_enabled(monkeypatch):
 
     monkeypatch.setattr(tagging, "get_db_session", lambda ctx: _Session())
 
-    # Missing image short-circuits before construction, so point at this file.
+    # A missing image short-circuits before construction, so the stub row points at this file.
     # The failure comes back as Retry because attempts remain; what matters here
     # is that the AI client was built at all.
     with pytest.raises(Retry):

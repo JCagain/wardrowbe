@@ -201,7 +201,7 @@ async def create_item(
     lifecycle: str | None = Form(None),  # active | idle | retired（权威）
     archive_reason: str | None = Form(None),
     favorite: bool = Form(False),
-    skip_ai: bool = Form(False),
+    skip_ai: bool = Form(False),  # compat only (D2): upload never auto-tags now
 ) -> ItemResponse:
     # Validate and process image
     image_service = ImageService()
@@ -271,33 +271,10 @@ async def create_item(
         image_paths=image_paths,
     )
 
-    do_auto_tag = settings.effective_ai_vision_enabled and not skip_ai
-
-    if do_auto_tag:
-        # Commit before enqueuing: the worker runs in another process on its own
-        # connection, so a job handed over while this transaction is still open
-        # dequeues against a row it cannot see.
-        await db.commit()
-        try:
-            redis = await create_pool(get_redis_settings())
-            try:
-                full_image_path = f"{settings.storage_path}/{image_paths['image_path']}"
-                job = await redis.enqueue_job(
-                    "tag_item_image",
-                    str(item.id),
-                    full_image_path,
-                    _queue_name=TAGGING_QUEUE,
-                )
-                item.ai_job_id = job.job_id
-                await db.commit()
-                await db.refresh(item, attribute_names=["updated_at"])
-                logger.info(f"Queued AI tagging job for item {item.id}")
-            finally:
-                await redis.aclose()
-        except Exception as e:
-            logger.error(f"Failed to queue AI tagging job: {e}")
-    else:
-        item = await item_service.mark_pending(item, set_ready=True)
+    # D2 (Ruling 45/46): strict order calibrate -> matte -> tag, so upload never
+    # auto-tags. Tagging is a manual action (POST /items/{id}/analyze).
+    # `skip_ai` is accepted for client compat but no longer has any effect.
+    item = await item_service.mark_pending(item, set_ready=True)
 
     return ItemResponse.model_validate(item)
 
@@ -307,7 +284,7 @@ async def bulk_create_items(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     images: list[UploadFile] = File(..., description="Multiple image files to upload"),
-    skip_ai: bool = Form(False),
+    skip_ai: bool = Form(False),  # compat only (D2): upload never auto-tags now
     upload_keys: list[str] | None = Form(
         None,
         description="Optional per-file idempotency keys, same order/length as images. "
@@ -345,170 +322,136 @@ async def bulk_create_items(
     # MissingGreenlet - use this plain value everywhere instead.
     user_id = current_user.id
 
-    do_auto_tag = settings.effective_ai_vision_enabled and not skip_ai
+    for idx, upload_file in enumerate(images):
+        filename = upload_file.filename or "unknown.jpg"
+        upload_key = upload_keys[idx] if upload_keys is not None else None
 
-    redis = None
-    if do_auto_tag:
         try:
-            redis = await create_pool(get_redis_settings())
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis for bulk upload: {e}")
-
-    try:
-        for idx, upload_file in enumerate(images):
-            filename = upload_file.filename or "unknown.jpg"
-            upload_key = upload_keys[idx] if upload_keys is not None else None
-
-            try:
-                # Fast path: this exact queued upload already succeeded (a retried
-                # chunk from the durable upload queue). Skip re-reading/re-storing
-                # the file entirely - the DB unique constraint below is the
-                # correctness backstop for the race this can't close on its own.
-                if upload_key is not None:
-                    existing_by_key = await item_service.find_by_upload_key(user_id, upload_key)
-                    if existing_by_key:
-                        results.append(
-                            BulkUploadResult(
-                                filename=filename,
-                                success=True,
-                                item=ItemResponse.model_validate(existing_by_key),
-                                duplicate=True,
-                                existing_item_id=existing_by_key.id,
-                            )
+            # Fast path: this exact queued upload already succeeded (a retried
+            # chunk from the durable upload queue). Skip re-reading/re-storing
+            # the file entirely - the DB unique constraint below is the
+            # correctness backstop for the race this can't close on its own.
+            if upload_key is not None:
+                existing_by_key = await item_service.find_by_upload_key(user_id, upload_key)
+                if existing_by_key:
+                    results.append(
+                        BulkUploadResult(
+                            filename=filename,
+                            success=True,
+                            item=ItemResponse.model_validate(existing_by_key),
+                            duplicate=True,
+                            existing_item_id=existing_by_key.id,
                         )
-                        successful += 1
-                        continue
+                    )
+                    successful += 1
+                    continue
 
-                # Read and validate image
-                content = await upload_file.read()
-                content_type = upload_file.content_type or "application/octet-stream"
+            # Read and validate image
+            content = await upload_file.read()
+            content_type = upload_file.content_type or "application/octet-stream"
 
-                if not image_service.validate_image(content, content_type):
+            if not image_service.validate_image(content, content_type):
+                results.append(
+                    BulkUploadResult(
+                        filename=filename,
+                        success=False,
+                        error="Invalid image format. Supported: JPEG, PNG, WebP, HEIC",
+                    )
+                )
+                failed += 1
+                continue
+
+            # Check for duplicates BEFORE storing
+            try:
+                image_hash = image_service.compute_phash(content, filename)
+                existing = await item_service.find_duplicate_by_hash(user_id, image_hash)
+                if existing:
                     results.append(
                         BulkUploadResult(
                             filename=filename,
                             success=False,
-                            error="Invalid image format. Supported: JPEG, PNG, WebP, HEIC",
+                            error="Duplicate image - already exists in wardrobe",
                         )
                     )
                     failed += 1
                     continue
-
-                # Check for duplicates BEFORE storing
-                try:
-                    image_hash = image_service.compute_phash(content, filename)
-                    existing = await item_service.find_duplicate_by_hash(user_id, image_hash)
-                    if existing:
-                        results.append(
-                            BulkUploadResult(
-                                filename=filename,
-                                success=False,
-                                error="Duplicate image - already exists in wardrobe",
-                            )
-                        )
-                        failed += 1
-                        continue
-                except Exception as e:
-                    logger.warning(f"Failed to check duplicate for {filename}: {e}")
-                    # Continue without duplicate check
-
-                # Process and store image
-                image_paths = await image_service.process_and_store(
-                    user_id=user_id,
-                    image_data=content,
-                    original_filename=filename,
-                )
-
-                # Create item with unknown type (AI will detect)
-                item_data = ItemCreate(type="unknown")
-                item = await item_service.create(
-                    user_id=user_id,
-                    item_data=item_data,
-                    image_paths=image_paths,
-                    upload_key=upload_key,
-                )
-
-                if not do_auto_tag:
-                    item = await item_service.mark_pending(item, set_ready=True)
-                elif redis:
-                    # Commit per item before handing the job over. Batching the
-                    # commit to the end of the loop leaves every row invisible to
-                    # the worker for the whole upload, which strands the batch in
-                    # `processing` whenever the AI is fast enough to win the race.
-                    await db.commit()
-                    try:
-                        full_image_path = f"{settings.storage_path}/{image_paths['image_path']}"
-                        job = await redis.enqueue_job(
-                            "tag_item_image",
-                            str(item.id),
-                            full_image_path,
-                            _queue_name=TAGGING_QUEUE,
-                        )
-                        item.ai_job_id = job.job_id
-                        await db.commit()
-                        await db.refresh(item, attribute_names=["updated_at"])
-                        logger.info(f"Queued AI tagging for bulk item {item.id}")
-                    except Exception as e:
-                        logger.error(f"Failed to queue AI tagging for {item.id}: {e}")
-
-                results.append(
-                    BulkUploadResult(
-                        filename=filename,
-                        success=True,
-                        item=ItemResponse.model_validate(item),
-                    )
-                )
-                successful += 1
-
-            except ValueError as e:
-                results.append(
-                    BulkUploadResult(
-                        filename=filename,
-                        success=False,
-                        error=str(e),
-                    )
-                )
-                failed += 1
-            except IntegrityError:
-                # Only raised by the upload_key unique constraint on this table -
-                # a concurrent request (a re-entrant/multi-tab drain retry) won the
-                # race and already created the item for this exact queued upload.
-                # A flush-level integrity error poisons the session for the rest of
-                # this request, so it must be rolled back before the loop continues,
-                # and the files this iteration already wrote need cleanup or every
-                # retry of the same race leaks orphaned images on disk.
-                await db.rollback()
-                image_service.delete_images(image_paths)
-                existing_by_key = (
-                    await item_service.find_by_upload_key(user_id, upload_key)
-                    if upload_key is not None
-                    else None
-                )
-                results.append(
-                    BulkUploadResult(
-                        filename=filename,
-                        success=True,
-                        item=ItemResponse.model_validate(existing_by_key)
-                        if existing_by_key
-                        else None,
-                        duplicate=True,
-                        existing_item_id=existing_by_key.id if existing_by_key else None,
-                    )
-                )
-                successful += 1
             except Exception as e:
-                logger.error(f"Error processing {filename}: {e}")
-                results.append(
-                    BulkUploadResult(
-                        filename=filename,
-                        success=False,
-                        error="Failed to process image",
-                    )
+                logger.warning(f"Failed to check duplicate for {filename}: {e}")
+                # Continue without duplicate check
+
+            # Process and store image
+            image_paths = await image_service.process_and_store(
+                user_id=user_id,
+                image_data=content,
+                original_filename=filename,
+            )
+
+            # Create item with unknown type (AI will detect)
+            item_data = ItemCreate(type="unknown")
+            item = await item_service.create(
+                user_id=user_id,
+                item_data=item_data,
+                image_paths=image_paths,
+                upload_key=upload_key,
+            )
+
+            item = await item_service.mark_pending(item, set_ready=True)
+
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=True,
+                    item=ItemResponse.model_validate(item),
                 )
-                failed += 1
-    finally:
-        if redis:
-            await redis.aclose()
+            )
+            successful += 1
+
+        except ValueError as e:
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=False,
+                    error=str(e),
+                )
+            )
+            failed += 1
+        except IntegrityError:
+            # Only raised by the upload_key unique constraint on this table -
+            # a concurrent request (a re-entrant/multi-tab drain retry) won the
+            # race and already created the item for this exact queued upload.
+            # A flush-level integrity error poisons the session for the rest of
+            # this request, so it must be rolled back before the loop continues,
+            # and the files this iteration already wrote need cleanup or every
+            # retry of the same race leaks orphaned images on disk.
+            await db.rollback()
+            image_service.delete_images(image_paths)
+            existing_by_key = (
+                await item_service.find_by_upload_key(user_id, upload_key)
+                if upload_key is not None
+                else None
+            )
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=True,
+                    item=ItemResponse.model_validate(existing_by_key)
+                    if existing_by_key
+                    else None,
+                    duplicate=True,
+                    existing_item_id=existing_by_key.id if existing_by_key else None,
+                )
+            )
+            successful += 1
+        except Exception as e:
+            logger.error(f"Error processing {filename}: {e}")
+            results.append(
+                BulkUploadResult(
+                    filename=filename,
+                    success=False,
+                    error="Failed to process image",
+                )
+            )
+            failed += 1
 
     return BulkUploadResponse(
         total=len(images),
