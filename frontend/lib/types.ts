@@ -199,6 +199,8 @@ export interface Preferences {
   prefer_underused_items: boolean;
   variety_level: 'low' | 'moderate' | 'high';
   ai_endpoints: AIEndpoint[];
+  cities: City[];
+  default_city: string | null;
 }
 
 // Color options for the app, derived from the generated vocabulary (single source).
@@ -414,4 +416,65 @@ export interface GeneratePairingsRequest {
 export interface GeneratePairingsResponse {
   generated: number;
   pairings: Pairing[];
+}
+
+// 记录（spec §3.1）——后端 /records 契约
+export interface City {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface RecordWeather {
+  temp_high: number | null;
+  temp_low: number | null;
+  condition: string | null;
+}
+
+export interface RecordPhoto {
+  id: string;
+  position: number;
+  image_url: string;
+  medium_url?: string | null;
+  thumbnail_url?: string | null;
+}
+
+export interface RecordItem {
+  id: string;
+  type: string;
+  name?: string | null;
+  primary_colors: string[];
+  thumbnail_url?: string | null;
+}
+
+export interface OutfitRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  season: string | null;
+  city: string | null;
+  weather: RecordWeather | null;
+  occasion: string | null;
+  notes: string | null;
+  photos: RecordPhoto[];
+  items: RecordItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecordListResponse {
+  records: OutfitRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+export interface RecordInput {
+  date: string;
+  season?: string | null;
+  city?: string | null;
+  weather?: RecordWeather | null;
+  occasion?: string | null;
+  notes?: string | null;
+  item_ids: string[];
 }

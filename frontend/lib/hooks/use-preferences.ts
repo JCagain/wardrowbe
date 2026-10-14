@@ -77,3 +77,27 @@ export function useTestAIEndpoint() {
     },
   });
 }
+
+export function useAddCity() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  return useMutation({
+    mutationFn: (name: string) => {
+      if (session?.accessToken) setAccessToken(session.accessToken as string);
+      return api.post<Preferences>('/users/me/preferences/cities', { name });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
+  });
+}
+
+export function useRemoveCity() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  return useMutation({
+    mutationFn: (name: string) => {
+      if (session?.accessToken) setAccessToken(session.accessToken as string);
+      return api.delete<Preferences>(`/users/me/preferences/cities/${encodeURIComponent(name)}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
+  });
+}
