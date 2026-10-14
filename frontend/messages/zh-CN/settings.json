@@ -64,6 +64,20 @@
     "title": "身体测量",
     "unitSystem": "单位制"
   },
+  "cities": {
+    "title": "城市",
+    "description": "记录可选的城市；选了城市会按日期预填天气。",
+    "default": "默认城市",
+    "noDefault": "不设",
+    "addPlaceholder": "城市名",
+    "add": "添加",
+    "remove": "删除 {name}",
+    "added": "已添加城市",
+    "removed": "已删除城市",
+    "notFound": "找不到该城市",
+    "duplicate": "城市已存在",
+    "unavailable": "城市查询服务暂不可用"
+  },
   "colors": {
     "colorsToAvoid": "想避免的颜色",
     "description": "选择您喜欢和想要避免的颜色",

@@ -29,6 +29,7 @@ import { Preferences, StyleProfile, AIEndpoint } from '@/lib/types';
 import { useClothingColors, useOccasions } from '@/lib/hooks/use-translated-constants';
 import { toF, toCelsius } from '@/lib/temperature';
 import { toast } from 'sonner';
+import { CitySettingsCard } from '@/components/settings/city-settings-card';
 import { useTranslations } from 'next-intl';
 
 const CM_TO_IN = 0.393701;
@@ -826,6 +827,8 @@ export default function SettingsPage() {
             />
           </CardContent>
         </Card>
+
+        <CitySettingsCard />
 
         {/* Temperature & Comfort */}
         <Card>

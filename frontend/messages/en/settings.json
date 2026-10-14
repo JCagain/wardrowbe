@@ -64,6 +64,20 @@
     "title": "Body Measurements",
     "unitSystem": "Unit System"
   },
+  "cities": {
+    "title": "Cities",
+    "description": "Cities available on records. Weather is prefilled from the selected city.",
+    "default": "Default city",
+    "noDefault": "None",
+    "addPlaceholder": "City name",
+    "add": "Add",
+    "remove": "Remove {name}",
+    "added": "City added",
+    "removed": "City removed",
+    "notFound": "City not found",
+    "duplicate": "City already exists",
+    "unavailable": "City lookup is unavailable"
+  },
   "colors": {
     "colorsToAvoid": "Colors to Avoid",
     "description": "Select colors you love and colors to avoid in recommendations",
