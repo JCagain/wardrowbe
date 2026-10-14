@@ -22,7 +22,7 @@
 | 14 | 还原重抠（`_orig.jpg`） | ✅（生命周期见 §二「抠图前备份」） | 既有 + §三 |
 | 55 | compose 转发 `AI_API_KEY` | ✅ | 6859f26 |
 | 62 / 63 | 校色、mask 测试覆盖 | ✅ | 随上列各 commit |
-| 17 / 18 | 打标闭集：颜色/风格/季节/类型从在役词表渲染（slug=中文名）；AI 输出 primary_colors[] + secondary_colors[] 直写列 | ✅ | c72a00d, e132635, d60185b, 940ff90, c17f3b1, 039648f, 9881dab |
+| 17 / 18 | 打标闭集：颜色/风格/季节从在役词表渲染为 slug=中文名；类型只渲染 slug（无中文名），AI 回中文名时按在役标签反查回 slug；AI 输出 primary_colors[] + secondary_colors[] 直写列 | ✅ | c72a00d, e132635, d60185b, 940ff90, c17f3b1, 039648f, 9881dab |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -40,6 +40,7 @@
 | **Ruling 28** | mask 与图像尺寸不一致即报错（400），不静默缩放——没有合法路径会造成不一致。 |
 | **Ruling 38** | 校色状态是**会话态**，不落库。刷新后步骤条显示「未校色」；重置随时可用，不影响正确性。将来若加列，只改详情页初始化处。 |
 | **抠图前备份** | `_orig.jpg` 是**当前抠图**的来源像素：抠图时首次生成；旋转时同步旋转；重新校色或还原原图时作废（删文件、`original_image_path` 置空）；画笔补抠与重抠都从它取 RGB（rembg 会把透明区 RGB 清零）。 |
+| **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
 | **Ruling 45** | 单张与批量上传两条路径都不再自动入队 `tag_item_image`（含批量只为自动打标而建的 redis 池）；`skip_ai` 入参保留但不起作用（D2 兼容）。 |
 | **Ruling 46** | 上传后 `mark_pending(set_ready=True)`：status=ready、tagging_status=pending（`set_ready=False` 会让物品卡在 processing）。 |
 | **Ruling 47** | 白底合成图是临时产物：写系统临时目录、不进存储目录，`analysis_input()` 在 `finally` 里删除。 |
@@ -48,11 +49,11 @@
 | **Ruling 51** | 校色端点（detect/apply/manual/reset）在 `calibration_original_path` 为 NULL 时惰性补种 `_src`（`ImageService.ensure_calibration_source`）并落列：盘上已有且尺寸吻合 → 原样收养；否则有尺寸吻合的 `_orig` 备份 → 取备份像素；否则取工作图转 RGB（JPEG q95）；已有但尺寸不符 → 告警后覆盖。取代原先的 400 "no calibration source"。 |
 | **Ruling 52** | `calibration/detect` 读校色副本 `_src`，不读工作图：抠图后工作图背景 RGB 已清零，卡条是黑的，永远检不出。 |
 | **Ruling 53** | 详情对话框在旋转 / 还原原图 / 替换主图 / 设为主图成功后清掉旧检出框（`pending` 退回 `none`）；`restore-original` 补上与 remove-background / mask 同款的「后台 job 在跑 → 409」守卫。 |
+| **Ruling 54**（已知取舍） | 无 `_orig` 备份的旧抠图物品，惰性补种 `_src` 时取到的是黑底工作图（RGB 已清零），补种出黑底 `_src`。只记取舍、不改码：分支前抠图都留 `_orig`，仅备份丢失时才会出现。 |
 | **Ruling 55** | 提示词候选写成 `slug=中文名`，解析取 `=` 左侧；停用条目不进提示词、AI 回了也丢弃，但不影响旧物品的历史值与手改。 |
 | **Ruling 56** | AI 仍回旧 `primary_color` / `colors` 时按字段走旧键兼容解析；`tags` blob 自 2026-10-14 起写新键（`primary_colors` / `secondary_colors`），旧键只读兼容。 |
 | **Ruling 57** | `tags` blob 的颜色投影按列进行：只有过滤后非空的值才写入，空不等于清空；新指派主色而无可用辅色时，从现有辅色里剔除与新主色重叠的颜色。 |
 | **Ruling 58** | `pattern` / `fit` 仍是代码内固定集合（spec §1.4 输出清单不含二者，不在本次闭集化范围）。 |
-| **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
