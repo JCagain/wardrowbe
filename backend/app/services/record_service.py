@@ -25,6 +25,7 @@ from app.schemas.record import (
     RecordUpdate,
     RecordWeather,
 )
+from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
 from app.utils.clothing import canonical_item_order
 from app.utils.season import season_for_date
@@ -39,6 +40,14 @@ class RecordItemsError(ValueError):
 
 
 class PhotoRequiredError(ValueError):
+    pass
+
+
+class PhotoNotFoundError(LookupError):
+    pass
+
+
+class LastPhotoError(ValueError):
     pass
 
 
@@ -333,3 +342,52 @@ class RecordService:
         # 文件最后删：DB 失败回滚时照片还在。
         for paths in photo_paths:
             self.images.delete_images(paths)
+
+    def _find_photo(self, outfit: Outfit, photo_id: UUID) -> OutfitPhoto:
+        for photo in outfit.photos:
+            if photo.id == photo_id:
+                return photo
+        raise PhotoNotFoundError(str(photo_id))
+
+    async def add_photo(self, user_id: UUID, record_id: UUID, photo: PhotoUpload) -> Outfit:
+        outfit = await self._load(user_id, record_id)
+        (paths,) = await self._store_photos(user_id, [photo])
+        next_pos = max((p.position for p in outfit.photos), default=-1) + 1
+        self.db.add(
+            OutfitPhoto(
+                outfit_id=outfit.id,
+                position=next_pos,
+                image_path=paths["image_path"],
+                medium_path=paths.get("medium_path"),
+                thumbnail_path=paths.get("thumbnail_path"),
+            )
+        )
+        await self.db.flush()
+        return await self._load(user_id, record_id)
+
+    async def remove_photo(self, user_id: UUID, record_id: UUID, photo_id: UUID) -> Outfit:
+        outfit = await self._load(user_id, record_id)
+        photo = self._find_photo(outfit, photo_id)
+        if len(outfit.photos) <= 1:
+            raise LastPhotoError("a record keeps at least one photo")
+        paths = {
+            "image_path": photo.image_path,
+            "medium_path": photo.medium_path,
+            "thumbnail_path": photo.thumbnail_path,
+        }
+        outfit.photos.remove(photo)  # delete-orphan
+        for pos, p in enumerate(outfit.photos):
+            p.position = pos
+        await self.db.flush()
+        self.images.delete_images(paths)
+        return await self._load(user_id, record_id)
+
+    async def rotate_photo(
+        self, user_id: UUID, record_id: UUID, photo_id: UUID, direction: str
+    ) -> Outfit:
+        outfit = await self._load(user_id, record_id)
+        photo = self._find_photo(outfit, photo_id)
+        paths = self.images.rotate_image(photo.image_path, direction)
+        assign_size_paths(photo, paths)
+        await self.db.flush()
+        return await self._load(user_id, record_id)
