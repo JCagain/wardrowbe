@@ -1,7 +1,7 @@
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import httpx
 import redis.asyncio as aioredis
@@ -102,6 +102,49 @@ WMO_CODES = {
     96: "thunderstorm with hail",
     99: "thunderstorm with hail",
 }
+
+# 记录天气状况闭集（spec §3.1，用户裁定只存 最高温/最低温/状况）。
+# slug 进库，中文名由前端 i18n 渲染（history.records.conditions.*）。
+RECORD_CONDITIONS: tuple[str, ...] = (
+    "sunny", "partly_cloudy", "cloudy", "foggy", "drizzle",
+    "rain", "heavy_rain", "sleet", "snow", "thunderstorm",
+)
+
+_RECORD_CONDITION_BY_CODE: dict[int, str] = {
+    0: "sunny", 1: "sunny",
+    2: "partly_cloudy",
+    3: "cloudy",
+    45: "foggy", 48: "foggy",
+    51: "drizzle", 53: "drizzle", 55: "drizzle",
+    56: "sleet", 57: "sleet", 66: "sleet", 67: "sleet",
+    61: "rain", 63: "rain", 80: "rain", 81: "rain",
+    65: "heavy_rain", 82: "heavy_rain",
+    71: "snow", 73: "snow", 75: "snow", 77: "snow", 85: "snow", 86: "snow",
+    95: "thunderstorm", 96: "thunderstorm", 99: "thunderstorm",
+}
+
+# forecast 端点可用 start_date/end_date 覆盖「过去约 92 天 ~ 未来 16 天」；
+# archive 端点有约 5 天延迟。取 60 天作分界，两边都留余量。
+FORECAST_PAST_DAYS = 60
+FORECAST_FUTURE_DAYS = 15
+
+
+def record_condition_for_code(code: int) -> str | None:
+    return _RECORD_CONDITION_BY_CODE.get(code)
+
+
+@dataclass
+class DayWeather:
+    temp_high: float | None
+    temp_low: float | None
+    condition: str | None
+
+    def to_dict(self) -> dict:
+        return {
+            "temp_high": self.temp_high,
+            "temp_low": self.temp_low,
+            "condition": self.condition,
+        }
 
 
 CACHE_TTL = 3600  # 1 hour
@@ -461,6 +504,58 @@ class WeatherService:
             )
 
         return forecasts
+
+    async def get_weather_for_date(
+        self, latitude: float, longitude: float, day: date, today: date
+    ) -> DayWeather | None:
+        """记录天气预填（spec §3.1 / §10.16）：拉不到就返回 None，调用方留空手填。
+
+        `today` 由调用方按用户时区给出，决定走 forecast 还是 archive。
+        """
+        self._validate_coordinates(latitude, longitude)
+
+        delta = (day - today).days
+        if delta > FORECAST_FUTURE_DAYS:
+            return None
+        if delta >= -FORECAST_PAST_DAYS:
+            url = f"{self.base_url}/forecast"
+        else:
+            url = f"{settings.openmeteo_archive_url}/archive"
+
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "daily": ["temperature_2m_max", "temperature_2m_min", "weather_code"],
+            "start_date": day.isoformat(),
+            "end_date": day.isoformat(),
+            "timezone": "auto",
+        }
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            try:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+            except (httpx.HTTPError, ValueError) as e:
+                logger.warning(f"Day weather lookup failed for {day}: {e}")
+                return None
+
+        daily = data.get("daily") or {}
+
+        def first(key: str):
+            values = daily.get(key) or []
+            return values[0] if values else None
+
+        high = first("temperature_2m_max")
+        low = first("temperature_2m_min")
+        code = first("weather_code")
+        if high is None and low is None and code is None:
+            return None
+        return DayWeather(
+            temp_high=high,
+            temp_low=low,
+            condition=record_condition_for_code(int(code)) if code is not None else None,
+        )
 
     async def get_tomorrow_weather(self, latitude: float, longitude: float) -> WeatherData:
         """

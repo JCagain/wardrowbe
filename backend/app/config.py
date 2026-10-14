@@ -90,6 +90,8 @@ class Settings(BaseSettings):
 
     # Weather
     openmeteo_url: str = Field(default="https://api.open-meteo.com/v1")
+    # 历史天气（spec §10.16）：forecast 端点只回溯约 92 天，更早的走 archive。
+    openmeteo_archive_url: str = Field(default="https://archive-api.open-meteo.com/v1")
     geocoding_user_agent: str | None = Field(default=None)
 
     # Notifications - default ntfy channel (used when user has none configured)
