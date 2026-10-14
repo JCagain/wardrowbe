@@ -38,8 +38,8 @@ export function clampToImage(
   naturalHeight: number,
 ): { x: number; y: number } {
   return {
-    x: Math.min(Math.max(p.x, 0), naturalWidth - 1),
-    y: Math.min(Math.max(p.y, 0), naturalHeight - 1),
+    x: Math.min(Math.max(p.x, 0), Math.max(naturalWidth - 1, 0)),
+    y: Math.min(Math.max(p.y, 0), Math.max(naturalHeight - 1, 0)),
   };
 }
 

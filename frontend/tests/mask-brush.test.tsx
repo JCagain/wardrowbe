@@ -40,6 +40,10 @@ describe('clampToImage', () => {
     expect(clampToImage({ x: 400, y: 300 }, 800, 600)).toEqual({ x: 400, y: 300 });
     expect(clampToImage({ x: 799, y: 599 }, 800, 600)).toEqual({ x: 799, y: 599 });
   });
+
+  it('never returns a negative coordinate for a zero-sized image', () => {
+    expect(clampToImage({ x: 5, y: 5 }, 0, 0)).toEqual({ x: 0, y: 0 });
+  });
 });
 
 // T7-B：每个 pointermove 一个 dab 会把长拖拽顶到 MaskEditIn.strokes 的
