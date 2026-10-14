@@ -457,7 +457,12 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
 
   // AI-generated tags
   const tags = item.tags || {};
-  const hasAiTags = !!(tags.colors?.length || tags.pattern || tags.material ||
+  const aiColors = [
+    ...(tags.primary_colors ?? []),
+    ...(tags.secondary_colors ?? []),
+    ...(tags.primary_colors || tags.secondary_colors ? [] : tags.colors ?? []),
+  ];
+  const hasAiTags = !!(aiColors.length || tags.pattern || tags.material ||
                    tags.style?.length || tags.season?.length || tags.formality || tags.fit ||
                    tags.occasion?.length || tags.condition || tags.features?.length);
 
@@ -1349,9 +1354,9 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         </p>
                       )}
                       {hasAiTags && <div className="flex flex-wrap gap-1.5">
-                        {tags.colors?.map((color) => (
+                        {aiColors.map((color) => (
                           <Badge key={color} variant="outline" className="text-xs">
-                            {color}
+                            {colorLabel(color)?.label ?? color}
                           </Badge>
                         ))}
                         {tags.pattern && (

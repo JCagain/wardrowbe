@@ -23,9 +23,10 @@ export interface TypeEntry extends VocabEntry {
 }
 
 export interface ItemTags {
-  // AI-reported tags (unchanged JSON shape). Item-level color truth lives in
-  // primary_colors / secondary_colors.
-  colors: string[];
+  // AI 打标展示元数据；颜色真值在 item.primary_colors / secondary_colors
+  primary_colors?: string[];
+  secondary_colors?: string[];
+  colors?: string[]; // legacy blob (tagged before 2026-10-14), read-only compat
   primary_color?: string;
   pattern?: string;
   material?: string;

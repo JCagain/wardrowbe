@@ -22,6 +22,7 @@
 | 14 | 还原重抠（`_orig.jpg`） | ✅（生命周期见 §二「抠图前备份」） | 既有 + §三 |
 | 55 | compose 转发 `AI_API_KEY` | ✅ | 6859f26 |
 | 62 / 63 | 校色、mask 测试覆盖 | ✅ | 随上列各 commit |
+| 17 / 18 | 打标闭集：颜色/风格/季节/类型从在役词表渲染（slug=中文名）；AI 输出 primary_colors[] + secondary_colors[] 直写列 | ✅ | c72a00d, e132635, d60185b, 940ff90, c17f3b1, 039648f, COMMIT4 |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -47,6 +48,10 @@
 | **Ruling 51** | 校色端点（detect/apply/manual/reset）在 `calibration_original_path` 为 NULL 时惰性补种 `_src`（`ImageService.ensure_calibration_source`）并落列：盘上已有且尺寸吻合 → 原样收养；否则有尺寸吻合的 `_orig` 备份 → 取备份像素；否则取工作图转 RGB（JPEG q95）；已有但尺寸不符 → 告警后覆盖。取代原先的 400 "no calibration source"。 |
 | **Ruling 52** | `calibration/detect` 读校色副本 `_src`，不读工作图：抠图后工作图背景 RGB 已清零，卡条是黑的，永远检不出。 |
 | **Ruling 53** | 详情对话框在旋转 / 还原原图 / 替换主图 / 设为主图成功后清掉旧检出框（`pending` 退回 `none`）；`restore-original` 补上与 remove-background / mask 同款的「后台 job 在跑 → 409」守卫。 |
+| **Ruling 55** | 提示词候选写成 `slug=中文名`，解析取 `=` 左侧；停用条目不进提示词、AI 回了也丢弃，但不影响旧物品的历史值与手改。 |
+| **Ruling 56** | AI 仍回旧 `primary_color` / `colors` 时按字段走旧键兼容解析；`tags` blob 自 2026-10-14 起写新键（`primary_colors` / `secondary_colors`），旧键只读兼容。 |
+| **Ruling 57** | `tags` blob 的颜色投影按列进行：只有过滤后非空的值才写入，空不等于清空；新指派主色而无可用辅色时，从现有辅色里剔除与新主色重叠的颜色。 |
+| **Ruling 58** | `pattern` / `fit` 仍是代码内固定集合（spec §1.4 输出清单不含二者，不在本次闭集化范围）。 |
 | **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
