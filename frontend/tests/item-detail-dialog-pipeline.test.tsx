@@ -21,7 +21,7 @@ vi.mock('@/lib/hooks/use-items', () => {
     'useUpdateItem', 'useDeleteItem', 'useReanalyzeItem', 'useRotateImage', 'useRemoveBackground',
     'useRestoreOriginal', 'useReplaceItemImage', 'useAddItemImage', 'useDeleteItemImage',
     'useSetPrimaryImage', 'useDetectCalibration', 'useApplyCalibration', 'useManualWhiteBalance',
-    'useResetCalibration', 'useRetagItem',
+    'useResetCalibration',
   ];
   const out: Record<string, unknown> = {};
   for (const n of names) out[n] = mk(n);
@@ -99,19 +99,43 @@ describe('ItemDetailDialog pipeline feedback', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(1));
   });
 
-  it('toasts an error when retag rejects', async () => {
-    setMut('useRetagItem', vi.fn().mockRejectedValue(new Error('boom')));
+  it('tag action calls the analyze mutation, not retag', async () => {
+    const analyze = vi.fn().mockResolvedValue({ status: 'queued', job_id: 'j1' });
+    setMut('useReanalyzeItem', analyze);
+    renderDialog();
+    fireEvent.click(screen.getByTestId('pipeline-tag'));
+    await waitFor(() => expect(analyze).toHaveBeenCalledWith('item-1'));
+    expect(toastMock.success).toHaveBeenCalledWith('pipeline.retagQueued');
+  });
+
+  it('treats already_queued as queued', async () => {
+    setMut('useReanalyzeItem', vi.fn().mockResolvedValue({ status: 'already_queued' }));
+    renderDialog();
+    fireEvent.click(screen.getByTestId('pipeline-tag'));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('pipeline.retagQueued'));
+  });
+
+  it('shows an info toast when vision is disabled (deferred)', async () => {
+    setMut('useReanalyzeItem', vi.fn().mockResolvedValue({ status: 'deferred' }));
+    renderDialog();
+    fireEvent.click(screen.getByTestId('pipeline-tag'));
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalledWith('pipeline.retagDeferred'));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it('shows an info toast on cooldown', async () => {
+    setMut('useReanalyzeItem', vi.fn().mockResolvedValue({ status: 'cooldown', retry_after_seconds: 30 }));
+    renderDialog();
+    fireEvent.click(screen.getByTestId('pipeline-tag'));
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalledTimes(1));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it('toasts an error when the analyze call rejects', async () => {
+    setMut('useReanalyzeItem', vi.fn().mockRejectedValue(new Error('boom')));
     renderDialog();
     fireEvent.click(screen.getByTestId('pipeline-tag'));
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(1));
     expect(toastMock.success).not.toHaveBeenCalled();
-  });
-
-  it('toasts success when retag is queued', async () => {
-    setMut('useRetagItem', vi.fn().mockResolvedValue(undefined));
-    renderDialog();
-    fireEvent.click(screen.getByTestId('pipeline-tag'));
-    await waitFor(() => expect(toastMock.success).toHaveBeenCalledTimes(1));
-    expect(toastMock.error).not.toHaveBeenCalled();
   });
 });

@@ -51,7 +51,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, useRetagItem, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
+import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
@@ -174,7 +174,6 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const applyCalibration = useApplyCalibration();
   const manualWb = useManualWhiteBalance();
   const resetCalibration = useResetCalibration();
-  const retagItem = useRetagItem();
 
   useEffect(() => {
     if (item) {
@@ -418,12 +417,19 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     }
   };
 
+  // Manual tagging trigger (D2): POST /items/{id}/analyze actually enqueues the job.
   const handleRetag = async () => {
     try {
-      await retagItem.mutateAsync(item.id);
-      toast.success(tw('pipeline.retagQueued'));
+      const result = await reanalyzeItem.mutateAsync(item.id);
+      if (result.status === 'deferred') {
+        toast.info(tw('pipeline.retagDeferred'));
+      } else if (result.status === 'cooldown') {
+        toast.info(tw('ai.retryCooldown', { seconds: result.retry_after_seconds ?? 0 }));
+      } else {
+        toast.success(tw('pipeline.retagQueued'));
+      }
     } catch (error) {
-      console.error('Failed to retag item:', error);
+      console.error('Failed to start tagging:', error);
       toast.error(tw('pipeline.retagError'));
     }
   };

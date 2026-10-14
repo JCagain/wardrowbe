@@ -287,6 +287,7 @@
     "resetError": "Failed to reset calibration",
     "retagError": "Failed to start tagging",
     "retagQueued": "Tagging queued",
+    "retagDeferred": "AI vision is disabled, so tagging was not started",
     "state": {
       "done": "Done",
       "none": "Not yet",
