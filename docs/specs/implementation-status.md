@@ -23,6 +23,7 @@
 | 55 | compose 转发 `AI_API_KEY` | ✅ | 6859f26 |
 | 62 / 63 | 校色、mask 测试覆盖 | ✅ | 随上列各 commit |
 | 17 / 18 | 打标闭集：颜色/风格/季节从在役词表渲染为 slug=中文名；类型只渲染 slug（无中文名），AI 回中文名时按在役标签反查回 slug；AI 输出 primary_colors[] + secondary_colors[] 直写列 | ✅ | c72a00d, e132635, d60185b, 940ff90, c17f3b1, 039648f, 9881dab |
+| 23 / 25–28 / 30–38 / 44（记录侧） | 记录：outfit_photos（1..N，只做转正+三档+旋转）、日期默认今天可改、季节按日期推导可手改、城市（设置预设杭州/香港/合肥/深圳，可扩展、可设默认、可空）、天气按城市+日期预填（过去日期走 archive）可改可清、关联任意件（含 0）可后补、关联增删 / 删记录自动 ± wear_count 并写 item_history、场合/备注可空；studio 场合可空 | ✅ | 24e5616, d87ee8b, f131693, 92362db, 1bcd5b2, cc7053b, a9481b8, 373feb5, 4d61e3c, f941d94 |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -55,6 +56,12 @@
 | **Ruling 57** | `tags` blob 的颜色投影按列进行：只有过滤后非空的值才写入，空不等于清空；新指派主色而无可用辅色时，从现有辅色里剔除与新主色重叠的颜色。 |
 | **Ruling 58** | `pattern` / `fit` 仍是代码内固定集合（spec §1.4 输出清单不含二者，不在本次闭集化范围）。 |
 | **Ruling 59** | 主色至少一个：AI 只给辅色（主色空、辅色非空）时辅色整体升为主色、辅色清空（`_parse_tags_from_response`，info 日志；主辅都空仍 warning，**取代此前「只记 warning 不提升」的做法**）；手改保存强制至少一个主色（含未打标物品）——后端 `ItemUpdate.primary_colors` 显式给出空列表 → 422（未带该键不触发），详情对话框保存前拦截并 toast `primaryColorRequired`；上传不强制；`tags` blob 投影本就不会写空主色（Ruling 57）。 |
+| **Ruling 60** | 记录存 `outfits`（`source = record`），走独立路由 `/records` + `RecordService`；studio/lookbook 的「已穿不可改关联」等约束不适用于记录。旧「历史」页即记录主页。 |
+| **Ruling 61** | 记录照片 1..N（用户裁定 2026-10-14：开发库无旧记录，按 spec 字面）：新建至少 1 张，编辑时删到最后一张 → 409。照片只做 EXIF 转正 + 三档 + 手动 90° 旋转（用户裁定），不校色不抠图、不留 `_src`。 |
+| **Ruling 62** | 天气只存 `temp_high` / `temp_low` / `condition`（用户裁定），`condition` 为 10 值闭集 slug（WMO 码映射），中文名走前端 i18n。预填由前端在城市/日期变化时调 `GET /records/weather`，后端保存时只存表单值、不自行补拉——「清空」不会被覆盖。forecast 端点覆盖过去 60 天 ~ 未来 15 天，更早走 archive；更远的未来不拉；任何失败返回 null。 |
+| **Ruling 63** | 城市存 `user_preferences.cities`（NULL = 预设四城，带坐标），记录只存城市名；新增城市经 Nominatim 地理编码取坐标，找不到 422、服务不可用 502。删除城市不影响旧记录的城市名，但其天气查询返回 null。 |
+| **Ruling 64** | `wear_count` 只做增量：关联新增 +1、移除 −1（下限 0）、删记录对全部关联 −1；`item_history` 每关联一行（`outfit_id` = 记录），随关联增删、随改日期改 `worn_at`、随改场合改 `occasion`；`last_worn_at` 在受影响衣物上重算为其 `item_history` 最大 `worn_at`。记录不碰洗护字段。 |
+| **Ruling 65** | 改日期即按新日期重推导季节（用户裁定 2026-10-14）：PATCH 改了日期且同一请求未带 `season` → 后端 `season_for_date(新日期)`；带了则以所带为准；不改日期则不动季节（保留手改值）。前端改日期时同步重设季节下拉，用户可再手改后保存。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
@@ -93,3 +100,6 @@
 - **旧物品的 `_src` 是惰性补种的**（Ruling 51）：取自首次校色那一刻的当前像素（旧抠图则取 `_orig` 备份），所以对它们「重置」回到的是首次校色时的像素，而不是相机原图。
 - **无 `_orig` 备份的旧抠图物品，补种出的 `_src` 是黑底**（Ruling 51 分支 c）：工作图 RGBA 的透明区 RGB 已被 rembg 清零，转 RGB 即黑底；此后校色 / 手动白平衡 / 重置会把工作图重建为不透明黑底图，检出也找不到卡。分支前的抠图都会留 `_orig`，实际只在备份被删的物品上出现；遇到时先重新上传原图。
 - **补种 `_src` 非原子写**，中途崩溃留截断文件会让后续校色持续 500，需手动删 `{base}_src.jpg`；detect 补种无 409 守卫，抠图任务进行中触发可能补种到中间态（之后每次使用都按尺寸校验，危害限于一次错误补种）。
+- **`last_worn_at` 只认 `item_history`**（Ruling 64）：studio / lookbook 的「标记穿过」「今天穿」路径不写 `item_history`，经由它们穿过的日期在下次记录改动重算时会被丢掉。记录是主路径，studio 处于 lookbook 角色，不补。
+- **记录照片不支持拖拽排序**：按添加顺序，删除后重排连续编号。
+- **studio 不填场合时跳过学习与推荐缓存清理**（fixes #27）：`OutfitPerformance.occasion` 为 NOT NULL，无场合的 studio 搭配不进学习模块（学习已按 §7 摘除）；也不清推荐缓存。

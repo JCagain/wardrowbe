@@ -18,13 +18,7 @@
   "empty": {
     "description": "Your outfit recommendation history will appear here once you start receiving suggestions.",
     "getFirstSuggestion": "Get Your First Suggestion",
-    "title": "No recommendation history",
-    "goToWardrobe": "Go to wardrobe"
-  },
-  "filters": {
-    "allOccasions": "All occasions",
-    "allStatus": "All status",
-    "workout": "Workout"
+    "title": "No recommendation history"
   },
   "loadError": "Failed to load history. Please try again.",
   "noOutfitsForDate": "No outfits for {date}",

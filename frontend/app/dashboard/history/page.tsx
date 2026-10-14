@@ -1,24 +1,17 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Calendar } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Calendar, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { format, isSameDay, parseISO } from 'date-fns';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useCalendarOutfits, type Outfit, type OutfitFilters } from '@/lib/hooks/use-outfits';
 import { OutfitCalendar } from '@/components/outfit-calendar';
-import { OutfitHistoryCard } from '@/components/outfit-history-card';
-import { FeedbackDialog } from '@/components/feedback-dialog';
-import { OutfitPreviewDialog } from '@/components/outfit-preview-dialog';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { RecordCard } from '@/components/records/record-card';
+import { useRecords } from '@/lib/hooks/use-records';
 
 function EmptyHistory({ t }: { t: (key: string) => string }) {
   return (
@@ -31,7 +24,7 @@ function EmptyHistory({ t }: { t: (key: string) => string }) {
         {t('empty.description')}
       </p>
       <Button variant="outline" asChild>
-        <a href="/dashboard/wardrobe">{t('empty.goToWardrobe')}</a>
+        <Link href="/dashboard/history/new">{t('records.new')}</Link>
       </Button>
     </div>
   );
@@ -90,99 +83,50 @@ function CalendarSkeleton() {
   );
 }
 
+function monthRange(year: number, month: number): [string, string] {
+  const last = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, '0');
+  return [`${year}-${mm}-01`, `${year}-${mm}-${String(last).padStart(2, '0')}`];
+}
+
 export default function HistoryPage() {
   const t = useTranslations('history');
-  const tc = useTranslations('constants');
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(now);
-  const [filters, setFilters] = useState<OutfitFilters>({});
-  const [feedbackOutfit, setFeedbackOutfit] = useState<Outfit | null>(null);
-  const [previewOutfit, setPreviewOutfit] = useState<Outfit | null>(null);
 
-  const { data, isLoading, isError } = useCalendarOutfits(year, month, filters);
+  const [from, to] = monthRange(year, month);
+  const { data, isLoading, isError } = useRecords(from, to);
+  const records = useMemo(() => data?.records ?? [], [data]);
 
-  // Filter outfits for the selected date
-  const selectedDateOutfits = useMemo(() => {
-    if (!data?.outfits || !selectedDate) return [];
-    return data.outfits.filter((outfit) =>
-      outfit.scheduled_for && isSameDay(parseISO(outfit.scheduled_for), selectedDate)
-    );
-  }, [data?.outfits, selectedDate]);
-
-  const handleMonthChange = (newYear: number, newMonth: number) => {
-    setYear(newYear);
-    setMonth(newMonth);
-  };
-
-  const handleOccasionChange = (value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      occasion: value === 'all' ? undefined : value,
-    }));
-  };
-
-  const handleStatusChange = (value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      status: value === 'all' ? undefined : value,
-    }));
-  };
+  const markedDates = useMemo(() => new Set(records.map((r) => r.date)), [records]);
+  const selectedRecords = useMemo(
+    () => (selectedDate ? records.filter((r) => isSameDay(parseISO(r.date), selectedDate)) : []),
+    [records, selectedDate]
+  );
 
   if (isError) {
-    return (
-      <div className="text-center py-8 text-red-500">
-        {t('loadError')}
-      </div>
-    );
+    return <div className="py-8 text-center text-red-500">{t('loadError')}</div>;
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
-          <p className="text-muted-foreground">
-            {t('subtitle')}
-          </p>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
+        <Button asChild>
+          <Link href="/dashboard/history/new">
+            <Plus className="mr-1 h-4 w-4" />
+            {t('records.new')}
+          </Link>
+        </Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <Select value={filters.occasion || 'all'} onValueChange={handleOccasionChange}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder={t('filters.allOccasions')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('filters.allOccasions')}</SelectItem>
-            <SelectItem value="casual">{tc('occasions.casual')}</SelectItem>
-            <SelectItem value="office">{tc('occasions.office')}</SelectItem>
-            <SelectItem value="formal">{tc('occasions.formal')}</SelectItem>
-            <SelectItem value="date">{tc('occasions.date')}</SelectItem>
-            <SelectItem value="workout">{t('filters.workout')}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filters.status || 'all'} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder={t('filters.allStatus')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('filters.allStatus')}</SelectItem>
-            <SelectItem value="accepted">{t('status.accepted')}</SelectItem>
-            <SelectItem value="rejected">{t('status.rejected')}</SelectItem>
-            <SelectItem value="pending">{t('status.pending')}</SelectItem>
-            <SelectItem value="viewed">{t('status.viewed')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Main content - two column layout */}
-      <div className="grid lg:grid-cols-[350px_1fr] gap-6">
-        {/* Calendar column */}
-        <Card className="h-fit order-2 lg:order-1">
+      <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
+        <Card className="order-2 h-fit lg:order-1">
           <CardContent className="p-4">
             {isLoading ? (
               <CalendarSkeleton />
@@ -190,67 +134,39 @@ export default function HistoryPage() {
               <OutfitCalendar
                 year={year}
                 month={month}
-                outfits={data?.outfits || []}
+                outfits={[]}
+                markedDates={markedDates}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
-                onMonthChange={handleMonthChange}
+                onMonthChange={(y, m) => {
+                  setYear(y);
+                  setMonth(m);
+                }}
               />
             )}
           </CardContent>
         </Card>
 
-        {/* Outfits column */}
-        <div className="order-1 lg:order-2 space-y-4">
-          {/* Selected date header */}
+        <div className="order-1 space-y-4 lg:order-2">
           {selectedDate && (
             <div className="border-b pb-3">
-              <h2 className="text-lg font-semibold">
-                {format(selectedDate, 'EEEE, MMMM d')}
-              </h2>
+              <h2 className="text-lg font-semibold">{format(selectedDate, 'yyyy-MM-dd')}</h2>
               <p className="text-sm text-muted-foreground">
-                {t('outfitCount', { count: selectedDateOutfits.length })}
+                {t('outfitCount', { count: selectedRecords.length })}
               </p>
             </div>
           )}
-
           {isLoading ? (
             <LoadingSkeleton />
-          ) : !data || data.outfits.length === 0 ? (
+          ) : records.length === 0 ? (
             <EmptyHistory t={t} />
-          ) : selectedDate && selectedDateOutfits.length === 0 ? (
+          ) : selectedDate && selectedRecords.length === 0 ? (
             <EmptyDate date={selectedDate} t={t} />
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {selectedDateOutfits.map((outfit) => (
-                <OutfitHistoryCard
-                  key={outfit.id}
-                  outfit={outfit}
-                  onFeedback={() => setFeedbackOutfit(outfit)}
-                  onPreview={() => setPreviewOutfit(outfit)}
-                />
-              ))}
-            </div>
+            selectedRecords.map((r) => <RecordCard key={r.id} record={r} />)
           )}
         </div>
       </div>
-
-      {/* Feedback dialog */}
-      {feedbackOutfit && (
-        <FeedbackDialog
-          outfit={feedbackOutfit}
-          open={!!feedbackOutfit}
-          onClose={() => setFeedbackOutfit(null)}
-        />
-      )}
-
-      {/* Preview dialog */}
-      {previewOutfit && (
-        <OutfitPreviewDialog
-          outfit={previewOutfit}
-          open={!!previewOutfit}
-          onClose={() => setPreviewOutfit(null)}
-        />
-      )}
     </div>
   );
 }

@@ -18,7 +18,7 @@ import {
   subMonths,
 } from 'date-fns';
 import type { Outfit } from '@/lib/hooks/use-outfits';
-import { buildCalendarIndicators } from '@/lib/outfits/calendar-indicators';
+import { buildCalendarIndicators, type DayIndicators } from '@/lib/outfits/calendar-indicators';
 import { useTranslations } from 'next-intl';
 
 const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -27,6 +27,7 @@ interface OutfitCalendarProps {
   year: number;
   month: number;
   outfits: Outfit[];
+  markedDates?: Set<string>;
   selectedDate: Date | null;
   onSelectDate: (date: Date) => void;
   onMonthChange: (year: number, month: number) => void;
@@ -36,6 +37,7 @@ export function OutfitCalendar({
   year,
   month,
   outfits,
+  markedDates,
   selectedDate,
   onSelectDate,
   onMonthChange,
@@ -43,7 +45,13 @@ export function OutfitCalendar({
   const t = useTranslations('outfits.calendar');
   const currentMonth = new Date(year, month - 1, 1);
 
-  const outfitsByDate = useMemo(() => buildCalendarIndicators(outfits), [outfits]);
+  const outfitsByDate = useMemo(() => {
+    if (!markedDates) return buildCalendarIndicators(outfits);
+    // 记录主页：只区分「有/无记录」，复用 onDemand 指示点
+    const map = new Map<string, DayIndicators>();
+    markedDates.forEach((d) => map.set(d, { scheduled: false, onDemand: true }));
+    return map;
+  }, [outfits, markedDates]);
 
   // Generate calendar days
   const calendarDays = useMemo(() => {

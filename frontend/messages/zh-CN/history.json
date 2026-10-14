@@ -18,13 +18,7 @@
   "empty": {
     "description": "开始获取穿搭建议后，推荐记录将显示在这里。",
     "getFirstSuggestion": "获取你的第一个建议",
-    "title": "暂无推荐记录",
-    "goToWardrobe": "去衣橱"
-  },
-  "filters": {
-    "allOccasions": "所有场合",
-    "allStatus": "所有状态",
-    "workout": "运动"
+    "title": "暂无推荐记录"
   },
   "loadError": "加载历史记录失败，请重试。",
   "noOutfitsForDate": "{date}没有穿搭",
