@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { CLOTHING_SUBTYPES, OCCASIONS } from '@/lib/types';
 import { COLOR_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
 import { SUPPORTED_LOCALES } from '@/lib/i18n/locales';
+import { RECORD_SEASONS } from '@/lib/records/season';
+import { RECORD_CONDITIONS } from '@/lib/records/weather';
 
 // scripts/i18n-keys.mjs resolves t('literal') call sites, but several components build the key at
 // runtime, e.g. t(`status.${status}`) or t(ct.value). Those are invisible to static analysis and
@@ -57,6 +59,8 @@ const DYNAMIC_KEYS: Array<[string, readonly string[]]> = [
   ['constants.styles', STYLE_VALUES],
   ['constants.weatherConditions', WEATHER_CONDITIONS],
   ['history.status', OUTFIT_STATUSES],
+  ['history.records.seasons', RECORD_SEASONS],
+  ['history.records.conditions', RECORD_CONDITIONS],
   ['notifications.days', NOTIFICATION_DAYS],
   ['outfits.calendar.weekDays', CALENDAR_WEEKDAYS],
   ['wardrobe.sort', WARDROBE_SORTS],
