@@ -8,7 +8,8 @@ import pytest_asyncio
 from PIL import Image
 from sqlalchemy import select
 
-from app.models.item import ClothingItem, ItemStatus
+from app.models.item import ClothingItem, ItemHistory, ItemStatus
+from app.models.outfit import Outfit, OutfitItem, OutfitSource, OutfitStatus
 
 RECORDS = "/api/v1/records"
 ITEMS = "/api/v1/items"
@@ -62,6 +63,10 @@ async def test_manual_wear_count_then_records_delta(client, auth_headers, db_ses
     resp = await client.patch(f"{ITEMS}/{tee.id}", json={"wear_count": 5}, headers=auth_headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["wear_count"] == 5
+    # 手改只动计数：不写穿着历史，也不动 last_worn_at。
+    history = (await db_session.execute(select(ItemHistory).where(ItemHistory.item_id == tee.id))).scalars().all()
+    assert history == []
+    assert resp.json()["last_worn_at"] is None
 
     rec = await _record(client, auth_headers, [tee.id], "2026-10-01")
     assert await _wear_count(db_session, tee.id) == 6
@@ -120,6 +125,26 @@ async def test_companions_ranked_by_shared_records(client, auth_headers, db_sess
 
     limited = (await client.get(f"{ITEMS}/{tee.id}/companions", params={"limit": 1}, headers=auth_headers)).json()
     assert [r["id"] for r in limited] == [str(jeans.id)]
+
+
+@pytest.mark.asyncio
+async def test_companions_ignore_non_record_outfits(client, auth_headers, db_session, test_user, wardrobe):
+    tee, jeans, shoes = wardrobe["tee"], wardrobe["jeans"], wardrobe["shoes"]
+    await _record(client, auth_headers, [tee.id, jeans.id], "2026-10-01")
+    # 建议（非记录）搭配含 tee+shoes：不应计入常搭。
+    suggestion = Outfit(user_id=test_user.id, source=OutfitSource.on_demand, status=OutfitStatus.pending)
+    db_session.add(suggestion)
+    await db_session.flush()
+    db_session.add_all([
+        OutfitItem(outfit_id=suggestion.id, item_id=tee.id, position=0),
+        OutfitItem(outfit_id=suggestion.id, item_id=shoes.id, position=1),
+    ])
+    await db_session.commit()
+
+    rows = (await client.get(f"{ITEMS}/{tee.id}/companions", headers=auth_headers)).json()
+    assert [r["id"] for r in rows] == [str(jeans.id)]
+    assert rows[0]["count"] == 1
+    # 跨用户：他人衣物 id 的 404 已由 test_companions_unknown_item_404 覆盖；构造第二用户较重，从略。
 
 
 @pytest.mark.asyncio

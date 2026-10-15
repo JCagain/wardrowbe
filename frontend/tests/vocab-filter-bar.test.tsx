@@ -61,4 +61,24 @@ describe('VocabFilterBar', () => {
     fireEvent.change(screen.getByLabelText('style'), { target: { value: 'goth' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...EMPTY_VOCAB_FILTERS, style: 'goth' });
   });
+
+  it('keeps a hand-edited filter visible even when it is outside the narrowed options', () => {
+    render(<VocabFilterBar value={{ ...EMPTY_VOCAB_FILTERS, bodyPart: 'tops', type: 'jeans' }} onChange={() => {}} />);
+    const typeSelect = screen.getByLabelText('type') as HTMLSelectElement;
+    expect(typeSelect.value).toBe('jeans');
+    expect(typeSelect.selectedOptions[0].textContent).toBe('牛仔裤');
+  });
+
+  it('keeps an unknown color value visible with its raw value', () => {
+    render(<VocabFilterBar value={{ ...EMPTY_VOCAB_FILTERS, color: 'zzz' }} onChange={() => {}} />);
+    const colorSelect = screen.getByLabelText('color') as HTMLSelectElement;
+    expect(colorSelect.selectedOptions[0].textContent).toBe('zzz');
+  });
+
+  it('color scope select is disabled without a color dimension and enabled with one', () => {
+    const { rerender } = render(<VocabFilterBar value={EMPTY_VOCAB_FILTERS} onChange={() => {}} />);
+    expect((screen.getByLabelText('colorScope') as HTMLSelectElement).disabled).toBe(true);
+    rerender(<VocabFilterBar value={{ ...EMPTY_VOCAB_FILTERS, colorFamily: 'red' }} onChange={() => {}} />);
+    expect((screen.getByLabelText('colorScope') as HTMLSelectElement).disabled).toBe(false);
+  });
 });

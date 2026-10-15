@@ -56,6 +56,12 @@ function FilterSelect({
   );
 }
 
+// URL 手改出的筛选值可能不在当前候选里（如部位与类型不匹配）；补一项让下拉如实显示已生效的筛选。
+function withApplied<T extends VocabEntry>(options: T[], all: readonly T[], value: string): T[] {
+  if (!value || options.some((o) => o.value === value)) return options;
+  return [...options, all.find((o) => o.value === value) ?? ({ value, label: value } as T)];
+}
+
 export function VocabFilterBar({ value, onChange }: Props) {
   const t = useTranslations('wardrobe.vocabFilters');
   const bodyParts = useBodyParts();
@@ -80,7 +86,7 @@ export function VocabFilterBar({ value, onChange }: Props) {
         label={t('type')}
         allLabel={t('allTypes')}
         value={value.type}
-        options={typeOptionsFor(value.bodyPart, types)}
+        options={withApplied(typeOptionsFor(value.bodyPart, types), types, value.type)}
         onChange={(v) => onChange({ ...value, type: v })}
         disabledLabel={disabledLabel}
       />
@@ -96,13 +102,14 @@ export function VocabFilterBar({ value, onChange }: Props) {
         label={t('color')}
         allLabel={t('allColors')}
         value={value.color}
-        options={colorOptionsFor(value.colorFamily, colors)}
+        options={withApplied(colorOptionsFor(value.colorFamily, colors), colors, value.color)}
         onChange={(v) => onChange({ ...value, color: v })}
         disabledLabel={disabledLabel}
       />
       <select
         aria-label={t('colorScope')}
         value={value.colorScope}
+        disabled={!value.colorFamily && !value.color}
         onChange={(e) => onChange({ ...value, colorScope: e.target.value as ColorScope })}
         className="h-8 rounded-md border bg-background px-2 text-xs"
       >

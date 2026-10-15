@@ -193,6 +193,7 @@ export function useUpdateItem() {
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
       queryClient.invalidateQueries({ queryKey: ['item', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 }
@@ -430,6 +431,8 @@ export function useDeleteItem() {
       // Refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['items'] });
       queryClient.invalidateQueries({ queryKey: ['item-types'] });
+      queryClient.invalidateQueries({ queryKey: ['item-companions'] });
+      queryClient.invalidateQueries({ queryKey: ['records'] });
     },
   });
 }
@@ -922,6 +925,8 @@ export function useBulkDeleteItems() {
       // Refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['items'] });
       queryClient.invalidateQueries({ queryKey: ['item-types'] });
+      queryClient.invalidateQueries({ queryKey: ['item-companions'] });
+      queryClient.invalidateQueries({ queryKey: ['records'] });
     },
   });
 }

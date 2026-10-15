@@ -6,11 +6,13 @@ import { useTranslations } from 'next-intl';
 import { Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItemRecords } from '@/lib/hooks/use-records';
+import { useOccasions } from '@/lib/hooks/use-translated-constants';
 
 /** 反查（fixes #45，Ruling 69）：关联该衣物的全部记录，日期倒序，分页加载。 */
 export function ItemRecordsSection({ itemId }: { itemId: string }) {
   const t = useTranslations('wardrobe.itemDetail');
   const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = useItemRecords(itemId);
+  const occasions = useOccasions();
   const records = data?.pages.flatMap((p) => p.records) ?? [];
   const total = data?.pages[0]?.total ?? 0;
 
@@ -39,7 +41,7 @@ export function ItemRecordsSection({ itemId }: { itemId: string }) {
                   )}
                 </div>
                 <span className="whitespace-nowrap">{r.date}</span>
-                {r.occasion && <span className="text-muted-foreground">{r.occasion}</span>}
+                {r.occasion && <span className="text-muted-foreground">{occasions.find((o) => o.value === r.occasion)?.label ?? r.occasion}</span>}
               </Link>
             </li>
           ))}

@@ -20,6 +20,7 @@ vi.mock('@/lib/hooks/use-items', () => ({
 vi.mock('@/lib/hooks/use-records', () => ({ useItemRecords: () => recordsState }));
 vi.mock('@/lib/hooks/use-translated-constants', () => ({
   useClothingTypes: () => [{ value: 'jeans', label: '牛仔裤', body_part: 'bottoms' }],
+  useOccasions: () => [{ value: 'casual', label: 'CASUAL_LABEL' }],
 }));
 
 import { WearCountEditor } from '@/components/item-detail/wear-count-editor';
@@ -67,6 +68,20 @@ describe('ItemRecordsSection', () => {
     expect(links.map((a) => a.getAttribute('href'))).toEqual(['/dashboard/history/r2', '/dashboard/history/r1']);
     fireEvent.click(screen.getByRole('button', { name: 'records.loadMore' }));
     expect(fetchNextPage).toHaveBeenCalled();
+  });
+
+  it('renders the occasion label, falling back to the raw value', () => {
+    recordsState = {
+      isLoading: false, isError: false, hasNextPage: false,
+      data: { pages: [{ total: 2, records: [
+        { id: 'r2', date: '2026-10-02', photos: [], items: [], occasion: 'casual' },
+        { id: 'r1', date: '2026-09-01', photos: [], items: [], occasion: 'custom-x' },
+      ] }] },
+    };
+    render(<ItemRecordsSection itemId="i1" />);
+    expect(screen.getByText('CASUAL_LABEL')).toBeTruthy();
+    expect(screen.queryByText('casual')).toBeNull();
+    expect(screen.getByText('custom-x')).toBeTruthy();
   });
 
   it('shows the empty state', () => {

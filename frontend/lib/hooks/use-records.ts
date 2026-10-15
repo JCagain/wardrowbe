@@ -38,6 +38,9 @@ function useInvalidateRecords() {
     if (id) queryClient.invalidateQueries({ queryKey: ['record', id] });
     queryClient.invalidateQueries({ queryKey: ['items'] });
     queryClient.invalidateQueries({ queryKey: ['item-companions'] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    queryClient.invalidateQueries({ queryKey: ['item'] });
+    queryClient.invalidateQueries({ queryKey: ['wear-stats'] });
   };
 }
 

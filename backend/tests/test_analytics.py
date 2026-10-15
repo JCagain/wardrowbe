@@ -191,7 +191,8 @@ class TestRecordCounts:
 
         today = datetime.now(UTC).date()  # test_user.timezone == "UTC"
         month_start = today.replace(day=1)
-        record_days = [today, month_start, month_start - timedelta(days=1)]
+        next_month_start = (month_start + timedelta(days=32)).replace(day=1)
+        record_days = [today, month_start, month_start - timedelta(days=1), next_month_start]
         for d in record_days:
             db_session.add(Outfit(
                 user_id=test_user.id, source=OutfitSource.record,
@@ -212,5 +213,5 @@ class TestRecordCounts:
             w = data["wardrobe"]
             assert "total_outfits" not in w
             assert "records_this_week" not in w
-            assert w["total_records"] == 3
+            assert w["total_records"] == 4
             assert w["records_this_month"] == sum(in_month(d) for d in record_days)
