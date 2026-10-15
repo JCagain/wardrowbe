@@ -2185,6 +2185,21 @@ class TestPrunedRoutes:
         resp = await client.get("/api/v1/pairings", headers=auth_headers)
         assert resp.status_code != 404
 
+    @pytest.mark.asyncio
+    async def test_family_rating_endpoints_are_unmounted(self, client, auth_headers):
+        oid = "00000000-0000-0000-0000-000000000000"
+        for method, path in (
+            ("post", f"/api/v1/outfits/{oid}/family-rating"),
+            ("get", f"/api/v1/outfits/{oid}/family-ratings"),
+            ("delete", f"/api/v1/outfits/{oid}/family-rating"),
+        ):
+            kwargs = {"json": {"rating": 5}} if method == "post" else {}
+            resp = await getattr(client, method)(path, headers=auth_headers, **kwargs)
+            # 405 would mean a sibling /{outfit_id} route still matches the path shape;
+            # only "no such route" counts as unmounted.
+            assert resp.status_code == 404, (method, path, resp.status_code)
+            assert resp.json().get("detail") == "Not Found", (method, path, resp.text)
+
 
 class TestTagsRoundTrip:
     """AI display metadata in the tags JSONB must survive a detail-dialog save.

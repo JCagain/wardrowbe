@@ -1127,7 +1127,7 @@ async def get_feedback(
     )
 
 
-@router.post("/{outfit_id}/family-rating", response_model=FamilyRatingResponse)
+# 摘不删（spec §7）：家庭评分路由已下线，函数保留备查。
 async def submit_family_rating(
     outfit_id: UUID,
     request: FamilyRatingRequest,
@@ -1213,7 +1213,7 @@ async def submit_family_rating(
     )
 
 
-@router.get("/{outfit_id}/family-ratings", response_model=list[FamilyRatingResponse])
+# 摘不删（spec §7）：家庭评分路由已下线，函数保留备查。
 async def get_family_ratings(
     outfit_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1543,7 +1543,7 @@ async def patch_outfit_endpoint(
     return outfit_to_response(full)
 
 
-@router.delete("/{outfit_id}/family-rating", status_code=status.HTTP_204_NO_CONTENT)
+# 摘不删（spec §7）：家庭评分路由已下线，函数保留备查。
 async def delete_family_rating(
     outfit_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
