@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { api, getAccessToken, setAccessToken, ApiError, NetworkError } from '@/lib/api';
-import { Item, ItemListResponse, ItemFilter, WashHistoryEntry, ItemImage, TaggingProgress } from '@/lib/types';
+import { ColorScope, Item, ItemCompanion, ItemListResponse, ItemFilter, WashHistoryEntry, ItemImage, TaggingProgress } from '@/lib/types';
 import { chunkArray } from '@/lib/utils';
 import { enqueueFiles } from '@/lib/upload-queue';
 import { startDrain } from '@/lib/upload-manager';
@@ -33,6 +33,11 @@ export function useItems(filters: ItemFilter = {}, page = 1, pageSize = 20) {
         page_size: String(pageSize),
       };
       if (filters.type) params.type = filters.type;
+      if (filters.body_part) params.body_part = filters.body_part;
+      if (filters.color_family) params.color_family = filters.color_family;
+      if (filters.color_scope) params.color_scope = filters.color_scope;
+      if (filters.style) params.style = filters.style;
+      if (filters.season) params.season = filters.season;
       if (filters.colors?.length) params.colors = filters.colors.join(',');
       if (filters.search) params.search = filters.search;
       if (filters.favorite !== undefined) params.favorite = String(filters.favorite);
@@ -560,6 +565,17 @@ export function useItemWearHistory(itemId: string, limit = 10) {
   });
 }
 
+export function useItemCompanions(itemId: string) {
+  const { status } = useSession();
+  useSetTokenIfAvailable();
+
+  return useQuery({
+    queryKey: ['item-companions', itemId],
+    queryFn: () => api.get<ItemCompanion[]>(`/items/${itemId}/companions`),
+    enabled: status !== 'loading' && !!itemId,
+  });
+}
+
 export function useAddItemImage() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
@@ -750,6 +766,12 @@ export interface BulkOperationParams {
     favorite?: boolean;
     is_archived?: boolean;
     lifecycle?: 'active' | 'idle' | 'retired';
+    body_part?: string;
+    color_family?: string;
+    colors?: string[];
+    color_scope?: ColorScope;
+    style?: string;
+    season?: string;
   };
 }
 

@@ -44,9 +44,8 @@ export interface WearStats {
 export interface WardrobeStats {
   total_items: number;
   items_by_status: Record<string, number>;
-  total_outfits: number;
-  outfits_this_week: number;
-  outfits_this_month: number;
+  total_records: number;
+  records_this_month: number;
   total_wears: number;
 }
 

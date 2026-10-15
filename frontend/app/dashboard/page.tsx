@@ -9,7 +9,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Shirt,
   Plus,
-  TrendingUp,
   Cloud,
   Droplets,
   ThumbsUp,
@@ -19,7 +18,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useAnalytics } from '@/lib/hooks/use-analytics';
 import { useWeather } from '@/lib/hooks/use-weather';
 import { usePreferences } from '@/lib/hooks/use-preferences';
 import { displayValue, tempSymbol, TempUnit } from '@/lib/temperature';
@@ -246,51 +244,6 @@ function PendingOutfitsCard() {
 // 摘不删（spec §7）：通知排期卡已从首页下线（/notifications/schedules 已摘挂），组件保留备查。
       {/* 摘不删（spec §7）：NextScheduledCard / NotificationStatusCard 已下线（/notifications/* 已摘挂）——归档于 components/dormant/dashboard-cards.tsx */}
 
-function WeeklySummaryCard() {
-  const { data: analytics, isLoading } = useAnalytics();
-  const t = useTranslations('dashboard');
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            {t('weeklySummary.title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-8 w-16 mb-1" />
-          <Skeleton className="h-4 w-32" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!analytics) {
-    return null;
-  }
-
-  const { wardrobe } = analytics;
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <TrendingUp className="h-4 w-4" />
-          {t('weeklySummary.title')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div>
-          <p className="text-2xl font-bold">{wardrobe.outfits_this_week}</p>
-          <p className="text-xs text-muted-foreground">{t('weeklySummary.outfits')}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 // 摘不删（spec §7）：insights 搭配建议卡已从首页下线，组件保留备查。
 // 指标已随 insights 从 AnalyticsData 摘除，这里用本地旧契约类型以便重挂。
       {/* 摘不删（spec §7）：InsightsCard / FamilyFeedCard 已下线（insights 已摘、/families/me 已摘挂）——归档于 components/dormant/dashboard-cards.tsx */}
@@ -340,7 +293,7 @@ export default function DashboardPage() {
 
       {/* Second row - Weekly Summary（通知状态卡已下线，见 NotificationStatusCard 注释） */}
       <div className="grid gap-4 md:grid-cols-2">
-        <WeeklySummaryCard />
+        {/* 「本周」卡已下线：用户 10-15 裁定首页不要本周数（Ruling 72）。 */}
       </div>
 
       {/* Third row - Quick Actions（insights 卡已下线，见 InsightsCard 注释） */}

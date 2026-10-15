@@ -10,7 +10,9 @@ import {
 import {
   BODY_PART_LABELS,
   BODY_PART_VALUES,
+  COLOR_FAMILY_VALUES,
   COLOR_VALUES,
+  SEASON_VALUES,
   STYLE_LABELS,
   TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
@@ -97,4 +99,21 @@ export function useFormalityLabel() {
 
 export function useRoleLabel() {
   return useCatalogLabel(useTranslations('constants.roles'));
+}
+
+// 季节/色系标签同样来自词表本身；generated 只有 slug，加载前回退显示 slug。
+export function useSeasons(): VocabEntry[] {
+  const { data } = useVocabulary();
+  return useMemo(
+    () => data?.seasons ?? SEASON_VALUES.map((value) => ({ value, label: value })),
+    [data],
+  );
+}
+
+export function useColorFamilies(): VocabEntry[] {
+  const { data } = useVocabulary();
+  return useMemo(
+    () => data?.colors.families ?? COLOR_FAMILY_VALUES.map((value) => ({ value, label: value })),
+    [data],
+  );
 }

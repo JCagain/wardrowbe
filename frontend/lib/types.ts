@@ -65,6 +65,9 @@ export interface Item {
   medium_url?: string;
   tags: ItemTags;
   body_part?: string | null;
+  // 投影列（后端 ItemResponse 已回传）；编辑经 tags.season / tags.style 写回。
+  style?: string[] | null;
+  season?: string[] | null;
   primary_colors: string[];
   secondary_colors: string[];
   temp_low?: number | null;
@@ -153,11 +156,18 @@ export interface TaggingProgress {
   concurrency: number;
 }
 
+export type ColorScope = 'primary' | 'secondary' | 'any';
+
 export interface ItemFilter {
   type?: string;
   subtype?: string;
-  // Param name kept: the backend filters the primary ∪ secondary color union.
+  body_part?: string;
+  color_family?: string;
   colors?: string[];
+  // colors / color_family 的匹配范围（fixes #41，Ruling 66）；省略 = 主色。
+  color_scope?: ColorScope;
+  style?: string;
+  season?: string;
   status?: string;
   favorite?: boolean;
   needs_wash?: boolean;
@@ -467,6 +477,16 @@ export interface RecordListResponse {
   page: number;
   page_size: number;
   has_more: boolean;
+}
+
+export interface ItemCompanion {
+  id: string;
+  type: string;
+  name: string | null;
+  primary_colors: string[];
+  lifecycle: 'active' | 'idle' | 'retired';
+  count: number;
+  thumbnail_url: string | null;
 }
 
 export interface RecordInput {

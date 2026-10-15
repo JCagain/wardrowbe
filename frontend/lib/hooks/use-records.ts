@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { api, ApiError, getAccessToken, NetworkError, setAccessToken } from '@/lib/api';
 import type { OutfitRecord, RecordInput, RecordListResponse, RecordWeather } from '@/lib/types';
@@ -37,6 +37,7 @@ function useInvalidateRecords() {
     queryClient.invalidateQueries({ queryKey: ['records'] });
     if (id) queryClient.invalidateQueries({ queryKey: ['record', id] });
     queryClient.invalidateQueries({ queryKey: ['items'] });
+    queryClient.invalidateQueries({ queryKey: ['item-companions'] });
   };
 }
 
@@ -51,6 +52,31 @@ export function useRecords(dateFrom: string, dateTo: string) {
       }),
     enabled: status !== 'loading',
   });
+}
+
+function useRecordPages(key: unknown[], pageSize: number, extra: Record<string, string>, enabled = true) {
+  const { status } = useSession();
+  useSetTokenIfAvailable();
+  return useInfiniteQuery({
+    queryKey: key,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      api.get<RecordListResponse>('/records', {
+        params: { ...extra, page: String(pageParam), page_size: String(pageSize) },
+      }),
+    getNextPageParam: (last) => (last.has_more ? last.page + 1 : undefined),
+    enabled: status !== 'loading' && enabled,
+  });
+}
+
+/** 反查（fixes #45，Ruling 69）：关联该衣物的全部记录，日期倒序，分页加载。 */
+export function useItemRecords(itemId: string) {
+  return useRecordPages(['records', 'item', itemId], 20, { item_id: itemId }, !!itemId);
+}
+
+/** 记录时间线（fixes #47，Ruling 71）。 */
+export function useRecordTimeline() {
+  return useRecordPages(['records', 'timeline'], 30, {});
 }
 
 export function useRecord(id?: string) {

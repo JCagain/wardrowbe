@@ -259,8 +259,8 @@ export default function AnalyticsPage() {
         />
         <StatCard
           title={t('stats.outfitsGenerated.title')}
-          value={wardrobe.total_outfits}
-          description={t('stats.outfitsGenerated.description', { count: wardrobe.outfits_this_week })}
+          value={wardrobe.total_records}
+          description={t('stats.outfitsGenerated.description', { count: wardrobe.records_this_month })}
           icon={Sparkles}
         />
         <StatCard
