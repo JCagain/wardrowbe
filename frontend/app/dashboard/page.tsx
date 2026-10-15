@@ -291,10 +291,7 @@ export default function DashboardPage() {
         <PendingOutfitsCard />
       </div>
 
-      {/* Second row - Weekly Summary（通知状态卡已下线，见 NotificationStatusCard 注释） */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* 「本周」卡已下线：用户 10-15 裁定首页不要本周数（Ruling 72）。 */}
-      </div>
+      {/* 第二行已空：通知状态卡已下线（见 NotificationStatusCard 注释）；「本周」卡按用户 10-15 裁定下线（Ruling 72）。 */}
 
       {/* Third row - Quick Actions（insights 卡已下线，见 InsightsCard 注释） */}
       <div className="grid gap-4 md:grid-cols-2">
