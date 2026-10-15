@@ -144,7 +144,7 @@ jobs:
           cd frontend
           npm run i18n:check
 
-      # The frontend garment lists are generated from backend/app/data/garment_vocabulary.json.
+      # Fixed vocabulary sets (body parts, seasons, materials, formality) are generated from backend/app/data/garment_vocabulary.json; the check also validates the soft lists' structure.
       - name: Garment vocabulary check
         run: |
           cd frontend

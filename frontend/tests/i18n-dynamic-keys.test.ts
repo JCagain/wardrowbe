@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLOTHING_SUBTYPES, OCCASIONS } from '@/lib/types';
-import { COLOR_VALUES, TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
+import { VOCABULARY } from './fixtures/vocabulary';
 import { SUPPORTED_LOCALES } from '@/lib/i18n/locales';
 import { RECORD_SEASONS } from '@/lib/records/season';
 import { RECORD_CONDITIONS } from '@/lib/records/weather';
@@ -83,11 +83,11 @@ describe('runtime-built translation keys', () => {
 // retires those lists). Same contract as garment-vocabulary-parity.test.ts.
 describe('vocabulary-owned labels', () => {
   it('constants.colors: every vocabulary color has a non-empty label', () => {
-    expect(COLOR_VALUES.every((c) => c.label.trim().length > 0)).toBe(true);
+    expect(VOCABULARY.colors.values.every((c) => c.label.trim().length > 0)).toBe(true);
   });
 
   it('constants.types: every vocabulary type has a non-empty label', () => {
-    expect(TYPE_ENTRIES.every((t) => t.label.trim().length > 0)).toBe(true);
+    expect(VOCABULARY.types.every((t) => t.label.trim().length > 0)).toBe(true);
   });
 });
 
