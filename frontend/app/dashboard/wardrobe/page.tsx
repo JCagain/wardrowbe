@@ -30,10 +30,19 @@ import { BulkActionToolbar, BulkSelection } from '@/components/bulk-action-toolb
 import { useItems, useItem, useItemTypes, useReanalyzeItem, useCancelAnalysis, useBulkDeleteItems, useBulkReanalyzeItems, useBulkCancelAnalysis, useBulkRotateItems, useBulkRemoveBackgroundItems, useRemoveBackground, useTaggingProgress, BulkOperationParams, tagProcessingLabel, formatAnalyzingElapsed, deriveQueueSummary } from '@/lib/hooks/use-items';
 import { useUserProfile } from '@/lib/hooks/use-user';
 import { Item } from '@/lib/types';
-import { useClothingTypes, useClothingColors, useSubtypeLabel } from '@/lib/hooks/use-translated-constants';
+import { useClothingColors, useSubtypeLabel } from '@/lib/hooks/use-translated-constants';
 import { toast } from 'sonner';
 import { formatWornAgo, getWornAgoColorClass } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
+import { VocabFilterBar } from '@/components/wardrobe/vocab-filter-bar';
+import {
+  EMPTY_VOCAB_FILTERS,
+  countVocabFilters,
+  readVocabFilters,
+  vocabFiltersToItemFilter,
+  writeVocabFilters,
+  type VocabFilterState,
+} from '@/lib/wardrobe-filters';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -335,7 +344,6 @@ export default function WardrobePage() {
   const userTimezone = userProfile?.timezone || 'UTC';
   const t = useTranslations('wardrobe');
   const tc = useTranslations('common');
-  const clothingTypes = useClothingTypes();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [queuePanelOpen, setQueuePanelOpen] = useState(false);
   const [selection, setSelection] = useState<BulkSelection>({
@@ -345,7 +353,7 @@ export default function WardrobePage() {
   });
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
-  const [typeFilter, setTypeFilter] = useState<string>(() => searchParams.get('type') ?? 'all');
+  const [vocabFilters, setVocabFilters] = useState<VocabFilterState>(() => readVocabFilters(searchParams));
   const [sortIndex, setSortIndex] = useState(() => {
     const raw = Number(searchParams.get('sort'));
     return Number.isInteger(raw) && raw >= 0 && raw < SORT_OPTIONS.length ? raw : 0;
@@ -402,7 +410,7 @@ export default function WardrobePage() {
     const params = new URLSearchParams(searchParams.toString());
 
     if (search) params.set('search', search); else params.delete('search');
-    if (typeFilter !== 'all') params.set('type', typeFilter); else params.delete('type');
+    writeVocabFilters(params, vocabFilters);
     if (sortIndex !== 0) params.set('sort', String(sortIndex)); else params.delete('sort');
     if (needsWash) params.set('needsWash', 'true'); else params.delete('needsWash');
     if (favoriteFilter) params.set('favorite', 'true'); else params.delete('favorite');
@@ -414,13 +422,13 @@ export default function WardrobePage() {
     if (next !== searchParams.toString()) {
       router.replace(next ? `/dashboard/wardrobe?${next}` : '/dashboard/wardrobe', { scroll: false });
     }
-  }, [search, typeFilter, sortIndex, needsWash, favoriteFilter, lifecycleFilter, page, pageSize, searchParams, router]);
+  }, [search, vocabFilters, sortIndex, needsWash, favoriteFilter, lifecycleFilter, page, pageSize, searchParams, router]);
 
   const sortOption = SORT_OPTIONS[sortIndex];
 
   const filters = {
     search: search || undefined,
-    type: typeFilter !== 'all' ? typeFilter : undefined,
+    ...vocabFiltersToItemFilter(vocabFilters),
     needs_wash: needsWash,
     favorite: favoriteFilter,
     lifecycle: lifecycleFilter || undefined,
@@ -432,9 +440,8 @@ export default function WardrobePage() {
   const activeFilterCount = [
     needsWash !== undefined,
     favoriteFilter !== undefined,
-    typeFilter !== 'all',
     lifecycleFilter !== '',
-  ].filter(Boolean).length;
+  ].filter(Boolean).length + countVocabFilters(vocabFilters);
 
   // Fetch items with automatic polling (faster when items are processing)
   const { data, isLoading, error } = useItems(filters, page, pageSize);
@@ -477,7 +484,7 @@ export default function WardrobePage() {
   // Clear selection when filters change (but not page - allow cross-page selection)
   useEffect(() => {
     setSelection({ mode: 'none', selectedIds: new Set(), excludedIds: new Set() });
-  }, [search, typeFilter, needsWash, favoriteFilter, sortIndex]);
+  }, [search, vocabFilters, needsWash, favoriteFilter, lifecycleFilter, sortIndex]);
 
   const handleRetry = (itemId: string) => {
     reanalyze.mutate(itemId, {
@@ -555,7 +562,7 @@ export default function WardrobePage() {
         select_all: true,
         excluded_ids: Array.from(selection.excludedIds),
         filters: {
-          type: typeFilter !== 'all' ? typeFilter : undefined,
+          ...vocabFiltersToItemFilter(vocabFilters),
           search: search || undefined,
           needs_wash: needsWash,
           favorite: favoriteFilter,
@@ -790,25 +797,13 @@ export default function WardrobePage() {
         {/* Expandable filter row */}
         {showFilters && (
           <div className="flex flex-wrap gap-2 items-center p-3 rounded-lg border bg-muted/30">
-            <Select
-              value={typeFilter}
-              onValueChange={(value) => {
-                setTypeFilter(value);
+            <VocabFilterBar
+              value={vocabFilters}
+              onChange={(next) => {
+                setVocabFilters(next);
                 setPage(1);
               }}
-            >
-              <SelectTrigger className="w-[150px] h-8 text-xs">
-                <SelectValue placeholder={t('allTypes')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allTypes')}</SelectItem>
-                {clothingTypes.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
 
             <Select
               value={String(pageSize)}
@@ -877,7 +872,7 @@ export default function WardrobePage() {
                 size="sm"
                 className="h-8 text-xs gap-1 ml-auto"
                 onClick={() => {
-                  setTypeFilter('all');
+                  setVocabFilters(EMPTY_VOCAB_FILTERS);
                   setNeedsWash(undefined);
                   setFavoriteFilter(undefined);
                   setLifecycleFilter('');
@@ -912,7 +907,7 @@ export default function WardrobePage() {
           ))}
         </div>
       ) : items.length === 0 ? (
-        search || typeFilter !== 'all' || needsWash !== undefined || favoriteFilter !== undefined ? (
+        search || activeFilterCount > 0 ? (
           <div className="text-center py-8">
             <p className="text-muted-foreground">
               {t('errors.noItemsFound')}
@@ -922,7 +917,7 @@ export default function WardrobePage() {
               className="mt-4"
               onClick={() => {
                 setSearch('');
-                setTypeFilter('all');
+                setVocabFilters(EMPTY_VOCAB_FILTERS);
                 setNeedsWash(undefined);
                 setFavoriteFilter(undefined);
                 setLifecycleFilter('');

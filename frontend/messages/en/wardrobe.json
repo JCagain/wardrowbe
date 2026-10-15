@@ -364,5 +364,24 @@
     "active": "Active",
     "idle": "Idle",
     "retired": "Retired"
+  },
+  "vocabFilters": {
+    "bodyPart": "Body part",
+    "allBodyParts": "All parts",
+    "type": "Type",
+    "allTypes": "All types",
+    "colorFamily": "Color family",
+    "allColorFamilies": "All families",
+    "color": "Color",
+    "allColors": "All colors",
+    "colorScope": "Color match",
+    "scopePrimary": "Primary",
+    "scopeSecondary": "Secondary",
+    "scopeAny": "Primary or secondary",
+    "style": "Style",
+    "allStyles": "All styles",
+    "season": "Season",
+    "allSeasons": "All seasons",
+    "disabled": "{label} (disabled)"
   }
 }

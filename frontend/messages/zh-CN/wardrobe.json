@@ -364,5 +364,24 @@
     "active": "在役",
     "idle": "闲置",
     "retired": "已退役"
+  },
+  "vocabFilters": {
+    "bodyPart": "部位",
+    "allBodyParts": "全部部位",
+    "type": "类别",
+    "allTypes": "全部类别",
+    "colorFamily": "色系",
+    "allColorFamilies": "全部色系",
+    "color": "具体色",
+    "allColors": "全部颜色",
+    "colorScope": "颜色匹配",
+    "scopePrimary": "主色",
+    "scopeSecondary": "辅色",
+    "scopeAny": "主色或辅色",
+    "style": "风格",
+    "allStyles": "全部风格",
+    "season": "季节",
+    "allSeasons": "全部季节",
+    "disabled": "{label}（已停用）"
   }
 }
