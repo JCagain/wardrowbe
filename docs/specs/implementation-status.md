@@ -27,6 +27,15 @@
 | 40 / 41 / 42 / 43 / 45 / 46 / 47 / 49 / 50 | 「浏览与编辑」计划（分支 feat/browse-edit）：#40 网格筛选（部位/类别/色系/具体色/风格/季节）；#41 色系与具体色分开，默认只按主色，另可切辅色 / 主或辅（Ruling 66）；#42 季节手改；#43 穿着次数显示 + 手改（Ruling 68）；#45 反查（Ruling 69）；#46 常搭 top 8（Ruling 70）；#47 记录时间线 + 深链（Ruling 71）；#49 统计页渲染本月 + 管线四桶（Ruling 72/73）；#50 颜色 / 风格分布标「件次」 | ✅ | 33675c5（筛选）, 4e01293（wear_count / 反查 / 常搭）, 63e6ff2（统计记录数）, f6df5fe + a20f59f（数据层、首页「本周」卡下线）, cc663ce（筛选栏）, 2c3c3f8（对话框拆分）, e7d6efa + 4679ac7（详情分区、季节手改）, 22dbc8c（历史时间线）, dde51bb（统计页）, 56422e6（终审修复） |
 | 44 | 关联增删 / 删记录自动 ± wear_count | ✅ | 记录计划，Ruling 60–65 |
 | 48 | 统计三档 scope（全部 / 排除退役 / 仅在役） | ✅ | 早于本计划；fixes 已裁定以 §10.16 为准 |
+| 51 / 52 | 词表 gen 降为固定集合 + 类型生成 + 结构校验；软词表一律运行时取用（Ruling 74 / 75） | ✅ | 57ceca9（gen / 结构校验）, 4c50673 + 34b4eef（运行时取用） |
+| 53 | 颜色插入：正X 锚点固定第一、渐变（橙黄按色相）（Ruling 76） | ✅ | a30a026 |
+| 54 | 词表即时生效（D1） | ✅ | c72a00d 起懒读（`test_runtime_added_color_reaches_the_prompt_without_restart` 锁定），原文 §10.18 作废 |
+| 57 | 家庭评分三路由摘挂（Ruling 77） | ✅ | 6f4ae12 |
+| 58 | UI 锁 zh-CN（Ruling 78） | ✅ | 8ab338a |
+| 59 | k8s 进摘名单，README 标注下线 | ✅ | 本次提交 |
+| 60 | 原文 §10 两个「16.」 | ✅（裁定，不改原文） | —（Ruling 79） |
+| 61 | §10.7 两态作废，以 §10.16 三态为准 | ✅ | 已随 #48 / lifecycle 实现 |
+| 56 | embedding 配置 | M2，未做 | — |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -73,6 +82,12 @@
 | **Ruling 71**（时间线与深链） | `?view=timeline`；`?date=YYYY-MM-DD` 定位并选中；记录保存 / 删除后回到该日；月历视图空月份显示单日空态。理由：详情反查可直达某天记录。代价：URL 参数非法时静默忽略。 |
 | **Ruling 72**（统计记录数） | source=record；按记录日期、用户时区日历月；不受 scope 影响；`total_outfits` / `outfits_this_*` 字段删除。用户 2026-10-15 裁定不要「本周」数：统计页只显示总数与本月，首页「本周」卡下线，API 不提供 `records_this_week`。理由：旧字段统计的是 AI 生成搭配，已不是产品主线。代价：没有周粒度；`dashboard.weeklySummary.*` 文案键保留未清理（各语种目录一致不动）。 |
 | **Ruling 73**（管线状态分布） | 四个桶（ready / processing / archived / error）全显示，含 0；颜色 / 风格 / 类型分布用词表标签（颜色带色块 hex），颜色与风格计数写「N 件次」，类型计「件」不加次。理由：一眼看出卡在处理中或出错的数量。代价：词表加载前（或已删词条）回退显示 slug。 |
+| **Ruling 74**（gen 范围） | generated 只含部位 / 季节 / 材质 / 正式度及其类型；`vocab:check` 另校验软词表结构（slug 唯一与格式、label 非空、type.body_part 合法且有 role、color.family 合法、hex 格式）。软词表无编译期回退，加载前选择器为空、标签回退 slug。理由：运行时增改不再让生成文件过期、CI 变红；spec §2「不再各存一份」。代价：首屏词表到达前选择器短暂为空。 |
+| **Ruling 75**（role 注册表） | 类型→role 由 `useVocabulary` 拉到词表时写入模块级注册表（`lib/vocab-roles.ts`），studio 的纯函数排序 / 槽位读它；未加载时视为无槽位。studio 页 `/dashboard/outfits/new` 自己调 `useVocabulary()`，词表到达前画布显示 spinner、出错显示错误态并可重试——角色注册表必须先于任何 reducer 排序 / 槽位 / 警告就绪，直接打开或 `?edit=` 也不例外；同时 studio reducer 的 `LOAD` 与其他画布动作一样走 `canonicalItemOrder`。理由：reducer 不能调 hook。代价：模块级可变状态；冷加载时 studio 多等一次请求才显示；studio 以外的模块在词表未加载时调 `roleForType` 仍得 undefined；以非规范顺序保存的搭配在 studio 里按规范顺序显示（仅在用户保存时才改写已存顺序）。 |
+| **Ruling 76**（颜色插入） | 锚点 = 色系首行且中文名以「正」开头，每系一个；新行永不越过锚点（含另一个「正X」）；无锚点时以「正」开头的新行成为锚点；其余按渐变（明度亮→暗；橙黄系按色相黄→橙，hue>180° 记为负）；黑白灰 / 金属追加尾部。JSON 与 vocabulary.md 共用 `color_insert_index`。理由：vocabulary.md 头部约定。代价：手改表时把非正X 行放到首位，该系即视为无锚点。 |
+| **Ruling 77**（家庭评分） | `/outfits/{id}/family-rating(s)` 三路由去装饰器、函数保留；路由级测试移入 `tests/pruned/`；响应里的 `family_ratings*` 字段保留（总为空）。理由：spec §7「后端路由关闭或不挂」。代价：无。 |
+| **Ruling 78**（锁 zh-CN） | request config 固定 zh-CN，不读 cookie / Accept-Language；zh-CN 仍以 en 为底合并消息；LocaleSwitcher 归档 `components/dormant/` 并进入口守卫；后端 `user.locale` 列与校验不动（前端不读）。理由：fixes D4。代价：无。 |
+| **Ruling 79**（原文 §10 编号） | 原文不改。fixes 与代码注释沿用原文编号，§10.16 有两条（天气预填 / 状态三态）时以上下文区分；新写的注释引用 §10.16 须带标题（如「§10.16 状态三态」）。理由：fixes #60 只是勘误，原件不改。代价：编号查找需看标题。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
@@ -117,3 +132,4 @@
 - **季节 / 色系标签在词表加载前回退显示 slug**（generated 只导出 slug）；统计页对已删词条同样回退 slug。
 - **时间线与反查都靠「加载更多」**，不做无限滚动。
 - **网格颜色筛选默认从「主色∪辅色」改为「仅主色」**；要按辅色筛需切「颜色匹配」（fixes #41，Ruling 66）。
+- **词表加载前软词表选择器为空**（Ruling 74）：颜色 / 类型 / 风格等软词表选择器在词表请求返回前为空，标签回退显示 slug。

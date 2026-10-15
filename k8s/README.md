@@ -1,5 +1,7 @@
 # Wardrobe Kubernetes Deployment
 
+> 摘不删（spec §7 / §10.20，fixes #59）：上游的 Kubernetes 部署变体，已下线。本项目是单机本地工具，只用 `docker-compose.yml`（+ `.dev`）；此目录保留备查，不维护、不支持。
+
 This directory contains Kubernetes manifests for deploying Wardrobe to a Kubernetes cluster.
 
 ## Prerequisites

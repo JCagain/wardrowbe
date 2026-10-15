@@ -326,12 +326,9 @@ compose file with the version, e.g. `ghcr.io/anyesh/wardrowbe:backend-1.3.0`.
 
 ### Kubernetes
 
-See the [k8s/](k8s/) directory for Kubernetes manifests including:
-- PostgreSQL and Redis with persistent storage
-- Backend API and worker deployments
-- Next.js frontend
-- Ingress with TLS
-- Network policies
+**De-listed** (摘不删, same as `docker-compose.prod.yml`): the [k8s/](k8s/) manifests are
+upstream's cluster deployment, kept in the tree for reference but not maintained or
+supported. This project runs only via `docker compose`.
 
 ## Configuration
 
