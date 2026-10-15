@@ -29,6 +29,7 @@ const FORBIDDEN = [
   'useNotificationSettings',
   'useLogWash',
   'useWashHistory',
+  'LocaleSwitcher',
 ];
 
 function stripComments(text: string): string {

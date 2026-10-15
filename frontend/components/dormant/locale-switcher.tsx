@@ -1,3 +1,4 @@
+// 摘不删（spec §7 / fixes D4）：UI 锁 zh-CN，语言切换已下线。
 'use client';
 
 import { useTransition } from 'react';

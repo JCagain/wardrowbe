@@ -1,12 +1,8 @@
-import { cookies, headers } from 'next/headers';
 import { mergeMessages } from './merge-messages';
 import { getRequestConfig } from 'next-intl/server';
 import {
   DEFAULT_LOCALE,
-  LOCALE_COOKIE,
   NAMESPACES,
-  isValidLocale,
-  resolveLocale,
   type Namespace,
   type SupportedLocale,
 } from '@/lib/i18n/locales';
@@ -43,48 +39,10 @@ async function loadMessages(locale: SupportedLocale): Promise<Messages> {
   return messages;
 }
 
-async function detectLocale(): Promise<SupportedLocale> {
-  let cookieLocale: string | undefined;
-  try {
-    cookieLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
-  } catch {
-    cookieLocale = undefined;
-  }
-  if (isValidLocale(cookieLocale)) return cookieLocale;
+// UI 锁 zh-CN（spec §7，fixes D4）：不读 cookie、不读 Accept-Language；其余语言文件冻结、不可达。
+export const APP_LOCALE: SupportedLocale = DEFAULT_LOCALE;
 
-  // No explicit choice stored yet, so honour the browser's preference on first visit.
-  let acceptLanguage: string | null = null;
-  try {
-    acceptLanguage = (await headers()).get('accept-language');
-  } catch {
-    acceptLanguage = null;
-  }
-  if (!acceptLanguage) return DEFAULT_LOCALE;
-
-  const preferences = acceptLanguage
-    .split(',')
-    .map((part) => {
-      const [tag, ...params] = part.trim().split(';');
-      const q = params.find((p) => p.trim().startsWith('q='));
-      return { tag: tag.trim(), quality: q ? Number.parseFloat(q.split('=')[1]) || 0 : 1 };
-    })
-    .filter((p) => p.tag && p.tag !== '*')
-    .sort((a, b) => b.quality - a.quality);
-
-  for (const { tag } of preferences) {
-    if (tag.toLowerCase().split('-')[0] === 'en') return DEFAULT_LOCALE;
-    const resolved = resolveLocale(tag);
-    if (resolved !== DEFAULT_LOCALE) return resolved;
-  }
-
-  return DEFAULT_LOCALE;
-}
-
-export default getRequestConfig(async () => {
-  const locale = await detectLocale();
-
-  return {
-    locale,
-    messages: await loadMessages(locale),
-  };
-});
+export default getRequestConfig(async () => ({
+  locale: APP_LOCALE,
+  messages: await loadMessages(APP_LOCALE),
+}));
