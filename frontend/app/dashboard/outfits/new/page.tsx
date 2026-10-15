@@ -26,6 +26,7 @@ import { ApiError, getErrorMessage } from '@/lib/api';
 import { useItems } from '@/lib/hooks/use-items';
 import { useOutfit } from '@/lib/hooks/use-outfits';
 import { useCreateStudioOutfit, usePatchOutfit } from '@/lib/hooks/use-studio';
+import { useVocabulary } from '@/lib/hooks/use-vocabulary';
 import {
   INITIAL_STUDIO_STATE,
   studioReducer,
@@ -56,6 +57,16 @@ export default function StudioEditorPage() {
   const [wornConflictOpen, setWornConflictOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
 
+  // Ordering, slots and warnings key off type roles, which come from the live
+  // vocabulary (its queryFn fills lib/vocab-roles). Nothing goes on the canvas
+  // until it is in, or a direct load would order against an empty role map.
+  const {
+    data: vocabulary,
+    isError: vocabIsError,
+    refetch: refetchVocab,
+  } = useVocabulary();
+  const vocabReady = !!vocabulary;
+
   const createMutation = useCreateStudioOutfit();
   const patchMutation = usePatchOutfit();
 
@@ -72,7 +83,7 @@ export default function StudioEditorPage() {
   const editOutfitIsWorn = !!editOutfit?.feedback?.worn_at;
 
   useEffect(() => {
-    if (!isEditMode || editLoaded || !editOutfit) return;
+    if (!vocabReady || !isEditMode || editLoaded || !editOutfit) return;
     if (editOutfit.feedback?.worn_at) return;
     const items: StudioItem[] = editOutfit.items.map((item) => ({
       id: item.id,
@@ -92,7 +103,7 @@ export default function StudioEditorPage() {
     });
     setEditLoaded(true);
     setDraftPrompted(true);
-  }, [editOutfit, editLoaded, isEditMode]);
+  }, [editOutfit, editLoaded, isEditMode, vocabReady]);
 
   useEffect(() => {
     if (isEditMode || draftPrompted) return;
@@ -248,7 +259,25 @@ export default function StudioEditorPage() {
       })
     : 'ready';
 
-  if (isEditMode && editPhase === 'loading') {
+  if (!vocabReady && vocabIsError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] px-4 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive mb-3" />
+        <h2 className="text-lg font-semibold mb-1">{tc('somethingWentWrong')}</h2>
+        <p className="text-sm text-muted-foreground mb-4 max-w-md">{tc('unexpectedError')}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => refetchVocab()}>
+            {tc('tryAgain')}
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/outfits">{t('new.errors.backToOutfits')}</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!vocabReady || (isEditMode && editPhase === 'loading')) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

@@ -87,11 +87,10 @@ export function studioReducer(
       });
     }
     case 'LOAD': {
-      return {
-        ...state,
-        ...action.state,
-        isDirty: false,
-      };
+      // Same canonical order every other canvas change applies, so a loaded
+      // outfit or draft doesn't reshuffle on the first add.
+      const next = { ...state, ...action.state, isDirty: false };
+      return action.state.items ? { ...next, items: canonicalItemOrder(action.state.items) } : next;
     }
     case 'RESET':
       return { ...INITIAL_STUDIO_STATE };

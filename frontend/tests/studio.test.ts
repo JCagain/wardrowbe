@@ -124,6 +124,15 @@ describe('studioReducer', () => {
     expect(state.isDirty).toBe(false);
   });
 
+  it('loads items in canonical order', () => {
+    const state = studioReducer(INITIAL_STUDIO_STATE, {
+      type: 'LOAD',
+      state: { items: [makeItem('1', 'sneakers'), makeItem('2', 'jeans'), makeItem('3', 'shirt')] },
+    });
+    expect(state.items.map((i) => i.type)).toEqual(['shirt', 'jeans', 'sneakers']);
+    expect(state.isDirty).toBe(false);
+  });
+
   it('resets to initial state', () => {
     let state = studioReducer(INITIAL_STUDIO_STATE, { type: 'SET_NAME', name: 'test' });
     state = studioReducer(state, { type: 'RESET' });
