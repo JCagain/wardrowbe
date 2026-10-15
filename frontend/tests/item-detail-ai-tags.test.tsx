@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const toastMock = vi.hoisted(() => ({
@@ -121,7 +121,11 @@ describe('ItemDetailDialog primary color required', () => {
     const item = { ...ITEM, primary_colors: primary } as unknown as Item;
     render(<ItemDetailDialog item={item} open onOpenChange={vi.fn()} />);
     fireEvent.click(await screen.findByTitle('actions.editItem'));
-    fireEvent.click(await screen.findByRole('button', { name: /save/i }));
+    const saveBtn = await screen.findByRole('button', { name: /save/i });
+    // handleSave awaits the mutation then closes edit mode; flush that inside act.
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
     return mutateAsync;
   }
 
@@ -133,6 +137,8 @@ describe('ItemDetailDialog primary color required', () => {
 
   it('saves normally when a primary color is set', async () => {
     const mutateAsync = await openEditAndSave(['black']);
+    // Wait for edit mode to close (setIsEditing after the awaited save) so the update lands inside act.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /save/i })).toBeNull());
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     expect(toastMock.error).not.toHaveBeenCalledWith('primaryColorRequired');
     // Ruling 68: the form never writes wear_count back; season rides on tags.
