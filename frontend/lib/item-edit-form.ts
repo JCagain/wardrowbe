@@ -26,6 +26,7 @@ export interface EditForm {
   primary_colors: string[];
   secondary_colors: string[];
   style: string[];
+  season: string[];
   temp_low: number | undefined;
   temp_high: number | undefined;
   purchase_date: string;
@@ -52,6 +53,7 @@ export function editFormFromItem(item: Item): EditForm {
     primary_colors: item.primary_colors ?? [],
     secondary_colors: item.secondary_colors ?? [],
     style: item.tags.style ?? [],
+    season: item.season ?? item.tags.season ?? [],
     temp_low: item.temp_low ?? undefined,
     temp_high: item.temp_high ?? undefined,
     // Refill at the precision the user entered — the wire value is always

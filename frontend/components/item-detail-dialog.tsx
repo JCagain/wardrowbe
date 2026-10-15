@@ -46,6 +46,7 @@ import {
   useClothingColors,
   useClothingTypes,
   useStyles,
+  useSeasons,
   useFormalityLabel,
   useMaterialLabel,
   useSubtypeLabel,
@@ -90,6 +91,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const typeEntries = useClothingTypes();
   const colorOptions = useClothingColors();
   const styleOptions = useStyles();
+  const seasons = useSeasons();
   const vocab = useVocabManagement();
   const subtypeLabel = useSubtypeLabel();
   const materialLabel = useMaterialLabel();
@@ -108,6 +110,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     primary_colors: [],
     secondary_colors: [],
     style: [],
+    season: [],
     temp_low: undefined,
     temp_high: undefined,
     purchase_date: '',
@@ -209,8 +212,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
           notes: editForm.notes || undefined,
           favorite: editForm.favorite,
           wash_interval: editForm.wash_interval,
-          // Style keeps its existing submit path (tags.style).
-          tags: { ...item.tags, style: editForm.style },
+          // Style/season keep the tags submit path; the backend projects them onto the columns.
+          // wear_count is deliberately NOT sent (Ruling 68): the form's stale value must not
+          // overwrite a count that records just adjusted.
+          tags: { ...item.tags, style: editForm.style, season: editForm.season },
         },
       });
       setIsEditing(false);
@@ -835,6 +840,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                   typeEntries={typeEntries}
                   colorOptions={colorOptions}
                   styleOptions={styleOptions}
+                  seasons={seasons}
                   vocab={vocab}
                   subtypeLabel={subtypeLabel}
                   subtypeSuggestions={subtypeSuggestions}
@@ -853,6 +859,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                   secondaryColorInfo={secondaryColorInfo}
                   unrecognizedType={unrecognizedType}
                   styleOptions={styleOptions}
+                  seasons={seasons}
                   subtypeLabel={subtypeLabel}
                   materialLabel={materialLabel}
                   formalityLabel={formalityLabel}

@@ -261,7 +261,32 @@
       "wornCount": "{count, plural, one {已穿着 # 次} other {已穿着 # 次}}"
     },
     "washInterval": "清洗间隔",
-    "statusIdle": "闲置"
+    "statusIdle": "闲置",
+    "season": "季节",
+    "wearCount": {
+      "label": "穿着次数",
+      "edit": "修改次数",
+      "save": "保存",
+      "cancel": "取消",
+      "invalid": "请输入不小于 0 的整数",
+      "saved": "已更新穿着次数",
+      "saveError": "更新失败",
+      "hint": "只改数字；之后增删记录仍会在此基础上自动加减"
+    },
+    "records": {
+      "title": "穿过的记录",
+      "count": "共 {count} 条",
+      "empty": "还没有关联这件衣物的记录",
+      "loadMore": "加载更多",
+      "loadError": "加载记录失败"
+    },
+    "companions": {
+      "title": "常搭衣物",
+      "empty": "还没有和它一起记录过的衣物",
+      "times": "{count} 次",
+      "retired": "已退役",
+      "loadError": "加载常搭失败"
+    }
   },
   "lightbox": {
     "openInWardrobe": "在衣橱中打开"

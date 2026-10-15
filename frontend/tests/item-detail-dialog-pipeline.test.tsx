@@ -34,6 +34,7 @@ vi.mock('@/lib/hooks/use-translated-constants', () => ({
   useClothingColors: () => [],
   useClothingTypes: () => [],
   useStyles: () => [],
+  useSeasons: () => [],
   useFormalityLabel: () => (v: string) => v,
   useMaterialLabel: () => (v: string) => v,
   useSubtypeLabel: () => (v: string) => v,
@@ -48,6 +49,9 @@ vi.mock('@/components/vocab/vocab-add-dialog', () => ({ VocabAddDialog: () => nu
 vi.mock('@/components/vocab/style-multi-select', () => ({ StyleMultiSelect: () => null }));
 vi.mock('@/components/vocab/part-type-select', () => ({ PartTypeSelect: () => null }));
 vi.mock('@/components/vocab/color-multi-select', () => ({ ColorMultiSelect: () => null }));
+vi.mock('@/components/item-detail/item-records-section', () => ({ ItemRecordsSection: () => null }));
+vi.mock('@/components/item-detail/item-companions-section', () => ({ ItemCompanionsSection: () => null }));
+vi.mock('@/components/item-detail/wear-count-editor', () => ({ WearCountEditor: () => null }));
 vi.mock('@/components/color-eyedropper', () => ({ ColorEyedropper: () => null }));
 vi.mock('@/components/mask-brush-canvas', () => ({ default: () => null }));
 

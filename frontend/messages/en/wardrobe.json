@@ -261,7 +261,32 @@
       "wornCount": "{count, plural, one {Worn # time} other {Worn # times}}"
     },
     "washInterval": "Wash Interval",
-    "statusIdle": "Idle"
+    "statusIdle": "Idle",
+    "season": "Season",
+    "wearCount": {
+      "label": "Times worn",
+      "edit": "Edit count",
+      "save": "Save",
+      "cancel": "Cancel",
+      "invalid": "Enter a whole number of 0 or more",
+      "saved": "Wear count updated",
+      "saveError": "Update failed",
+      "hint": "Only changes the number; adding or removing records still adjusts it"
+    },
+    "records": {
+      "title": "Worn in records",
+      "count": "{count} total",
+      "empty": "No records include this item yet",
+      "loadMore": "Load more",
+      "loadError": "Failed to load records"
+    },
+    "companions": {
+      "title": "Often worn with",
+      "empty": "Not recorded with anything yet",
+      "times": "{count}×",
+      "retired": "Retired",
+      "loadError": "Failed to load companions"
+    }
   },
   "lightbox": {
     "openInWardrobe": "Open in Wardrobe"

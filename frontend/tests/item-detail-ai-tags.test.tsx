@@ -37,6 +37,7 @@ vi.mock('@/lib/hooks/use-translated-constants', () => ({
   ],
   useClothingTypes: () => [],
   useStyles: () => [],
+  useSeasons: () => [],
   useFormalityLabel: () => (v: string) => v,
   useMaterialLabel: () => (v: string) => v,
   useSubtypeLabel: () => (v: string) => v,
@@ -51,6 +52,9 @@ vi.mock('@/components/vocab/vocab-add-dialog', () => ({ VocabAddDialog: () => nu
 vi.mock('@/components/vocab/style-multi-select', () => ({ StyleMultiSelect: () => null }));
 vi.mock('@/components/vocab/part-type-select', () => ({ PartTypeSelect: () => null }));
 vi.mock('@/components/vocab/color-multi-select', () => ({ ColorMultiSelect: () => null }));
+vi.mock('@/components/item-detail/item-records-section', () => ({ ItemRecordsSection: () => null }));
+vi.mock('@/components/item-detail/item-companions-section', () => ({ ItemCompanionsSection: () => null }));
+vi.mock('@/components/item-detail/wear-count-editor', () => ({ WearCountEditor: () => null }));
 vi.mock('@/components/color-eyedropper', () => ({ ColorEyedropper: () => null }));
 vi.mock('@/components/mask-brush-canvas', () => ({ default: () => null }));
 
@@ -131,5 +135,9 @@ describe('ItemDetailDialog primary color required', () => {
     const mutateAsync = await openEditAndSave(['black']);
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     expect(toastMock.error).not.toHaveBeenCalledWith('primaryColorRequired');
+    // Ruling 68: the form never writes wear_count back; season rides on tags.
+    const payload = mutateAsync.mock.calls.at(-1)![0].data;
+    expect(payload).not.toHaveProperty('wear_count');
+    expect(payload.tags).toHaveProperty('season');
   });
 });

@@ -13,6 +13,7 @@ import {
   useBodyParts,
   useClothingColors,
   useClothingTypes,
+  useSeasons,
   useStyles,
 } from '@/lib/hooks/use-translated-constants';
 import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
@@ -29,6 +30,7 @@ export interface ItemEditFormProps {
   typeEntries: ReturnType<typeof useClothingTypes>;
   colorOptions: ReturnType<typeof useClothingColors>;
   styleOptions: ReturnType<typeof useStyles>;
+  seasons: ReturnType<typeof useSeasons>;
   vocab: ReturnType<typeof useVocabManagement>;
   subtypeLabel: (value: string) => string;
   subtypeSuggestions: readonly string[];
@@ -47,6 +49,7 @@ export function ItemEditForm({
   typeEntries,
   colorOptions,
   styleOptions,
+  seasons,
   vocab,
   subtypeLabel,
   subtypeSuggestions,
@@ -152,6 +155,32 @@ export function ItemEditForm({
           entryHandlers={vocab.handlersFor('styles')}
           onAddEntry={() => vocab.openAdd('styles')}
         />
+      </div>
+      <div className="space-y-2">
+        <Label>{t('season')}</Label>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('season')}>
+          {seasons.map((s) => {
+            const on = form.season.includes(s.value);
+            return (
+              <Button
+                key={s.value}
+                type="button"
+                size="sm"
+                variant={on ? 'default' : 'outline'}
+                aria-pressed={on}
+                className="h-7 text-xs"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    season: on ? prev.season.filter((v) => v !== s.value) : [...prev.season, s.value],
+                  }))
+                }
+              >
+                {s.label}
+              </Button>
+            );
+          })}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">

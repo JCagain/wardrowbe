@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import Image from 'next/image';
 import {
   Calendar,
   Tag,
@@ -9,21 +7,23 @@ import {
   Shirt,
   Sparkles,
   Droplets,
-  ChevronDown,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useItemWearStats, useItemWearHistory } from '@/lib/hooks/use-items';
+import { useItemWearStats } from '@/lib/hooks/use-items';
 import { type Item } from '@/lib/types';
 import {
   useClothingColors,
   useClothingTypes,
+  useSeasons,
   useStyles,
 } from '@/lib/hooks/use-translated-constants';
 import { formatPurchaseDate } from '@/lib/purchase-date';
 import { lifecycleBadgeProps, lifecycleLabelKey } from '@/lib/item-edit-form';
 import { useTranslations } from 'next-intl';
+import { WearCountEditor } from './wear-count-editor';
+import { ItemRecordsSection } from './item-records-section';
+import { ItemCompanionsSection } from './item-companions-section';
 
 export interface ItemViewDetailsProps {
   item: Item;
@@ -33,6 +33,7 @@ export interface ItemViewDetailsProps {
   secondaryColorInfo: (ReturnType<typeof useClothingColors>[number] | undefined)[];
   unrecognizedType: string | null | undefined;
   styleOptions: ReturnType<typeof useStyles>;
+  seasons: ReturnType<typeof useSeasons>;
   subtypeLabel: (value: string) => string;
   materialLabel: (value: string) => string;
   formalityLabel: (value: string) => string;
@@ -46,14 +47,13 @@ export function ItemViewDetails({
   secondaryColorInfo,
   unrecognizedType,
   styleOptions,
+  seasons,
   subtypeLabel,
   materialLabel,
   formalityLabel,
 }: ItemViewDetailsProps) {
   const t = useTranslations('wardrobe.itemDetail');
-  const [showWearHistory, setShowWearHistory] = useState(false);
   const { data: wearStats } = useItemWearStats(item.id);
-  const { data: wearHistory } = useItemWearHistory(item.id, 20);
   const colorLabel = (value: string) => colorOptions.find((c) => c.value === value);
 
   // AI-generated tags
@@ -140,6 +140,16 @@ export function ItemViewDetails({
             </div>
           </div>
         )}
+        {(item.season?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">{t('season')}</span>
+            {item.season!.map((s) => (
+              <Badge key={s} variant="secondary" className="text-xs">
+                {seasons.find((e) => e.value === s)?.label ?? s}
+              </Badge>
+            ))}
+          </div>
+        )}
         {(item.temp_low != null || item.temp_high != null) && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">{t('tempRange')}</span>
@@ -219,6 +229,10 @@ export function ItemViewDetails({
         {/* 摘不删（spec §7）：洗护历史折叠区已下线，端点已摘挂。 */}
       </div>
 
+      <div className="pt-2 border-t">
+        <WearCountEditor item={item} />
+      </div>
+
       {/* Wear History */}
       {item.wear_count > 0 && wearStats && (
         <div className="space-y-2 pt-2 border-t">
@@ -274,51 +288,11 @@ export function ItemViewDetails({
               </div>
             </div>
           )}
-
-          {/* Wear timeline */}
-          {wearHistory && wearHistory.length > 0 && (
-            <Collapsible open={showWearHistory} onOpenChange={setShowWearHistory}>
-              <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDown className={`h-3 w-3 transition-transform ${showWearHistory ? 'rotate-180' : ''}`} />
-                {t('view.timeline', { count: wearHistory.length })}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-1.5 space-y-1.5">
-                {wearHistory.map((entry) => (
-                  <div key={entry.id} className="text-xs flex items-start gap-2">
-                    <span className="text-muted-foreground whitespace-nowrap">
-                      {new Date(entry.worn_at).toLocaleDateString()}
-                    </span>
-                    {entry.occasion && (
-                      <Badge variant="outline" className="text-[10px] h-4">{entry.occasion}</Badge>
-                    )}
-                    {entry.outfit && (
-                      <div className="flex -space-x-1">
-                        {entry.outfit.items.slice(0, 3).map((oi) => (
-                          <div
-                            key={oi.id}
-                            className="w-5 h-5 rounded-full bg-muted border-2 border-background overflow-hidden"
-                            title={oi.name || oi.type}
-                          >
-                            {oi.thumbnail_url && (
-                              <Image
-                                src={oi.thumbnail_url}
-                                alt={oi.name || oi.type}
-                                width={20}
-                                height={20}
-                                className="object-cover w-full h-full"
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
-          )}
         </div>
       )}
+
+      <ItemRecordsSection itemId={item.id} />
+      <ItemCompanionsSection itemId={item.id} />
 
       {/* AI Analysis */}
       {(hasAiTags || item.ai_description) && item.status === 'ready' && (
