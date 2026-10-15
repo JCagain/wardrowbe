@@ -3,12 +3,14 @@
 The markdown is the editing face and the compile source: every runtime
 vocabulary write lands here *and* in the JSON at the same position, or
 compile_vocabulary --check goes red. Positions follow the spec's rules —
-types and styles insert at the pinyin slot (catch-alls last), colors insert
-into the gradient (lightness high → low; neutral/metallic keep table order
-so new rows append).
+types and styles insert at the pinyin slot (catch-alls last); colors keep the
+family's 正X anchor first, then follow the gradient (lightness high → low;
+orange-yellow by hue yellow → orange; neutral/metallic keep table order so
+new rows append).
 """
 from __future__ import annotations
 
+import colorsys
 from pathlib import Path
 
 from app.utils.pinyin import pinyin_sort_key
@@ -26,6 +28,7 @@ SECTION_TITLES = {
 CATCHALL_SLUGS = {"top", "bottom", "accessories", "jewelry"}
 TABLE_ORDER_FAMILIES = {"neutral", "metallic"}
 DISABLED_MARK = "已停用"
+ANCHOR_PREFIX = "正"
 
 
 def _is_data_row(line: str) -> bool:
@@ -77,25 +80,60 @@ def _luminance(hex_color: str) -> float:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
+def _hue_key(hex_color: str) -> float:
+    """Yellow → orange: larger hue first. Reds past 0° wrap negative so they sort last."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    hue, _s, _v = colorsys.rgb_to_hsv(r, g, b)
+    deg = hue * 360
+    if deg > 180:
+        deg -= 360
+    return -deg
+
+
+def _gradient_key(family: str | None, hex_color: str | None) -> float:
+    hex_color = hex_color or "#000000"
+    if family == "orange-yellow":
+        return _hue_key(hex_color)
+    return -_luminance(hex_color)
+
+
+def color_insert_index(
+    rows: list[tuple[str, str, str | None]], new: tuple[str, str, str], family: str
+) -> int:
+    """Where a new color row goes inside its family (vocabulary.md 二、颜色 header):
+    neutral/metallic append; the family's single 正X anchor stays first; the rest
+    follow the gradient (lightness high → low; orange-yellow by hue yellow → orange)."""
+    if family in TABLE_ORDER_FAMILIES:
+        return len(rows)
+    has_anchor = bool(rows) and rows[0][1].startswith(ANCHOR_PREFIX)
+    if not has_anchor and new[1].startswith(ANCHOR_PREFIX):
+        return 0
+    start = 1 if has_anchor else 0
+    key = _gradient_key(family, new[2])
+    for i in range(start, len(rows)):
+        if _gradient_key(family, rows[i][2]) > key:
+            return i
+    return len(rows)
+
+
 def entry_sort_key(kind: str, value: str, label: str, family: str | None, hex_color: str | None) -> tuple:
-    """Where an entry sits in its table (see the module docstring for rules)."""
+    """Where a styles/types entry sits in its table (colors use color_insert_index)."""
     if kind == "styles":
         return (pinyin_sort_key(label),)
-    if kind == "types":
-        catchall = value in CATCHALL_SLUGS or label.startswith("其他")
-        return (catchall, pinyin_sort_key(label))
-    if family in TABLE_ORDER_FAMILIES:
-        return (1, 0.0)  # table order kept: new rows append at the end
-    return (0, -_luminance(hex_color or "#000000"))
+    catchall = value in CATCHALL_SLUGS or label.startswith("其他")
+    return (catchall, pinyin_sort_key(label))
+
+
+def _cell_hex(cells: list[str]) -> str | None:
+    if len(cells) > 2 and cells[2].strip("`").split():
+        raw = cells[2].strip("`").split()[0]
+        return raw if raw.startswith("#") else None
+    return None
 
 
 def _insert_key(cells: list[str], kind: str, family: str | None) -> tuple:
-    value, label = cells[0], cells[1]
-    hex_color = None
-    if kind == "colors" and len(cells) > 2:
-        raw = cells[2].strip("`").split()[0]
-        hex_color = raw if raw.startswith("#") else None
-    return entry_sort_key(kind, value, label, family, hex_color)
+    return entry_sort_key(kind, cells[0], cells[1], family, None)
 
 
 def sync_row(md_path: Path, kind: str, entry: dict, family: str | None = None) -> None:
@@ -116,12 +154,22 @@ def sync_row(md_path: Path, kind: str, entry: dict, family: str | None = None) -
         else:
             row = _row_line([value, label, ""])
         start, end = _find_table_region(lines, kind, family)
-        key = entry_sort_key(kind, value, label, family, entry.get("hex"))
+        data_rows = [j for j in range(start, end) if _is_data_row(lines[j])]
         insert_at = end
-        for j in range(start, end):
-            if _is_data_row(lines[j]) and _insert_key(_cells(lines[j]), kind, family) > key:
-                insert_at = j
-                break
+        if kind == "colors":
+            existing = []
+            for j in data_rows:
+                cells = _cells(lines[j])
+                existing.append((cells[0], cells[1], _cell_hex(cells)))
+            idx = color_insert_index(existing, (value, label, entry["hex"]), family or "")
+            if idx < len(data_rows):
+                insert_at = data_rows[idx]
+        else:
+            key = entry_sort_key(kind, value, label, family, None)
+            for j in data_rows:
+                if _insert_key(_cells(lines[j]), kind, family) > key:
+                    insert_at = j
+                    break
         lines.insert(insert_at, row)
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

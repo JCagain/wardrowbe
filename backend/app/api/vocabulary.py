@@ -17,6 +17,7 @@ from app.utils.auth import get_current_user
 from app.utils.garment_vocabulary import ROLE_BY_PART, VOCABULARY_PATH, WASH_BY_PART
 from app.utils.vocabulary_md import (
     MD_PATH,
+    color_insert_index,
     entry_sort_key,
     ensure_family_section,
     mark_disabled,
@@ -151,7 +152,12 @@ async def add_color_value(
             "hex": body.hex.lower(),
         }
         block = [c for c in data["colors"]["values"] if c["family"] == body.family]
-        _insert_entry(block, entry, "colors", body.family)
+        idx = color_insert_index(
+            [(c["value"], c["label"], c.get("hex")) for c in block],
+            (entry["value"], entry["label"], entry["hex"]),
+            body.family,
+        )
+        block.insert(idx, entry)
         data["colors"]["values"] = _splice_block(
             data["colors"]["values"], "family", body.family, block
         )

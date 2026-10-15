@@ -201,3 +201,19 @@ class TestTypeMeta:
         entry = resp.json()
         assert entry["role"] == "full_body"
         assert _compile_md() == json.loads(VOCABULARY_PATH.read_text(encoding="utf-8"))
+
+
+class TestColorAnchorOrder:
+    @pytest.mark.asyncio
+    async def test_bright_color_in_brown_stays_behind_the_anchor(self, client, auth_headers, vocab_snapshot):
+        resp = await client.post(
+            "/api/v1/vocabulary/colors/values",
+            json={"value": "milk-tea", "label": "奶茶", "family": "brown", "hex": "#e3cfb4"},
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 201), resp.text
+        got = await client.get("/api/v1/vocabulary", headers=auth_headers)
+        brown = [c["value"] for c in got.json()["colors"]["values"] if c["family"] == "brown"]
+        assert brown[0] == "brown"
+        assert brown[1] == "milk-tea"
+        assert _compile_md() == json.loads(VOCABULARY_PATH.read_text(encoding="utf-8"))
