@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { X } from 'lucide-react';
 
 import { useRoleLabel } from '@/lib/hooks/use-translated-constants';
-import { ITEM_ROLE } from '@/lib/studio/canonical-order';
+import { roleForType } from '@/lib/vocab-roles';
 import { cn } from '@/lib/utils';
 import type { StudioItem } from '@/lib/studio/editor-state';
 import { useTranslations } from 'next-intl';
@@ -18,7 +18,7 @@ export function CanvasPanel({ items, onRemove }: CanvasPanelProps) {
   const t = useTranslations('outfits.canvas');
   const roleName = useRoleLabel();
   const roleLabel = (type: string) => {
-    const role = ITEM_ROLE[type];
+    const role = roleForType(type);
     return role ? roleName(role) : type;
   };
   if (items.length === 0) {

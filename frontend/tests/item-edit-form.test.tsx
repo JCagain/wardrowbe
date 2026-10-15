@@ -7,8 +7,8 @@ import type { Item } from '@/lib/types';
 import {
   BODY_PART_LABELS,
   BODY_PART_VALUES,
-  TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
+import { VOCABULARY } from './fixtures/vocabulary';
 
 // PartTypeSelect fires onBodyPartChange and onTypeChange in the same change
 // event (picking a part resets the type). Value-form setters would let the
@@ -31,7 +31,7 @@ function Harness({ initial }: { initial: Form }) {
     <>
       <PartTypeSelect
         parts={PARTS}
-        entries={[...TYPE_ENTRIES]}
+        entries={VOCABULARY.types}
         bodyPart={form.body_part}
         type={form.type}
         {...partTypeChangeHandlers(setForm)}
@@ -99,7 +99,7 @@ describe('editFormFromItem purchase date', () => {
       ...baseItem,
       purchase_date: '2024-01',
       purchase_date_precision: 'year',
-    } as unknown as Item);
+    } as unknown as Item, VOCABULARY.types);
     expect(form.purchase_date).toBe('2024');
   });
 
@@ -108,8 +108,42 @@ describe('editFormFromItem purchase date', () => {
       ...baseItem,
       purchase_date: '2024-01',
       purchase_date_precision: 'month',
-    } as unknown as Item);
+    } as unknown as Item, VOCABULARY.types);
     expect(form.purchase_date).toBe('2024-01');
+  });
+});
+
+describe('editFormFromItem body part', () => {
+  // Rows that predate the body_part column take the part from the type, and the
+  // type list is the live vocabulary, so a type added at runtime resolves too.
+  const legacyItem = {
+    name: null,
+    type: 'tabi-boots',
+    body_part: null,
+    subtype: null,
+    brand: null,
+    primary_colors: [],
+    secondary_colors: [],
+    tags: {},
+    temp_low: null,
+    temp_high: null,
+    purchase_date: null,
+    purchase_date_precision: null,
+    purchase_price: null,
+    is_archived: false,
+    archive_reason: null,
+    notes: null,
+    favorite: false,
+    wash_interval: null,
+  } as unknown as Item;
+
+  it('derives the part of a runtime-added type from the passed vocabulary', () => {
+    const types = [...VOCABULARY.types, { value: 'tabi-boots', label: 'x', body_part: 'footwear' }];
+    expect(editFormFromItem(legacyItem, types).body_part).toBe('footwear');
+  });
+
+  it('leaves the part empty before the vocabulary loads', () => {
+    expect(editFormFromItem(legacyItem, []).body_part).toBe('');
   });
 });
 
@@ -138,21 +172,21 @@ describe('lifecycle edit form', () => {
 
   it('maps the three states onto the edit form', () => {
     expect(
-      editFormFromItem({ ...baseItem, lifecycle: 'idle', is_archived: false } as unknown as Item)
+      editFormFromItem({ ...baseItem, lifecycle: 'idle', is_archived: false } as unknown as Item, VOCABULARY.types)
         .lifecycle,
     ).toBe('idle');
     expect(
-      editFormFromItem({ ...baseItem, lifecycle: 'retired', is_archived: true } as unknown as Item)
+      editFormFromItem({ ...baseItem, lifecycle: 'retired', is_archived: true } as unknown as Item, VOCABULARY.types)
         .lifecycle,
     ).toBe('retired');
   });
 
   it('falls back to the compat view for rows without lifecycle', () => {
     expect(
-      editFormFromItem({ ...baseItem, is_archived: true } as unknown as Item).lifecycle,
+      editFormFromItem({ ...baseItem, is_archived: true } as unknown as Item, VOCABULARY.types).lifecycle,
     ).toBe('retired');
     expect(
-      editFormFromItem({ ...baseItem, is_archived: false } as unknown as Item).lifecycle,
+      editFormFromItem({ ...baseItem, is_archived: false } as unknown as Item, VOCABULARY.types).lifecycle,
     ).toBe('active');
   });
 });

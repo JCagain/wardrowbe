@@ -1,7 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { formatPurchaseDate } from '@/lib/purchase-date';
-import type { Item } from '@/lib/types';
-import { TYPE_ENTRIES } from '@/lib/generated/garment-vocabulary';
+import type { Item, TypeEntry } from '@/lib/types';
 
 // PartTypeSelect fires both callbacks in the same change event (picking a part
 // resets the type). Value-form setters would both close over the same stale
@@ -39,13 +38,14 @@ export interface EditForm {
   wash_interval: number | undefined;
 }
 
-export function editFormFromItem(item: Item): EditForm {
+export function editFormFromItem(item: Item, types: ReadonlyArray<TypeEntry>): EditForm {
   return {
     name: item.name || '',
     type: item.type,
     // Derive the part from the type when the item predates the body_part column.
+    // `types` is the live vocabulary, so runtime-added types resolve too.
     body_part:
-      item.body_part || TYPE_ENTRIES.find((e) => e.value === item.type)?.body_part || '',
+      item.body_part || types.find((e) => e.value === item.type)?.body_part || '',
     // Pre-fill a rejected AI type as the subtype so picking the nearest
     // supported type doesn't lose what the model actually saw.
     subtype: item.subtype || (item.type === 'unknown' && item.ai_unrecognized_type) || '',

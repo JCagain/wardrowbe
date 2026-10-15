@@ -160,7 +160,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
 
   useEffect(() => {
     if (item) {
-      setEditForm(editFormFromItem(item));
+      setEditForm(editFormFromItem(item, typeEntries));
       setIsEditing(false);
       setActiveImageIndex(0);
       // 换 item 就是新的会话：校色状态/框选/滑块/画笔全部重来
@@ -580,7 +580,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                   onClick={() => {
                     // Re-read the item on entering edit mode: tagging can finish while the
                     // dialog is open (same id, so the effect above doesn't re-run).
-                    if (!isEditing) setEditForm(editFormFromItem(item));
+                    if (!isEditing) setEditForm(editFormFromItem(item, typeEntries));
                     setIsEditing(!isEditing);
                   }}
                   title={isEditing ? t('actions.cancelEditing') : t('actions.editItem')}

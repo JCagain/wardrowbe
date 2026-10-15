@@ -20,16 +20,11 @@ import {
   formatAnalyzingElapsed,
   formatDurationSeconds,
 } from '@/lib/hooks/use-items';
-import { CLOTHING_TYPES, TaggingProgress } from '@/lib/types';
+import { useClothingTypes } from '@/lib/hooks/use-translated-constants';
+import { TaggingProgress } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const CONCURRENCY_DOC_URL = 'https://github.com/Anyesh/wardrowbe/blob/main/.env.example';
-
-type ClothingTypeValue = (typeof CLOTHING_TYPES)[number]['value'];
-
-const KNOWN_TYPES = new Set<string>(CLOTHING_TYPES.map((ct) => ct.value));
-
-const isKnownType = (value: string): value is ClothingTypeValue => KNOWN_TYPES.has(value);
 
 interface AnalysisQueuePanelProps {
   open: boolean;
@@ -48,7 +43,7 @@ export function AnalysisQueuePanel({
 }: AnalysisQueuePanelProps) {
   const t = useTranslations('wardrobe.ai.queue');
   const tc = useTranslations('common');
-  const tt = useTranslations('constants.types');
+  const types = useClothingTypes();
   const [now, setNow] = useState(() => Date.now());
 
   const current = useMemo(() => progress?.current ?? [], [progress]);
@@ -63,12 +58,12 @@ export function AnalysisQueuePanel({
   }, [open, current.length]);
 
   // A freshly uploaded item has neither a name nor a real type until analysis
-  // finishes, and `unknown` has no entry in constants.types, so translating it
-  // blindly would render a raw key path.
+  // finishes (`unknown` is that placeholder, not a type). Real types take their
+  // label from the live vocabulary; a slug it doesn't know shows as-is.
   const describe = (name?: string | null, type?: string) => {
     if (name) return name;
-    if (type && isKnownType(type)) return tt(type);
-    return t('unnamedItem');
+    if (!type || type === 'unknown') return t('unnamedItem');
+    return types.find((e) => e.value === type)?.label ?? type;
   };
 
   const averageLabel = formatDurationSeconds(progress?.avg_duration_seconds);

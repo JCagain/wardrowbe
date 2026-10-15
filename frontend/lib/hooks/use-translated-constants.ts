@@ -10,29 +10,25 @@ import {
 import {
   BODY_PART_LABELS,
   BODY_PART_VALUES,
-  COLOR_FAMILY_VALUES,
-  COLOR_VALUES,
   SEASON_VALUES,
-  STYLE_LABELS,
-  TYPE_ENTRIES,
 } from '@/lib/generated/garment-vocabulary';
 import { useVocabulary } from '@/lib/hooks/use-vocabulary';
 
 const WEATHER_CONDITION_VALUES = ['clear', 'cloudy', 'rain', 'snow'] as const;
 
 // Type/color/style labels come from the vocabulary itself (single source) and are
-// never routed through constants.* translations. The runtime vocabulary wins;
-// the generated export is the offline fallback while it loads.
+// never routed through constants.* translations. They are user-editable at runtime,
+// so there is no compiled copy: the lists are empty until the vocabulary loads.
 export function useClothingTypes(): TypeEntry[] {
   const { data } = useVocabulary();
-  return useMemo(() => data?.types ?? [...TYPE_ENTRIES], [data]);
+  return useMemo(() => data?.types ?? [], [data]);
 }
 
 export function useClothingColors() {
   const { data } = useVocabulary();
   // Full ColorEntry (pickers) plus a `name` alias for the older consumers.
   return useMemo(() => {
-    const values = data?.colors.values ?? [...COLOR_VALUES];
+    const values = data?.colors.values ?? [];
     return values.map((c) => ({ ...c, name: c.label }));
   }, [data]);
 }
@@ -56,10 +52,7 @@ export function useOccasions() {
 
 export function useStyles(): VocabEntry[] {
   const { data } = useVocabulary();
-  return useMemo(() => {
-    if (data) return data.styles;
-    return Object.entries(STYLE_LABELS).map(([value, label]) => ({ value, label }));
-  }, [data]);
+  return useMemo(() => data?.styles ?? [], [data]);
 }
 
 export function useWeatherConditions() {
@@ -101,7 +94,8 @@ export function useRoleLabel() {
   return useCatalogLabel(useTranslations('constants.roles'));
 }
 
-// 季节/色系标签同样来自词表本身；generated 只有 slug，加载前回退显示 slug。
+// 季节/色系标签同样来自词表本身。季节是固定集合，generated 只有 slug，加载前回退显示 slug；
+// 色系可在运行时增改，加载前为空。
 export function useSeasons(): VocabEntry[] {
   const { data } = useVocabulary();
   return useMemo(
@@ -112,8 +106,5 @@ export function useSeasons(): VocabEntry[] {
 
 export function useColorFamilies(): VocabEntry[] {
   const { data } = useVocabulary();
-  return useMemo(
-    () => data?.colors.families ?? COLOR_FAMILY_VALUES.map((value) => ({ value, label: value })),
-    [data],
-  );
+  return useMemo(() => data?.colors.families ?? [], [data]);
 }

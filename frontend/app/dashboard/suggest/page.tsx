@@ -56,7 +56,7 @@ import {
 import { ItemPicker } from '@/components/shared/item-picker';
 import { useItem } from '@/lib/hooks/use-items';
 import { api, ApiError, setAccessToken } from '@/lib/api';
-import { ClothingTypeValue, Item, Outfit, SuggestRequest } from '@/lib/types';
+import { Item, Outfit, SuggestRequest } from '@/lib/types';
 import { useOccasions } from '@/lib/hooks/use-translated-constants';
 import { useWeather, Weather } from '@/lib/hooks/use-weather';
 import { usePreferences } from '@/lib/hooks/use-preferences';
@@ -619,7 +619,7 @@ async function discardAlternatives(outfits: Outfit[], keepId?: string) {
 
 const BASE_ITEM_FILTER_TYPES = [
   'shirt', 't-shirt', 'pants', 'jeans', 'shoes', 'sneakers', 'jacket', 'dress',
-] as const satisfies readonly ClothingTypeValue[];
+] as const satisfies readonly string[];
 
 function SuggestContent() {
   const t = useTranslations('suggest');

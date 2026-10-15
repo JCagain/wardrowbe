@@ -4,6 +4,16 @@ import { render, screen, within, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { AnalysisQueuePanel } from '@/components/analysis-queue-panel'
 import type { TaggingProgress } from '@/lib/types'
+import type { Vocabulary } from '@/lib/hooks/use-vocabulary'
+import { VOCABULARY } from './fixtures/vocabulary'
+
+// Type labels come from the live vocabulary (GET /vocabulary); tests stand in
+// the shipped document and can swap in one carrying runtime-added types.
+const vocab = vi.hoisted(() => ({ current: undefined as Vocabulary | undefined }))
+vi.mock('@/lib/hooks/use-vocabulary', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/hooks/use-vocabulary')>()),
+  useVocabulary: () => ({ data: vocab.current }),
+}))
 
 // next-intl is mocked globally to echo the key, so every string the panel
 // renders shows up as a key path. That makes the panel assertions readable and
@@ -64,6 +74,7 @@ function renderPanel(p?: TaggingProgress, onRetry = vi.fn()) {
 
 describe('AnalysisQueuePanel', () => {
   beforeEach(() => {
+    vocab.current = VOCABULARY
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-09-04T10:00:00.000Z'))
   })
@@ -214,7 +225,38 @@ describe('AnalysisQueuePanel', () => {
     )
 
     expect(screen.getByText('unnamedItem')).toBeInTheDocument()
-    expect(screen.getByText('jacket')).toBeInTheDocument()
+    const jacket = VOCABULARY.types.find((t) => t.value === 'jacket')!.label
+    expect(screen.getByText(jacket)).toBeInTheDocument()
+  })
+
+  it('labels a runtime-added type from the live vocabulary and keeps an unknown slug raw', () => {
+    vocab.current = {
+      ...VOCABULARY,
+      types: [...VOCABULARY.types, { value: 'tabi-boots', label: 'TABI_LABEL', body_part: 'footwear' }],
+    }
+    renderPanel(
+      progress({
+        recent: [
+          {
+            item_id: 'runtime',
+            name: null,
+            type: 'tabi-boots',
+            duration_seconds: 10,
+            completed_at: '2026-09-04T09:59:00.000Z',
+          },
+          {
+            item_id: 'gone',
+            name: null,
+            type: 'retired-type',
+            duration_seconds: 10,
+            completed_at: '2026-09-04T09:58:00.000Z',
+          },
+        ],
+      })
+    )
+
+    expect(screen.getByText('TABI_LABEL')).toBeInTheDocument()
+    expect(screen.getByText('retired-type')).toBeInTheDocument()
   })
 
   it('renders no string the English catalog cannot resolve', () => {

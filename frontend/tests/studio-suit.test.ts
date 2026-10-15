@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 
-import { canonicalItemOrder, ITEM_ROLE } from '@/lib/studio/canonical-order';
+import { canonicalItemOrder } from '@/lib/studio/canonical-order';
+import { roleForType, setTypeRoles } from '@/lib/vocab-roles';
+import { VOCABULARY } from './fixtures/vocabulary';
 import { mergeAiAssist } from '@/lib/studio/ai-assist-merge';
 import { computeWarnings } from '@/lib/studio/warnings';
 import type { StudioItem } from '@/lib/studio/editor-state';
@@ -11,9 +13,11 @@ function makeItem(id: string, type: string): StudioItem {
 
 const t = (key: string) => key;
 
+beforeEach(() => setTypeRoles(VOCABULARY.types));
+
 describe('suit role', () => {
   it('has its own role', () => {
-    expect(ITEM_ROLE.suit).toBe('suit');
+    expect(roleForType('suit')).toBe('suit');
   });
 
   it('sorts after mid layers and before footwear', () => {

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setAccessToken } from '@/lib/api';
+import { setTypeRoles } from '@/lib/vocab-roles';
 import type { ColorEntry, TypeEntry, VocabEntry } from '@/lib/types';
 
 export type { ColorEntry, TypeEntry, VocabEntry };
@@ -33,9 +34,14 @@ export function useVocabulary() {
   useSetTokenIfAvailable();
   return useQuery({
     queryKey: ['vocabulary'],
-    queryFn: () => api.get<Vocabulary>('/vocabulary'),
+    queryFn: async () => {
+      const data = await api.get<Vocabulary>('/vocabulary');
+      // Studio ordering/slotting is hook-free; hand it the live type → role map.
+      setTypeRoles(data.types);
+      return data;
+    },
     // Only fetch on a session that actually carries a token: a bare request
-    // 401s into a stuck-error state. The generated export covers the gap.
+    // 401s into a stuck-error state. Consumers see empty lists until it lands.
     enabled: status === 'authenticated' && !!session?.accessToken,
     staleTime: 5 * 60 * 1000,
   });

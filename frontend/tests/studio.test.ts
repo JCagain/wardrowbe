@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { canonicalItemOrder, ITEM_ROLE } from '@/lib/studio/canonical-order';
+import { canonicalItemOrder } from '@/lib/studio/canonical-order';
+import { roleForType, setTypeRoles } from '@/lib/vocab-roles';
+import { VOCABULARY } from './fixtures/vocabulary';
 import {
   studioReducer,
   INITIAL_STUDIO_STATE,
@@ -14,6 +16,8 @@ import { computeEditLoadPhase } from '@/lib/studio/edit-load';
 function makeItem(id: string, type: string): StudioItem {
   return { id, type, name: `${type} item`, thumbnail_url: null, image_url: null, primary_color: null };
 }
+
+beforeEach(() => setTypeRoles(VOCABULARY.types));
 
 describe('canonicalItemOrder', () => {
   it('sorts items by role hierarchy', () => {
@@ -49,11 +53,17 @@ describe('canonicalItemOrder', () => {
     expect(sorted[1].type).toBe('unknown-thing');
   });
 
-  it('ITEM_ROLE covers core wardrobe types', () => {
+  it('roleForType covers core wardrobe types', () => {
     const coreTypes = ['shirt', 't-shirt', 'pants', 'jeans', 'dress', 'shoes', 'sneakers', 'jacket'];
     for (const t of coreTypes) {
-      expect(ITEM_ROLE[t]).toBeDefined();
+      expect(roleForType(t)).toBeDefined();
     }
+  });
+
+  it('a type added at runtime gets its role from the live vocabulary', () => {
+    setTypeRoles([...VOCABULARY.types, { value: 'tabi-boots', label: 'x', body_part: 'footwear', role: 'footwear' }]);
+    const sorted = canonicalItemOrder([makeItem('1', 'tabi-boots'), makeItem('2', 'shirt')]);
+    expect(sorted.map((i) => i.type)).toEqual(['shirt', 'tabi-boots']);
   });
 });
 

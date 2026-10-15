@@ -6,7 +6,6 @@ import {
   FORMALITY_VALUES, ITEM_ROLE, MATERIAL_VALUES,
   BODY_PART_VALUES, BODY_PART_LABELS, TYPE_ENTRIES, COLOR_FAMILY_VALUES, COLOR_VALUES, STYLE_VALUES, SEASON_VALUES,
 } from '@/lib/generated/garment-vocabulary';
-import { CLOTHING_COLORS, CLOTHING_TYPES } from '@/lib/types';
 
 const VOCABULARY_PATH = resolve(__dirname, '..', '..', 'backend', 'app', 'data', 'garment_vocabulary.json');
 const vocabulary = JSON.parse(readFileSync(VOCABULARY_PATH, 'utf8')) as {
@@ -23,7 +22,6 @@ const sorted = (values: Iterable<string>) => Array.from(values).sort();
 
 describe('garment vocabulary', () => {
   it('generates the picker, roles and scales from the backend vocabulary file', () => {
-    expect(sorted(CLOTHING_TYPES.map((type) => type.value))).toEqual(sorted(vocabulary.types.map((t) => t.value)));
     expect(ITEM_ROLE).toEqual(Object.fromEntries(vocabulary.types.map((t) => [t.value, t.role])));
     expect([...MATERIAL_VALUES]).toEqual(vocabulary.materials);
     expect([...FORMALITY_VALUES]).toEqual(vocabulary.formality);
@@ -45,10 +43,5 @@ describe('garment vocabulary', () => {
     expect(COLOR_VALUES.map((c) => c.hex)).toEqual(vocabulary.colors.values.map((c: { hex: string }) => c.hex));
     expect(STYLE_VALUES).toEqual(vocabulary.styles.map((s: { value: string }) => s.value));
     expect(SEASON_VALUES).toEqual(vocabulary.seasons.map((s: { value: string }) => s.value));
-  });
-
-  it('CLOTHING_COLORS is derived from the generated color values', () => {
-    expect(CLOTHING_COLORS.map((c) => c.value)).toEqual(COLOR_VALUES.map((c) => c.value));
-    expect(CLOTHING_COLORS.every((c) => Boolean(c.hex))).toBe(true);
   });
 });

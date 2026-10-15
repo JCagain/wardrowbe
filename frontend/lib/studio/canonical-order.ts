@@ -1,6 +1,4 @@
-import { ITEM_ROLE } from '@/lib/generated/garment-vocabulary';
-
-export { ITEM_ROLE };
+import { roleForType } from '@/lib/vocab-roles';
 
 export const CANONICAL_ROLE_ORDER = [
   'full_body',
@@ -22,7 +20,7 @@ const ROLE_SLOTS: Record<string, readonly string[]> = {
 };
 
 export function slotsForType(type: string): readonly string[] {
-  const role = ITEM_ROLE[type];
+  const role = roleForType(type);
   if (!role || role === 'accessory') return [];
   return ROLE_SLOTS[role] ?? [role];
 }
@@ -36,8 +34,8 @@ export function canonicalItemOrder<T extends { id: string; type: string }>(
 ): T[] {
   const originalPositions = new Map(items.map((item, idx) => [item.id, idx]));
   return [...items].sort((a, b) => {
-    const roleA = ITEM_ROLE[a.type] ?? '';
-    const roleB = ITEM_ROLE[b.type] ?? '';
+    const roleA = roleForType(a.type) ?? '';
+    const roleB = roleForType(b.type) ?? '';
     const idxA =
       ROLE_SORT_INDEX[roleA] ?? CANONICAL_ROLE_ORDER.length;
     const idxB =

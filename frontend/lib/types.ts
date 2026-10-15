@@ -1,5 +1,3 @@
-import { COLOR_VALUES, CLOTHING_TYPE_VALUES } from '@/lib/generated/garment-vocabulary';
-
 // API response types matching backend schemas
 
 // Vocabulary entry shapes, shared with the runtime vocabulary hook (use-vocabulary).
@@ -30,7 +28,7 @@ export interface ItemTags {
   primary_color?: string;
   pattern?: string;
   material?: string;
-  // Submit path for style is unchanged (tags.style); values come from STYLE_VALUES.
+  // Submit path for style is unchanged (tags.style); values come from the runtime vocabulary.
   style: string[];
   season: string[];
   formality?: string;
@@ -212,20 +210,6 @@ export interface Preferences {
   cities: City[];
   default_city: string | null;
 }
-
-// Color options for the app, derived from the generated vocabulary (single source).
-// The vocabulary carries the labels, so `name` is the vocabulary label.
-export const CLOTHING_COLORS = COLOR_VALUES.map((c) => ({
-  name: c.label,
-  value: c.value,
-  hex: c.hex,
-}));
-
-// Picker order is alphabetical by value. The values come from the generated vocabulary, so the
-// labels are not stored here: they are translated from constants.types at render time.
-export const CLOTHING_TYPES = [...CLOTHING_TYPE_VALUES].sort().map((value) => ({ value }));
-
-export type ClothingTypeValue = (typeof CLOTHING_TYPE_VALUES)[number];
 
 // Suggested subtypes per type. Mirrors the SUBTYPE examples in clothing_analysis.txt.
 // Subtype is free text on the backend (and the model may answer outside this list),

@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { CLOTHING_COLORS } from '@/lib/types';
 import { useClothingColors } from '@/lib/hooks/use-translated-constants';
 import { useTranslations } from 'next-intl';
 
@@ -70,22 +69,28 @@ function colorDistance(hex1: string, hex2: string): number {
   return rgbDistance + saturationPenalty + hueDistance;
 }
 
-type ClothingColor = (typeof CLOTHING_COLORS)[number];
-
-function findClosestColor(hex: string): ClothingColor {
-  let closestIndex = 0;
+// Nearest enabled vocabulary color. The list is the live vocabulary, so it is
+// empty until GET /vocabulary lands — then there is nothing to match against.
+export function findClosestColor<T extends { value: string; hex: string; disabled?: boolean }>(
+  hex: string,
+  colors: ReadonlyArray<T>,
+): T | null {
+  let closest: T | null = null;
   let minDistance = Infinity;
 
-  for (let i = 0; i < CLOTHING_COLORS.length; i++) {
-    const distance = colorDistance(hex, CLOTHING_COLORS[i].hex);
+  for (const color of colors) {
+    if (color.disabled) continue;
+    const distance = colorDistance(hex, color.hex);
     if (distance < minDistance) {
       minDistance = distance;
-      closestIndex = i;
+      closest = color;
     }
   }
 
-  return CLOTHING_COLORS[closestIndex];
+  return closest;
 }
+
+type ClothingColor = ReturnType<typeof useClothingColors>[number];
 
 export function ColorEyedropper({ imageUrl, onColorSelect, trigger }: ColorEyedropperProps) {
   const t = useTranslations('wardrobe.colorEyedropper');
@@ -236,9 +241,9 @@ export function ColorEyedropper({ imageUrl, onColorSelect, trigger }: ColorEyedr
     const color = getColorAtPosition(x, y);
     if (color) {
       setPickedColor(color);
-      setMatchedColor(findClosestColor(color));
+      setMatchedColor(findClosestColor(color, clothingColors));
     }
-  }, [getColorAtPosition]);
+  }, [getColorAtPosition, clothingColors]);
 
   const handleConfirm = () => {
     if (matchedColor) {
@@ -341,7 +346,7 @@ export function ColorEyedropper({ imageUrl, onColorSelect, trigger }: ColorEyedr
                       className="w-10 h-10 rounded border shadow-inner"
                       style={{ backgroundColor: matchedColor.hex }}
                     />
-                    <span className="text-xs font-medium">{clothingColors.find((c) => c.value === matchedColor.value)?.name ?? matchedColor.name}</span>
+                    <span className="text-xs font-medium">{matchedColor.name}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -358,7 +363,7 @@ export function ColorEyedropper({ imageUrl, onColorSelect, trigger }: ColorEyedr
                   </Button>
                   <Button size="sm" onClick={handleConfirm}>
                     <Check className="h-4 w-4 mr-1" />
-                    {t('useColor', { color: clothingColors.find((c) => c.value === matchedColor.value)?.name ?? matchedColor.name })}
+                    {t('useColor', { color: matchedColor.name })}
                   </Button>
                 </div>
               </div>
