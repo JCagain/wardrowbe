@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -28,6 +28,7 @@ from app.schemas.item import (
     BulkCancelAnalysisResponse,
     BulkDeleteRequest,
     BulkDeleteResponse,
+    BulkFilters,
     BulkRemoveBackgroundRequest,
     BulkRemoveBackgroundResponse,
     BulkRotateRequest,
@@ -105,15 +106,10 @@ async def _resolve_bulk_item_ids(
             )
         return item_ids, None, False
 
-    filters = request.filters
+    filters = request.filters or BulkFilters()
     item_ids = await item_service.get_ids_by_filter(
         user_id=user_id,
-        type_filter=filters.type if filters else None,
-        search=filters.search if filters else None,
-        is_archived=filters.is_archived if filters and filters.is_archived is not None else False,
-        lifecycle=filters.lifecycle if filters else None,
-        favorite=filters.favorite if filters else None,
-        needs_wash=filters.needs_wash if filters else None,
+        filters=ItemFilter(**filters.model_dump(exclude_none=True)),
         excluded_ids=list(request.excluded_ids) if request.excluded_ids else None,
         after_id=request.after_id,
         limit=limit + 1,
@@ -135,6 +131,11 @@ async def list_items(
     type: str | None = None,
     subtype: str | None = None,
     colors: str | None = None,
+    body_part: str | None = None,
+    color_family: str | None = None,
+    color_scope: Literal["primary", "secondary", "any"] = "primary",
+    style: str | None = None,
+    season: str | None = None,
     status: str | None = None,
     tagging_status: str | None = None,
     favorite: bool | None = None,
@@ -151,6 +152,11 @@ async def list_items(
         type=type,
         subtype=subtype,
         colors=color_list,
+        body_part=body_part,
+        color_family=color_family,
+        color_scope=color_scope,
+        style=style,
+        season=season,
         status=status,
         tagging_status=tagging_status,
         favorite=favorite,

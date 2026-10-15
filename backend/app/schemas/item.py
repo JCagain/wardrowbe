@@ -318,6 +318,12 @@ class ItemFilter(BaseModel):
     type: str | None = None
     subtype: str | None = None
     colors: list[str] | None = None
+    body_part: str | None = None
+    color_family: str | None = None
+    # 颜色匹配范围（Ruling 66）：colors 与 color_family 同受此控制。
+    color_scope: Literal["primary", "secondary", "any"] = "primary"
+    style: str | None = None
+    season: str | None = None
     status: str | None = None
     tagging_status: str | None = None
     favorite: bool | None = None
@@ -364,6 +370,13 @@ class BulkFilters(BaseModel):
     # widens a destructive action past the filter the user sees on screen.
     favorite: bool | None = None
     needs_wash: bool | None = None
+    # 词表维度（Ruling 66/67）：与网格同一套 item_filter_clauses，全选不越过屏幕上的筛选。
+    body_part: str | None = None
+    color_family: str | None = None
+    colors: list[str] | None = None
+    color_scope: Literal["primary", "secondary", "any"] | None = None
+    style: str | None = None
+    season: str | None = None
 
 
 class BulkSelectionRequest(BaseModel):

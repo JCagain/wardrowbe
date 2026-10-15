@@ -3,13 +3,15 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy import and_, false, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes, selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.item import ClothingItem, ItemHistory, ItemStatus, TaggingStatus, WashHistory
 from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
 from app.utils.color_migration import migrate_legacy_colors
+from app.utils import garment_vocabulary as gv
 from app.utils.item_lifecycle import terminal_status
 
 
@@ -25,6 +27,94 @@ def parse_purchase_date(value: str | None) -> tuple[date | None, str | None]:
         return date(int(value), 1, 1), "year"
     year, month = value.split("-")
     return date(int(year), int(month), 1), "month"
+
+
+ALL_SEASON = "all-season"
+
+
+def _color_overlap(values: list[str], scope: str) -> ColumnElement[bool]:
+    if scope == "secondary":
+        return ClothingItem.secondary_colors.overlap(values)
+    if scope == "any":
+        return or_(
+            ClothingItem.primary_colors.overlap(values),
+            ClothingItem.secondary_colors.overlap(values),
+        )
+    return ClothingItem.primary_colors.overlap(values)
+
+
+def item_filter_clauses(user_id: UUID, filters: ItemFilter) -> list[ColumnElement[bool]]:
+    """网格列表与批量全选共用的 WHERE 条件（Ruling 66/67）。
+
+    两处各写一份时，批量全选漏过 favorite/needs_wash 把破坏性操作扩到
+    屏幕之外（见 BulkFilters 注释）；收成一处，新维度不会再只加一边。
+    """
+    clauses: list[ColumnElement[bool]] = [ClothingItem.user_id == user_id]
+    if filters.type:
+        clauses.append(ClothingItem.type == filters.type)
+    if filters.subtype:
+        clauses.append(ClothingItem.subtype == filters.subtype)
+    if filters.status:
+        clauses.append(ClothingItem.status == filters.status)
+    if filters.tagging_status:
+        clauses.append(ClothingItem.tagging_status == filters.tagging_status)
+    if filters.favorite is not None:
+        clauses.append(ClothingItem.favorite == filters.favorite)
+    if filters.needs_wash is not None:
+        clauses.append(ClothingItem.needs_wash == filters.needs_wash)
+    # 主色/辅色分开匹配（fixes #41）：默认只看主色，辅色不混入。
+    if filters.colors:
+        clauses.append(_color_overlap(filters.colors, filters.color_scope))
+    if filters.color_family:
+        # 查询时展开，含停用色：停用只是不进选择器，旧衣物仍带着这些值。
+        family_colors = [c["value"] for c in gv.COLOR_VALUES if c.get("family") == filters.color_family]
+        clauses.append(
+            _color_overlap(family_colors, filters.color_scope) if family_colors else false()
+        )
+    if filters.body_part:
+        # body_part 列晚于数据：空值按类别推部位。
+        part_types = list(gv.TYPES_BY_PART.get(filters.body_part, ()))
+        clauses.append(
+            or_(
+                ClothingItem.body_part == filters.body_part,
+                and_(ClothingItem.body_part.is_(None), ClothingItem.type.in_(part_types)),
+            )
+        )
+    if filters.style:
+        clauses.append(ClothingItem.style.contains([filters.style]))
+    if filters.season:
+        if filters.season == ALL_SEASON:
+            clauses.append(ClothingItem.season.contains([ALL_SEASON]))
+        else:
+            # 「四季」衣物在任一具体季节下都该出现。
+            clauses.append(
+                or_(
+                    ClothingItem.season.contains([filters.season]),
+                    ClothingItem.season.contains([ALL_SEASON]),
+                )
+            )
+
+    # Lifecycle is the authority: an explicit lifecycle filters exactly;
+    # otherwise the legacy is_archived view maps onto it (default = hide
+    # retired, keep idle) so a desynced boolean cannot hide a row.
+    if filters.lifecycle:
+        clauses.append(ClothingItem.lifecycle == filters.lifecycle)
+    elif filters.is_archived:
+        clauses.append(ClothingItem.lifecycle == "retired")
+    else:
+        clauses.append(ClothingItem.lifecycle != "retired")
+
+    if filters.search:
+        search_term = f"%{filters.search}%"
+        clauses.append(
+            or_(
+                ClothingItem.name.ilike(search_term),
+                ClothingItem.brand.ilike(search_term),
+                ClothingItem.type.ilike(search_term),
+                ClothingItem.notes.ilike(search_term),
+            )
+        )
+    return clauses
 
 
 class ItemService:
@@ -62,59 +152,11 @@ class ItemService:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[ClothingItem], int]:
-        # Base query
         query = (
             select(ClothingItem)
-            .where(ClothingItem.user_id == user_id)
+            .where(*item_filter_clauses(user_id, filters))
             .options(selectinload(ClothingItem.additional_images))
         )
-
-        # Apply filters
-        if filters.type:
-            query = query.where(ClothingItem.type == filters.type)
-        if filters.subtype:
-            query = query.where(ClothingItem.subtype == filters.subtype)
-        if filters.status:
-            query = query.where(ClothingItem.status == filters.status)
-        if filters.tagging_status:
-            query = query.where(ClothingItem.tagging_status == filters.tagging_status)
-        if filters.favorite is not None:
-            query = query.where(ClothingItem.favorite == filters.favorite)
-        if filters.colors:
-            # `colors` filter semantics are unchanged: matches items whose
-            # primary OR secondary color arrays overlap the requested values.
-            query = query.where(
-                or_(
-                    ClothingItem.primary_colors.overlap(filters.colors),
-                    ClothingItem.secondary_colors.overlap(filters.colors),
-                )
-            )
-
-        # Lifecycle is the authority: an explicit lifecycle filters exactly;
-        # otherwise the legacy is_archived view maps onto it (default = hide
-        # retired, keep idle) so a desynced boolean cannot hide a row.
-        if filters.lifecycle:
-            query = query.where(ClothingItem.lifecycle == filters.lifecycle)
-        elif filters.is_archived:
-            query = query.where(ClothingItem.lifecycle == "retired")
-        else:
-            query = query.where(ClothingItem.lifecycle != "retired")
-
-        # Needs wash filter
-        if filters.needs_wash is not None:
-            query = query.where(ClothingItem.needs_wash == filters.needs_wash)
-
-        # Search filter
-        if filters.search:
-            search_term = f"%{filters.search}%"
-            query = query.where(
-                or_(
-                    ClothingItem.name.ilike(search_term),
-                    ClothingItem.brand.ilike(search_term),
-                    ClothingItem.type.ilike(search_term),
-                    ClothingItem.notes.ilike(search_term),
-                )
-            )
 
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
@@ -144,43 +186,14 @@ class ItemService:
     async def get_ids_by_filter(
         self,
         user_id: UUID,
-        type_filter: str | None = None,
-        search: str | None = None,
-        is_archived: bool = False,
-        lifecycle: str | None = None,
-        favorite: bool | None = None,
-        needs_wash: bool | None = None,
+        filters: ItemFilter | None = None,
         excluded_ids: list[UUID] | None = None,
         after_id: UUID | None = None,
         limit: int | None = None,
     ) -> list[UUID]:
-        query = select(ClothingItem.id).where(ClothingItem.user_id == user_id)
-
-        if type_filter:
-            query = query.where(ClothingItem.type == type_filter)
-
-        if favorite is not None:
-            query = query.where(ClothingItem.favorite == favorite)
-        if needs_wash is not None:
-            query = query.where(ClothingItem.needs_wash == needs_wash)
-
-        if lifecycle:
-            query = query.where(ClothingItem.lifecycle == lifecycle)
-        elif is_archived:
-            query = query.where(ClothingItem.lifecycle == "retired")
-        else:
-            query = query.where(ClothingItem.lifecycle != "retired")
-
-        if search:
-            search_term = f"%{search}%"
-            query = query.where(
-                or_(
-                    ClothingItem.name.ilike(search_term),
-                    ClothingItem.brand.ilike(search_term),
-                    ClothingItem.type.ilike(search_term),
-                    ClothingItem.notes.ilike(search_term),
-                )
-            )
+        query = select(ClothingItem.id).where(
+            *item_filter_clauses(user_id, filters or ItemFilter())
+        )
 
         if excluded_ids:
             query = query.where(ClothingItem.id.notin_(excluded_ids))
