@@ -277,6 +277,9 @@ export default function StudioEditorPage() {
     );
   }
 
+  // The spinner relies on the dashboard auth guard redirecting an unauthenticated
+  // visitor away first; otherwise the vocabulary query stays disabled (no token)
+  // and this would spin forever.
   if (!vocabReady || (isEditMode && editPhase === 'loading')) {
     return (
       <div className="flex items-center justify-center h-[60vh]">

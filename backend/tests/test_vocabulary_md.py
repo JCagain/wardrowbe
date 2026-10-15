@@ -5,7 +5,9 @@ JSON takes, or compile_vocabulary --check goes red on the next run.
 """
 from pathlib import Path
 
-from app.utils.vocabulary_md import mark_disabled, sync_row, unmark_disabled
+import pytest
+
+from app.utils.vocabulary_md import entry_sort_key, mark_disabled, sync_row, unmark_disabled
 
 STYLES = """## 五、风格 `styles`（可随时增行）
 
@@ -175,3 +177,8 @@ def test_zheng_color_becomes_anchor_of_an_anchorless_family():
     rows = [("mist", "雾青", "#a0b8b0"), ("deep", "深青", "#204040")]
     assert color_insert_index(rows, ("teal", "正青", "#008080"), "teal") == 0
     assert color_insert_index(rows, ("pale", "浅青", "#d0e8e0"), "teal") == 0  # brightest, no anchor
+
+
+def test_entry_sort_key_rejects_colors():
+    with pytest.raises(ValueError, match="color_insert_index"):
+        entry_sort_key("colors", "red", "红")

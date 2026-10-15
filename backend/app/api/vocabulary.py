@@ -78,12 +78,12 @@ def _save(data: dict) -> None:
 
 
 def _insert_entry(entries: list[dict], entry: dict, kind: str, family: str | None) -> None:
-    key = entry_sort_key(kind, entry["value"], entry["label"], family, entry.get("hex"))
+    key = entry_sort_key(kind, entry["value"], entry["label"])
     idx = next(
         (
             i
             for i, e in enumerate(entries)
-            if entry_sort_key(kind, e["value"], e["label"], family, e.get("hex")) > key
+            if entry_sort_key(kind, e["value"], e["label"]) > key
         ),
         len(entries),
     )

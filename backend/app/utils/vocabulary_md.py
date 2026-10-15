@@ -117,8 +117,10 @@ def color_insert_index(
     return len(rows)
 
 
-def entry_sort_key(kind: str, value: str, label: str, family: str | None, hex_color: str | None) -> tuple:
+def entry_sort_key(kind: str, value: str, label: str) -> tuple:
     """Where a styles/types entry sits in its table (colors use color_insert_index)."""
+    if kind == "colors":
+        raise ValueError("entry_sort_key does not order colors; use color_insert_index")
     if kind == "styles":
         return (pinyin_sort_key(label),)
     catchall = value in CATCHALL_SLUGS or label.startswith("其他")
@@ -133,7 +135,7 @@ def _cell_hex(cells: list[str]) -> str | None:
 
 
 def _insert_key(cells: list[str], kind: str, family: str | None) -> tuple:
-    return entry_sort_key(kind, cells[0], cells[1], family, None)
+    return entry_sort_key(kind, cells[0], cells[1])
 
 
 def sync_row(md_path: Path, kind: str, entry: dict, family: str | None = None) -> None:
@@ -165,7 +167,7 @@ def sync_row(md_path: Path, kind: str, entry: dict, family: str | None = None) -
             if idx < len(data_rows):
                 insert_at = data_rows[idx]
         else:
-            key = entry_sort_key(kind, value, label, family, None)
+            key = entry_sort_key(kind, value, label)
             for j in data_rows:
                 if _insert_key(_cells(lines[j]), kind, family) > key:
                     insert_at = j
