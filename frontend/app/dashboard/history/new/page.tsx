@@ -24,7 +24,7 @@ export default function NewRecordPage() {
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">{t('newTitle')}</h1>
       </div>
-      <RecordEditor today={today} onSaved={() => router.push('/dashboard/history')} />
+      <RecordEditor today={today} onSaved={(r) => router.push(`/dashboard/history?date=${r.date}`)} />
     </div>
   );
 }

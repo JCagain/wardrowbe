@@ -37,8 +37,8 @@ export default function EditRecordPage() {
           key={record.id}
           record={record}
           today={today}
-          onSaved={() => router.push('/dashboard/history')}
-          onDeleted={() => router.push('/dashboard/history')}
+          onSaved={(r) => router.push(`/dashboard/history?date=${r.date}`)}
+          onDeleted={() => router.push(`/dashboard/history?date=${record.date}`)}
         />
       )}
     </div>

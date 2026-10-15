@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { format, isSameDay, isValid, parseISO } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { OutfitCalendar } from '@/components/outfit-calendar';
 import { RecordCard } from '@/components/records/record-card';
+import { RecordTimeline } from '@/components/records/record-timeline';
 import { useRecords } from '@/lib/hooks/use-records';
 
 function EmptyHistory({ t }: { t: (key: string) => string }) {
@@ -91,10 +93,24 @@ function monthRange(year: number, month: number): [string, string] {
 
 export default function HistoryPage() {
   const t = useTranslations('history');
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(now);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const view = searchParams.get('view') === 'timeline' ? 'timeline' : 'calendar';
+  const initialDate = (() => {
+    const raw = searchParams.get('date');
+    const parsed = raw ? parseISO(raw) : null;
+    return parsed && isValid(parsed) ? parsed : new Date();
+  })();
+  const [year, setYear] = useState(initialDate.getFullYear());
+  const [month, setMonth] = useState(initialDate.getMonth() + 1);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate);
+  const setView = (next: 'calendar' | 'timeline') => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'timeline') params.set('view', 'timeline');
+    else params.delete('view');
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard/history?${qs}` : '/dashboard/history', { scroll: false });
+  };
 
   const [from, to] = monthRange(year, month);
   const { data, isLoading, isError } = useRecords(from, to);
@@ -106,10 +122,6 @@ export default function HistoryPage() {
     [records, selectedDate]
   );
 
-  if (isError) {
-    return <div className="py-8 text-center text-red-500">{t('loadError')}</div>;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -117,14 +129,33 @@ export default function HistoryPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/history/new">
-            <Plus className="mr-1 h-4 w-4" />
-            {t('records.new')}
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border p-0.5" role="group">
+            {(['calendar', 'timeline'] as const).map((v) => (
+              <Button
+                key={v}
+                size="sm"
+                variant={view === v ? 'secondary' : 'ghost'}
+                aria-pressed={view === v}
+                className="h-7 text-xs"
+                onClick={() => setView(v)}
+              >
+                {t(`view.${v}`)}
+              </Button>
+            ))}
+          </div>
+          <Button asChild>
+            <Link href="/dashboard/history/new">
+              <Plus className="mr-1 h-4 w-4" />
+              {t('records.new')}
+            </Link>
+          </Button>
+        </div>
       </div>
 
+      {view === 'timeline' ? (
+        <RecordTimeline empty={<EmptyHistory t={t} />} />
+      ) : (
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <Card className="order-2 h-fit lg:order-1">
           <CardContent className="p-4">
@@ -158,8 +189,8 @@ export default function HistoryPage() {
           )}
           {isLoading ? (
             <LoadingSkeleton />
-          ) : records.length === 0 ? (
-            <EmptyHistory t={t} />
+          ) : isError ? (
+            <div className="py-8 text-center text-red-500">{t('loadError')}</div>
           ) : selectedDate && selectedRecords.length === 0 ? (
             <EmptyDate date={selectedDate} t={t} />
           ) : (
@@ -167,6 +198,7 @@ export default function HistoryPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

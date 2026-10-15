@@ -92,5 +92,13 @@
     "viewed": "Viewed"
   },
   "subtitle": "See and log what you wear each day",
-  "title": "History"
+  "timeline": {
+    "loadMore": "Load more",
+    "count": "{count} records"
+  },
+  "title": "History",
+  "view": {
+    "calendar": "Calendar",
+    "timeline": "Timeline"
+  }
 }

@@ -92,5 +92,13 @@
     "viewed": "已查看"
   },
   "subtitle": "查看和记录每天的穿搭",
-  "title": "历史记录"
+  "timeline": {
+    "loadMore": "加载更多",
+    "count": "共 {count} 条记录"
+  },
+  "title": "历史记录",
+  "view": {
+    "calendar": "月历",
+    "timeline": "时间线"
+  }
 }
