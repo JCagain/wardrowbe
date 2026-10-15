@@ -138,6 +138,17 @@ class ItemUpdate(BaseModel):
     is_archived: bool | None = None
     archive_reason: str | None = Field(None, max_length=50)
     wash_interval: int | None = None
+    # 手改穿着次数（fixes #43，Ruling 68）：只改数字，不写 item_history、不动
+    # last_worn_at；之后的记录关联增删照常在它上面 ±（SQL 增量）。
+    wear_count: int | None = Field(None, ge=0)
+
+    @field_validator("wear_count")
+    @classmethod
+    def _wear_count_not_null(cls, v: int | None) -> int:
+        # Only runs when the client sends the key; an explicit null has no meaning.
+        if v is None:
+            raise ValueError("wear_count cannot be null")
+        return v
 
 
 class ItemResponse(ItemBase):

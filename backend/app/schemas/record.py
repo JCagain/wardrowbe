@@ -162,3 +162,22 @@ class RecordListResponse(BaseModel):
 
 class RecordWeatherLookupResponse(BaseModel):
     weather: RecordWeather | None = None
+
+
+class CompanionResponse(BaseModel):
+    """常搭衣物（fixes #46，Ruling 70）：记录内共现次数。"""
+
+    id: UUID
+    type: str
+    name: str | None = None
+    primary_colors: list[str] = []
+    lifecycle: str
+    count: int
+    thumbnail_path: str | None = Field(default=None, exclude=True)
+    image_path: str | None = Field(default=None, exclude=True)
+
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str | None:
+        path = self.thumbnail_path or self.image_path
+        return sign_image_url(path) if path else None

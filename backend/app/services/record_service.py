@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.models.item import ClothingItem, ItemHistory
 from app.models.outfit import Outfit, OutfitItem, OutfitPhoto, OutfitSource, OutfitStatus
@@ -131,12 +131,17 @@ class RecordService:
         date_to: date | None,
         page: int,
         page_size: int,
+        item_id: UUID | None = None,
     ) -> tuple[list[Outfit], int]:
         conds = [Outfit.user_id == user_id, Outfit.source == OutfitSource.record]
         if date_from is not None:
             conds.append(Outfit.scheduled_for >= date_from)
         if date_to is not None:
             conds.append(Outfit.scheduled_for <= date_to)
+        if item_id is not None:
+            conds.append(
+                Outfit.id.in_(select(OutfitItem.outfit_id).where(OutfitItem.item_id == item_id))
+            )
         total = (
             await self.db.execute(select(func.count()).select_from(Outfit).where(and_(*conds)))
         ).scalar_one()
@@ -152,6 +157,33 @@ class RecordService:
             .limit(page_size)
         )
         return list(result.scalars().all()), total
+
+    async def companions(
+        self, user_id: UUID, item_id: UUID, limit: int
+    ) -> list[tuple[ClothingItem, int]]:
+        """与 item 同在一条记录里的其它衣物，按共同记录数降序，同数按 id。
+
+        只看 source=record（Ruling 70）；退役衣物照常计入，由前端标注。
+        """
+        me = aliased(OutfitItem)
+        other = aliased(OutfitItem)
+        shared = func.count(func.distinct(me.outfit_id)).label("shared")
+        result = await self.db.execute(
+            select(ClothingItem, shared)
+            .select_from(me)
+            .join(Outfit, Outfit.id == me.outfit_id)
+            .join(other, and_(other.outfit_id == me.outfit_id, other.item_id != item_id))
+            .join(ClothingItem, ClothingItem.id == other.item_id)
+            .where(
+                me.item_id == item_id,
+                Outfit.user_id == user_id,
+                Outfit.source == OutfitSource.record,
+            )
+            .group_by(ClothingItem.id)
+            .order_by(shared.desc(), ClothingItem.id.asc())
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()]
 
     # ---- 衣物与计数 ----
 

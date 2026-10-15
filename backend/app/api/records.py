@@ -85,10 +85,13 @@ async def list_records(
     current_user: Annotated[User, Depends(get_current_user)],
     date_from: date | None = None,
     date_to: date | None = None,
+    item_id: UUID | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> RecordListResponse:
-    outfits, total = await RecordService(db).list(current_user.id, date_from, date_to, page, page_size)
+    outfits, total = await RecordService(db).list(
+        current_user.id, date_from, date_to, page, page_size, item_id=item_id
+    )
     return RecordListResponse(
         records=[record_to_response(o) for o in outfits],
         total=total,

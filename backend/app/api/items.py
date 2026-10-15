@@ -49,9 +49,11 @@ from app.schemas.item import (
     TaggingProgressResponse,
     WashHistoryResponse,
 )
+from app.schemas.record import CompanionResponse
 from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
+from app.services.record_service import RecordService
 from app.utils.auth import get_current_user
 from app.utils.item_lifecycle import terminal_status, terminal_status_case
 from app.utils.signed_urls import sign_image_url
@@ -1346,6 +1348,32 @@ async def log_item_wear(
     # Refresh to get updated wear_count
     await db.refresh(item)
     return ItemResponse.model_validate(item)
+
+
+@router.get("/{item_id}/companions", response_model=list[CompanionResponse])
+async def get_item_companions(
+    item_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(8, ge=1, le=30),
+) -> list[CompanionResponse]:
+    """常搭衣物（spec §4，fixes #46）：记录里一起出现过的衣物，全历史，top N。"""
+    if await ItemService(db).get_by_id(item_id, current_user.id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    rows = await RecordService(db).companions(current_user.id, item_id, limit)
+    return [
+        CompanionResponse(
+            id=item.id,
+            type=item.type,
+            name=item.name,
+            primary_colors=item.primary_colors or [],
+            lifecycle=item.lifecycle,
+            count=count,
+            thumbnail_path=item.thumbnail_path,
+            image_path=item.image_path,
+        )
+        for item, count in rows
+    ]
 
 
 @router.get("/{item_id}/history")
