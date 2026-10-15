@@ -32,7 +32,7 @@
 | 54 | 词表即时生效（D1） | ✅ | c72a00d 起懒读（`test_runtime_added_color_reaches_the_prompt_without_restart` 锁定），原文 §10.18 作废 |
 | 57 | 家庭评分三路由摘挂（Ruling 77） | ✅ | 6f4ae12 |
 | 58 | UI 锁 zh-CN（Ruling 78） | ✅ | 8ab338a |
-| 59 | k8s 进摘名单，README 标注下线 | ✅ | 本次提交 |
+| 59 | k8s 进摘名单，README 标注下线 | ✅ | af0b5ea |
 | 60 | 原文 §10 两个「16.」 | ✅（裁定，不改原文） | —（Ruling 79） |
 | 61 | §10.7 两态作废，以 §10.16 三态为准 | ✅ | 已随 #48 / lifecycle 实现 |
 | 56 | embedding 配置 | M2，未做 | — |
@@ -85,7 +85,7 @@
 | **Ruling 74**（gen 范围） | generated 只含部位 / 季节 / 材质 / 正式度及其类型；`vocab:check` 另校验软词表结构（slug 唯一与格式、label 非空、type.body_part 合法且有 role、color.family 合法、hex 格式）。软词表无编译期回退，加载前选择器为空、标签回退 slug。理由：运行时增改不再让生成文件过期、CI 变红；spec §2「不再各存一份」。代价：首屏词表到达前选择器短暂为空。 |
 | **Ruling 75**（role 注册表） | 类型→role 由 `useVocabulary` 拉到词表时写入模块级注册表（`lib/vocab-roles.ts`），studio 的纯函数排序 / 槽位读它；未加载时视为无槽位。studio 页 `/dashboard/outfits/new` 自己调 `useVocabulary()`，词表到达前画布显示 spinner、出错显示错误态并可重试——角色注册表必须先于任何 reducer 排序 / 槽位 / 警告就绪，直接打开或 `?edit=` 也不例外；同时 studio reducer 的 `LOAD` 与其他画布动作一样走 `canonicalItemOrder`。理由：reducer 不能调 hook。代价：模块级可变状态；冷加载时 studio 多等一次请求才显示；studio 以外的模块在词表未加载时调 `roleForType` 仍得 undefined；以非规范顺序保存的搭配在 studio 里按规范顺序显示（仅在用户保存时才改写已存顺序）。 |
 | **Ruling 76**（颜色插入） | 锚点 = 色系首行且中文名以「正」开头，每系一个；新行永不越过锚点（含另一个「正X」）；无锚点时以「正」开头的新行成为锚点；其余按渐变（明度亮→暗；橙黄系按色相黄→橙，hue>180° 记为负）；黑白灰 / 金属追加尾部。JSON 与 vocabulary.md 共用 `color_insert_index`。理由：vocabulary.md 头部约定。代价：手改表时把非正X 行放到首位，该系即视为无锚点。 |
-| **Ruling 77**（家庭评分） | `/outfits/{id}/family-rating(s)` 三路由去装饰器、函数保留；路由级测试移入 `tests/pruned/`；响应里的 `family_ratings*` 字段保留（总为空）。理由：spec §7「后端路由关闭或不挂」。代价：无。 |
+| **Ruling 77**（家庭评分） | `/outfits/{id}/family-rating(s)` 三路由去装饰器、函数保留；路由级测试移入 `tests/pruned/`；响应里的 `family_ratings*` 字段保留，不再有新写入（已有评分照常返回）。理由：spec §7「后端路由关闭或不挂」。代价：无。 |
 | **Ruling 78**（锁 zh-CN） | request config 固定 zh-CN，不读 cookie / Accept-Language；zh-CN 仍以 en 为底合并消息；LocaleSwitcher 归档 `components/dormant/` 并进入口守卫；后端 `user.locale` 列与校验不动（前端不读）。理由：fixes D4。代价：无。 |
 | **Ruling 79**（原文 §10 编号） | 原文不改。fixes 与代码注释沿用原文编号，§10.16 有两条（天气预填 / 状态三态）时以上下文区分；新写的注释引用 §10.16 须带标题（如「§10.16 状态三态」）。理由：fixes #60 只是勘误，原件不改。代价：编号查找需看标题。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
@@ -129,7 +129,7 @@
 - **`last_worn_at` 只认 `item_history`**（Ruling 64）：studio / lookbook 的「标记穿过」「今天穿」路径不写 `item_history`，经由它们穿过的日期在下次记录改动重算时会被丢掉。记录是主路径，studio 处于 lookbook 角色，不补。
 - **记录照片不支持拖拽排序**：按添加顺序，删除后重排连续编号。
 - **studio 不填场合时跳过学习与推荐缓存清理**（fixes #27）：`OutfitPerformance.occasion` 为 NOT NULL，无场合的 studio 搭配不进学习模块（学习已按 §7 摘除）；也不清推荐缓存。
-- **季节 / 色系标签在词表加载前回退显示 slug**（generated 只导出 slug）；统计页对已删词条同样回退 slug。
+- **季节标签在词表加载前回退显示 slug**（generated 只导出 `SEASON_VALUES` 的 slug）；色系不再进 generated，选择器在词表加载前为空、标签回退 slug（Ruling 74 / 下条「词表加载前软词表选择器为空」）；统计页对已删词条同样回退 slug。
 - **时间线与反查都靠「加载更多」**，不做无限滚动。
 - **网格颜色筛选默认从「主色∪辅色」改为「仅主色」**；要按辅色筛需切「颜色匹配」（fixes #41，Ruling 66）。
 - **词表加载前软词表选择器为空**（Ruling 74）：颜色 / 类型 / 风格等软词表选择器在词表请求返回前为空，标签回退显示 slug。
