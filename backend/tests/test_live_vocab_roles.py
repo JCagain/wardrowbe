@@ -33,9 +33,10 @@ def test_role_for_type_sees_runtime_type(runtime_types):
 
 
 def test_canonical_order_places_runtime_type_by_role(runtime_types):
-    boots, shirt = uuid4(), uuid4()
-    order = canonical_item_order([boots, shirt], {boots: "tabi-boots", shirt: "shirt"})
-    assert order == [shirt, boots]
+    # An unknown type sorts last, so the runtime top must move ahead of the jeans.
+    jeans, smock = uuid4(), uuid4()
+    order = canonical_item_order([jeans, smock], {jeans: "jeans", smock: "smock-top"})
+    assert order == [smock, jeans]
 
 
 def test_dedup_treats_runtime_type_as_its_slot(runtime_types):
