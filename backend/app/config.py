@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     ai_max_tokens: int = Field(default=8000)
     ai_reasoning_effort: str | None = Field(default="none")
 
+    # Embedding endpoint for AI-suggested outfit items (spec §3.2/§6, fixes #56).
+    # Separate from the vision endpoint; env-only on purpose (Ruling 80). Empty
+    # base_url or model = feature unavailable (suggest button disabled).
+    ai_embedding_base_url: str = Field(default="")
+    ai_embedding_api_key: str | None = Field(default=None)
+    ai_embedding_model: str = Field(default="")
+    ai_embedding_timeout: int = Field(default=120)
+
     @field_validator("ai_reasoning_effort", mode="before")
     @classmethod
     def normalize_reasoning_effort(cls, v: str | None) -> str | None:
@@ -161,6 +169,10 @@ class Settings(BaseSettings):
         if not self.ai_internal_enabled:
             return False
         return True if self.ai_text_enabled is None else self.ai_text_enabled
+
+    @property
+    def embedding_configured(self) -> bool:
+        return bool(self.ai_embedding_base_url.strip() and self.ai_embedding_model.strip())
 
     @property
     def ai_enabled(self) -> bool:
