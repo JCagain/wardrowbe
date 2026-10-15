@@ -1,3 +1,4 @@
+from app.models.embedding import ItemEmbedding
 from app.models.family import Family, FamilyInvite
 from app.models.item import ClothingItem, ItemHistory, ItemImage, WashHistory
 from app.models.learning import (
@@ -32,6 +33,7 @@ __all__ = [
     "ClothingItem",
     "ItemHistory",
     "ItemImage",
+    "ItemEmbedding",
     "WashHistory",
     "FamilyOutfitRating",
     "Outfit",
