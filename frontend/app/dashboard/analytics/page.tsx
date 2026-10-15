@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Shirt,
-  Sparkles,
+  Calendar,
   TrendingUp,
   Activity,
   PieChart,
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { useClothingColors, useStyles, useClothingTypes } from '@/lib/hooks/use-translated-constants';
 import { useAnalytics, type AnalyticsScope } from '@/lib/hooks/use-analytics';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -96,42 +97,30 @@ function LoadingSkeleton() {
   );
 }
 
-function ColorBar({ color, percentage }: { color: string; percentage: number }) {
+function ColorBar({
+  label,
+  hex,
+  percentage,
+  count,
+}: {
+  label: string;
+  hex?: string;
+  percentage: number;
+  count: number;
+}) {
   const t = useTranslations('analytics');
-  const colorMap: Record<string, string> = {
-    black: 'bg-gray-900',
-    white: 'bg-gray-100 border',
-    gray: 'bg-gray-500',
-    grey: 'bg-gray-500',
-    navy: 'bg-blue-900',
-    blue: 'bg-blue-500',
-    red: 'bg-red-500',
-    green: 'bg-green-500',
-    yellow: 'bg-yellow-400',
-    orange: 'bg-orange-500',
-    purple: 'bg-purple-500',
-    pink: 'bg-pink-500',
-    brown: 'bg-amber-700',
-    beige: 'bg-amber-200',
-    cream: 'bg-amber-100',
-    khaki: 'bg-yellow-700',
-    olive: 'bg-lime-700',
-    teal: 'bg-teal-500',
-    burgundy: 'bg-red-900',
-    maroon: 'bg-red-800',
-    coral: 'bg-orange-400',
-    salmon: 'bg-red-300',
-  };
-
-  const bgColor = colorMap[color.toLowerCase()] || 'bg-muted';
-
   return (
     <div className="flex items-center gap-3">
-      <div className={`w-4 h-4 rounded ${bgColor}`} />
+      <div
+        className="w-4 h-4 rounded border flex-shrink-0"
+        style={{ backgroundColor: hex ?? 'transparent' }}
+      />
       <div className="flex-1">
         <div className="flex justify-between text-sm mb-1">
-          <span className="capitalize">{color}</span>
-          <span className="text-muted-foreground">{t('percent', { value: percentage.toFixed(1) })}</span>
+          <span>{label}</span>
+          <span className="text-muted-foreground">
+            {t('pieces', { count })} · {t('percent', { value: percentage.toFixed(1) })}
+          </span>
         </div>
         <Progress value={percentage} className="h-2" />
       </div>
@@ -205,6 +194,9 @@ export default function AnalyticsPage() {
   const t = useTranslations('analytics');
   const [scope, setScope] = useState<AnalyticsScope>('all');
   const { data, isLoading, isError } = useAnalytics(scope);
+  const colorOptions = useClothingColors();
+  const styles = useStyles();
+  const types = useClothingTypes();
 
   if (isLoading) {
     return (
@@ -258,10 +250,10 @@ export default function AnalyticsPage() {
           icon={Shirt}
         />
         <StatCard
-          title={t('stats.outfitsGenerated.title')}
+          title={t('stats.records.title')}
           value={wardrobe.total_records}
-          description={t('stats.outfitsGenerated.description', { count: wardrobe.records_this_month })}
-          icon={Sparkles}
+          description={t('stats.records.description', { month: wardrobe.records_this_month })}
+          icon={Calendar}
         />
         <StatCard
           title={t('stats.totalWears.title')}
@@ -270,6 +262,22 @@ export default function AnalyticsPage() {
           icon={Activity}
         />
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t('pipeline.title')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            {(['ready', 'processing', 'archived', 'error'] as const).map((k) => (
+              <div key={k} className="rounded-md bg-muted/50 p-2">
+                <dt className="text-xs text-muted-foreground">{t(`pipeline.${k}`)}</dt>
+                <dd className="font-medium">{wardrobe.items_by_status[k] ?? 0}</dd>
+              </div>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {/* Color Distribution */}
@@ -286,9 +294,18 @@ export default function AnalyticsPage() {
               <p className="text-muted-foreground text-sm">{t('insights.colorDistribution.noData')}</p>
             ) : (
               <div className="space-y-3">
-                {color_distribution.slice(0, 8).map((color) => (
-                  <ColorBar key={color.color} color={color.color} percentage={color.percentage} />
-                ))}
+                {color_distribution.slice(0, 8).map((c) => {
+                  const entry = colorOptions.find((o) => o.value === c.color);
+                  return (
+                    <ColorBar
+                      key={c.color}
+                      label={entry?.label ?? c.color}
+                      hex={entry?.hex}
+                      percentage={c.percentage}
+                      count={c.count}
+                    />
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -310,11 +327,11 @@ export default function AnalyticsPage() {
               <div className="space-y-3">
                 {style_distribution.map((style) => (
                   <div key={style.style} className="flex items-center justify-between">
-                    <span className="capitalize">{style.style}</span>
+                    <span>{styles.find((s) => s.value === style.style)?.label ?? style.style}</span>
                     <div className="flex items-center gap-2">
                       <Progress value={style.percentage} className="w-24 h-2" />
-                      <span className="text-sm text-muted-foreground w-12 text-right">
-                        {style.count}
+                      <span className="text-sm text-muted-foreground w-20 text-right">
+                        {t('pieces', { count: style.count })}
                       </span>
                     </div>
                   </div>
@@ -340,7 +357,7 @@ export default function AnalyticsPage() {
               <div className="space-y-3">
                 {type_distribution.map((type) => (
                   <div key={type.type} className="flex items-center justify-between">
-                    <span className="capitalize">{type.type}</span>
+                    <span>{types.find((e) => e.value === type.type)?.label ?? type.type}</span>
                     <div className="flex items-center gap-2">
                       <Progress value={type.percentage} className="w-24 h-2" />
                       <span className="text-sm text-muted-foreground w-12 text-right">

@@ -5,7 +5,7 @@
       "title": "Acceptance Rate Trend"
     },
     "colorDistribution": {
-      "description": "Most common colors in your wardrobe",
+      "description": "Counted per item per primary color",
       "noData": "No color data yet",
       "title": "Color Distribution"
     },
@@ -44,10 +44,6 @@
       "title": "Acceptance Rate"
     },
     "avgRating": "Avg rating: {rating}/5",
-    "outfitsGenerated": {
-      "description": "{count} this week",
-      "title": "Outfits Generated"
-    },
     "totalItems": {
       "description": "{count} ready to wear",
       "title": "Total Items"
@@ -56,6 +52,10 @@
       "description": "Track your outfits",
       "noData": "No data yet",
       "title": "Total Wears"
+    },
+    "records": {
+      "title": "Outfit records",
+      "description": "{month} this month"
     }
   },
   "subtitle": "Your wardrobe insights and statistics",
@@ -65,5 +65,13 @@
     "all": "All",
     "noRetired": "Without retired",
     "activeOnly": "Only active"
-  }
+  },
+  "pipeline": {
+    "title": "Pipeline status",
+    "ready": "Ready",
+    "processing": "Processing",
+    "archived": "Archived",
+    "error": "Error"
+  },
+  "pieces": "{count} item-wears"
 }
