@@ -178,3 +178,39 @@ class TestStyleDistributionAndScope:
         ).json()
         assert no_retired["wardrobe"]["total_items"] == 3
         assert no_retired["wardrobe"]["total_wears"] == 6
+
+
+class TestRecordCounts:
+    @pytest.mark.asyncio
+    async def test_counts_records_total_and_calendar_month(
+        self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from app.models.outfit import Outfit, OutfitSource, OutfitStatus
+
+        today = datetime.now(UTC).date()  # test_user.timezone == "UTC"
+        month_start = today.replace(day=1)
+        record_days = [today, month_start, month_start - timedelta(days=1)]
+        for d in record_days:
+            db_session.add(Outfit(
+                user_id=test_user.id, source=OutfitSource.record,
+                status=OutfitStatus.accepted, scheduled_for=d,
+            ))
+        # 非记录（建议）不计；即使是今天。
+        db_session.add(Outfit(
+            user_id=test_user.id, source=OutfitSource.on_demand,
+            status=OutfitStatus.pending, scheduled_for=today,
+        ))
+        await db_session.flush()
+
+        def in_month(d):
+            return (d.year, d.month) == (today.year, today.month)
+
+        for scope in ("all", "active_only"):
+            data = (await client.get("/api/v1/analytics", params={"scope": scope}, headers=auth_headers)).json()
+            w = data["wardrobe"]
+            assert "total_outfits" not in w
+            assert "records_this_week" not in w
+            assert w["total_records"] == 3
+            assert w["records_this_month"] == sum(in_month(d) for d in record_days)

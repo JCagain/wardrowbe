@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.item import ClothingItem, ItemStatus
-from app.models.outfit import Outfit
+from app.api.outfits import get_user_today
+from app.models.outfit import Outfit, OutfitSource
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.utils.clothing import WardrobeComposition, first_primary
@@ -56,9 +57,9 @@ class WearStats(BaseModel):
 class WardrobeStats(BaseModel):
     total_items: int
     items_by_status: dict[str, int]
-    total_outfits: int
-    outfits_this_week: int
-    outfits_this_month: int
+    # 记录口径（Ruling 72）：source=record、按记录日期、用户时区日历月。
+    total_records: int
+    records_this_month: int
     total_wears: int
 
 
@@ -135,11 +136,6 @@ async def get_analytics(
     current_user: Annotated[User, Depends(get_current_user)],
     scope: Scope = Query("all", description="lifecycle scope: all / no_retired / active_only"),
 ) -> AnalyticsResponse:
-    # Calculate date ranges
-    now = datetime.utcnow()
-    week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
-
     # === Wardrobe Stats ===
     # Total items and status breakdown
     # Headline cards take the lifecycle axis only, not the finished-only filter
@@ -168,22 +164,23 @@ async def get_analytics(
     }
     total_wears = items_row.total_wears or 0
 
-    # Outfit stats
-    outfits_query = select(
+    # Record stats — 不受 scope 影响：记录是「穿过」的事实，不是衣物的子集。
+    today = get_user_today(current_user)
+    month_start = today.replace(day=1)
+    month_end = (month_start + timedelta(days=32)).replace(day=1)
+    records_query = select(
         func.count(Outfit.id).label("total"),
-        func.sum(case((Outfit.created_at >= week_ago, 1), else_=0)).label("this_week"),
-        func.sum(case((Outfit.created_at >= month_ago, 1), else_=0)).label("this_month"),
-    ).where(Outfit.user_id == current_user.id)
-
-    outfits_result = await db.execute(outfits_query)
-    outfits_row = outfits_result.one()
+        func.sum(
+            case((and_(Outfit.scheduled_for >= month_start, Outfit.scheduled_for < month_end), 1), else_=0)
+        ).label("this_month"),
+    ).where(Outfit.user_id == current_user.id, Outfit.source == OutfitSource.record)
+    records_row = (await db.execute(records_query)).one()
 
     wardrobe_stats = WardrobeStats(
         total_items=total_items,
         items_by_status=items_by_status,
-        total_outfits=outfits_row.total or 0,
-        outfits_this_week=outfits_row.this_week or 0,
-        outfits_this_month=outfits_row.this_month or 0,
+        total_records=records_row.total or 0,
+        records_this_month=records_row.this_month or 0,
         total_wears=total_wears,
     )
 
