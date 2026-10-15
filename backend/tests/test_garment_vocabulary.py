@@ -3,7 +3,6 @@ import re
 
 import pytest
 
-from app.schemas.item import DEFAULT_WASH_INTERVALS
 from app.services.item_scorer import (
     FORMALITY_ORDER,
     HEAVY_LAYER_MATERIALS,
@@ -13,9 +12,11 @@ from app.services.item_scorer import (
     WARM_LAYER_TYPES,
 )
 from app.utils import garment_vocabulary as gv
-from app.utils.clothing import _CANONICAL_ROLE_ORDER, ITEM_ROLE
+from app.utils.clothing import _CANONICAL_ROLE_ORDER
 from app.utils.garment_vocabulary import (
+    DEFAULT_WASH_INTERVALS,
     FORMALITY,
+    ITEM_ROLE,
     MATERIALS,
     TYPES,
     render_tagging_prompt,

@@ -2,13 +2,13 @@ from uuid import uuid4
 
 from app.utils.clothing import (
     _CANONICAL_ROLE_ORDER,
-    ITEM_ROLE,
     WardrobeComposition,
     canonical_item_order,
     count_composition,
     deduplicate_by_body_slot,
     first_primary,
 )
+from app.utils.garment_vocabulary import ITEM_ROLE
 
 
 def _ids(n):

@@ -16,9 +16,8 @@ from app.models.outfit import (
     OutfitStatus,
 )
 from app.models.user import User
-from app.schemas.item import DEFAULT_WASH_INTERVALS
 from app.services.learning_service import LearningService
-from app.utils.clothing import canonical_item_order
+from app.utils.clothing import canonical_item_order, default_wash_interval
 
 
 class ItemOwnershipError(Exception):
@@ -104,7 +103,7 @@ class StudioService:
             effective_interval = (
                 item.wash_interval
                 if item.wash_interval is not None
-                else DEFAULT_WASH_INTERVALS.get(item.type, 3)
+                else default_wash_interval(item.type)
             )
             new_wears_since_wash = (item.wears_since_wash or 0) + 1
 

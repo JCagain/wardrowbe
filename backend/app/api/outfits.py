@@ -22,7 +22,6 @@ from app.models.outfit import (
     UserFeedback,
 )
 from app.models.user import User
-from app.schemas.item import DEFAULT_WASH_INTERVALS
 from app.schemas.outfit import MAX_AUTHORING_TEXT_LENGTH, OutfitAttributeFields
 from app.services.ai_service import AIDisabledError
 from app.services.external_outfit_service import ExternalOutfitService
@@ -43,7 +42,7 @@ from app.services.studio_service import (
 from app.services.suggestion_cache import clear_suggestions
 from app.services.weather_service import WeatherData
 from app.utils.auth import get_current_user
-from app.utils.clothing import first_primary
+from app.utils.clothing import default_wash_interval, first_primary
 from app.utils.rate_limit import rate_limit_by_user
 from app.utils.signed_urls import sign_image_url
 
@@ -1015,7 +1014,7 @@ async def submit_feedback(
             effective_interval = (
                 item.wash_interval
                 if item.wash_interval is not None
-                else DEFAULT_WASH_INTERVALS.get(item.type, 3)
+                else default_wash_interval(item.type)
             )
             await db.execute(
                 update(ClothingItem)

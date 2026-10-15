@@ -6,7 +6,7 @@ from uuid import UUID
 from app.models.item import ClothingItem
 from app.models.preference import UserPreference
 from app.services.weather_service import WeatherData
-from app.utils.clothing import ITEM_ROLE, first_primary
+from app.utils.clothing import first_primary, role_for_type
 from app.utils.garment_vocabulary import FORMALITY
 
 OCCASION_FORMALITY = {
@@ -334,7 +334,7 @@ def _sort_mandatory_first(
 
 
 def _role_of(scored_item: ScoredItem) -> str | None:
-    return ITEM_ROLE.get((scored_item.item.type or "").lower())
+    return role_for_type(scored_item.item.type)
 
 
 def _ensure_role_diversity(

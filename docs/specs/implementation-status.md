@@ -29,7 +29,7 @@
 | 48 | 统计三档 scope（全部 / 排除退役 / 仅在役） | ✅ | 早于本计划；fixes 已裁定以 §10.16 为准 |
 | 51 / 52 | 词表 gen 降为固定集合 + 类型生成 + 结构校验；软词表一律运行时取用（Ruling 74 / 75） | ✅ | 57ceca9（gen / 结构校验）, 4c50673 + 34b4eef（运行时取用） |
 | 53 | 颜色插入：正X 锚点固定第一、渐变（橙黄按色相）（Ruling 76） | ✅ | a30a026 |
-| 54 | 词表即时生效（D1） | ✅ | c72a00d 起懒读（`test_runtime_added_color_reaches_the_prompt_without_restart` 锁定），原文 §10.18 作废 |
+| 54 | 词表即时生效（D1） | ✅ | c72a00d 起懒读（`test_runtime_added_color_reaches_the_prompt_without_restart` 锁定），原文 §10.18 作废；后端类型→role / 默认洗涤间隔原先在 import 时绑定（`clothing.py` / `schemas/item.py`），新增类型要重启才生效，已改为 `role_for_type` / `default_wash_interval` 每次现读（`test_live_vocab_roles.py` 锁定） |
 | 57 | 家庭评分三路由摘挂（Ruling 77） | ✅ | 6f4ae12 |
 | 58 | UI 锁 zh-CN（Ruling 78） | ✅ | 8ab338a |
 | 59 | k8s 进摘名单，README 标注下线 | ✅ | af0b5ea |

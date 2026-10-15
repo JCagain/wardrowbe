@@ -32,7 +32,7 @@ from app.models.learning import (
 )
 from app.models.outfit import Outfit, OutfitItem, OutfitStatus, UserFeedback
 from app.models.preference import UserPreference
-from app.utils.clothing import ITEM_ROLE, first_primary
+from app.utils.clothing import first_primary, role_for_type
 from app.utils.signed_urls import sign_image_url
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def slot_composition(item_types: Iterable[str | None]) -> dict[str, str]:
     composition: dict[str, str] = {}
     for item_type in item_types:
         normalized = (item_type or "").lower()
-        role = ITEM_ROLE.get(normalized)
+        role = role_for_type(normalized)
         if role and role != "accessory":
             composition[_COMPOSITION_KEYS.get(role, role)] = normalized
     return composition

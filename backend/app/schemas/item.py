@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.utils.garment_vocabulary import DEFAULT_WASH_INTERVALS
+from app.utils.clothing import default_wash_interval
 from app.utils.signed_urls import sign_image_url
 
 
@@ -263,7 +263,7 @@ class ItemResponse(ItemBase):
     def effective_wash_interval(self) -> int:
         if self.wash_interval is not None:
             return self.wash_interval
-        return DEFAULT_WASH_INTERVALS.get(self.type, 3)
+        return default_wash_interval(self.type)
 
 
 class CalibrationItemResponse(ItemResponse):

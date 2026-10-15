@@ -9,7 +9,8 @@ from sqlalchemy.orm import attributes, selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.item import ClothingItem, ItemHistory, ItemStatus, TaggingStatus, WashHistory
-from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
+from app.schemas.item import ItemCreate, ItemFilter, ItemUpdate
+from app.utils.clothing import default_wash_interval
 from app.utils.color_migration import migrate_legacy_colors
 from app.utils import garment_vocabulary as gv
 from app.utils.item_lifecycle import terminal_status
@@ -621,7 +622,7 @@ class ItemService:
         effective_interval = (
             item.wash_interval
             if item.wash_interval is not None
-            else DEFAULT_WASH_INTERVALS.get(item.type, 3)
+            else default_wash_interval(item.type)
         )
         item.needs_wash = item.wears_since_wash >= effective_interval
 

@@ -3,9 +3,23 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.utils.garment_vocabulary import ITEM_ROLE
+from app.utils import garment_vocabulary
 
 logger = logging.getLogger(__name__)
+
+
+def role_for_type(item_type: str | None) -> str | None:
+    """Body role of a type, read from the live vocabulary on every call.
+
+    Binding ITEM_ROLE at import froze the import-time map, so types added at
+    runtime had no role until a restart (fixes #54).
+    """
+    return garment_vocabulary.ITEM_ROLE.get((item_type or "").lower())
+
+
+def default_wash_interval(item_type: str | None) -> int:
+    """Vocabulary default wears-between-washes for a type, read live (3 if unknown)."""
+    return garment_vocabulary.DEFAULT_WASH_INTERVALS.get(item_type or "", 3)
 
 
 def first_primary(primary_colors: Sequence[str] | None) -> str | None:
@@ -35,7 +49,7 @@ def count_composition(type_counts: list[tuple[str | None, int]]) -> WardrobeComp
     """Bucket item counts by body role. Outer layers, footwear and accessories are ignored."""
     buckets = {"base_top": 0, "mid_layer": 0, "bottom": 0, "full_body": 0}
     for item_type, count in type_counts:
-        role = ITEM_ROLE.get((item_type or "").lower())
+        role = role_for_type(item_type)
         if role in buckets:
             buckets[role] += count
     return WardrobeComposition(
@@ -47,7 +61,7 @@ def count_composition(type_counts: list[tuple[str | None, int]]) -> WardrobeComp
 
 
 def _slots_for_type(item_type: str) -> frozenset[str]:
-    role = ITEM_ROLE.get(item_type)
+    role = role_for_type(item_type)
     if not role or role == "accessory":
         return frozenset()
     return ROLE_SLOTS.get(role, frozenset({role}))
@@ -110,7 +124,7 @@ def canonical_item_order(item_ids: list[UUID], item_type_map: dict[UUID, str]) -
 
     def sort_key(item_id: UUID) -> tuple[int, int]:
         item_type = item_type_map.get(item_id, "")
-        role = ITEM_ROLE.get(item_type)
+        role = role_for_type(item_type)
         role_idx = (
             _ROLE_SORT_INDEX.get(role, len(_CANONICAL_ROLE_ORDER))
             if role
