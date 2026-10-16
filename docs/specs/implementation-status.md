@@ -44,6 +44,7 @@
 | 64 | 记录测试：photos（`test_record_photos_api.py` 增删/重排/旋转）、city（`test_records_api.py` 设与清空、`test_weather_lookup_uses_city_coordinates`）、季节推导（`test_season.py`、`test_create_minimal_defaults_today_and_derived_season`、`record-season.test.ts`）、天气预填与历史天气（`test_weather_for_date.py` 近期走 forecast / 久远走 archive）、0 件保存（`test_create_minimal_…`、`test_patch_to_zero_items_and_back`） | ✅（逐项核对） | 随记录计划各 commit |
 | 65 | 反查（`test_records_reverse_lookup_by_item`）、wear_count 手改与自动 ±（`test_manual_wear_count_then_records_delta`、`test_records_api.py` 增删/改日期/删记录/不为负）、常搭共现（`test_companions_*`） | ✅（逐项核对） | 4e01293 |
 | 66 | 网格筛选补的维度：部位、色系、具体色（主/辅/任一）、风格，另含季节（`test_item_filters.py`、`wardrobe-filters.test.ts`） | ✅（逐项核对） | 33675c5, cc663ce |
+| spec §8 备份 | 备份 = DB dump + 图片卷 + 词表 JSON：`scripts/backup.sh`，步骤与恢复见 [docs/backup.md](../backup.md)；脚本实跑过，dump 灌进临时库验证可恢复 | ✅ | 见本行所在 commit |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
