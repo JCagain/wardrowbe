@@ -86,13 +86,13 @@
   "confirmReset": "确定要将所有偏好恢复为默认值吗？",
   "embeddings": {
     "title": "衣物向量索引",
-    "description": "供 AI 建议关联使用。衣物向量会在后台自动更新；换 embedding 模型后请全部重建。",
+    "description": "供 AI 建议关联使用。衣物向量会在后台自动更新；换 embedding 模型后会自动重新向量化全部衣物。",
     "unconfigured": "未配置 embedding 端点（.env 里的 AI_EMBEDDING_*）。",
     "unavailable": "连不上 embedding 服务——请确认服务已启动。",
     "counts": "已索引 {embedded} / {total} 件（待更新 {stale} 件）",
     "sync": "立即同步",
     "rebuild": "全部重建",
-    "rebuildConfirm": "重新计算所有衣物向量？在逐件替换完成前，旧向量仍可用。",
+    "rebuildConfirm": "用当前模型重新计算所有衣物向量？仅在需要强制重算时使用（换模型本身会自动重算）。",
     "syncFailed": "无法开始同步",
     "job": {
       "idle": "空闲",

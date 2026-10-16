@@ -22,7 +22,7 @@ function toRecordItem(c: SuggestCandidate): RecordItem {
 
 export function SuggestPanel({ recordId, photoId, region, linkedIds, onToggle }: Props) {
   const t = useTranslations('history.records.suggest');
-  const { data: status } = useEmbeddingStatus();
+  const { data: status, isError: statusError } = useEmbeddingStatus();
   const suggest = useSuggestForRegion();
   const [result, setResult] = useState<SuggestResponse | null>(null);
   const [running, setRunning] = useState(false);
@@ -81,7 +81,7 @@ export function SuggestPanel({ recordId, photoId, region, linkedIds, onToggle }:
             {t('cancel')}
           </Button>
         )}
-        {status && !available && (
+        {(statusError || (status && !available)) && (
           <span data-testid="suggest-unavailable" className="text-xs text-muted-foreground">{t('unavailable')}</span>
         )}
         {!region && available && <span className="text-xs text-muted-foreground">{t('pickBox')}</span>}
@@ -93,6 +93,9 @@ export function SuggestPanel({ recordId, photoId, region, linkedIds, onToggle }:
       )}
       {result && !result.reranked && result.candidates.length > 0 && (
         <p data-testid="suggest-not-reranked" className="text-xs text-muted-foreground">{t('notReranked')}</p>
+      )}
+      {result && !result.reranked && result.rerank_error && (
+        <p data-testid="suggest-rerank-error" className="text-xs text-muted-foreground">{result.rerank_error}</p>
       )}
       {result && result.candidates.length > 0 && (
         <ul data-testid="suggest-results" className="grid grid-cols-2 gap-2 sm:grid-cols-4">

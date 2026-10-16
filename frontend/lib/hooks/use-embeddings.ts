@@ -14,6 +14,15 @@ function useSetTokenIfAvailable() {
   }
 }
 
+// 3 s while a job runs; 30 s while idle with pending items (the cron starts the follow-up job
+// within a minute and the card would otherwise never notice); otherwise stop.
+export function statusRefetchInterval(data: EmbeddingStatus | undefined): number | false {
+  if (!data) return false;
+  if (data.job !== 'idle') return 3000;
+  if (data.available && data.stale > 0) return 30_000;
+  return false;
+}
+
 export function useEmbeddingStatus() {
   const { status } = useSession();
   useSetTokenIfAvailable();
@@ -22,7 +31,7 @@ export function useEmbeddingStatus() {
     queryFn: () => api.get<EmbeddingStatus>('/embeddings/status'),
     enabled: status !== 'loading',
     staleTime: 30_000,
-    refetchInterval: (query) => (query.state.data && query.state.data.job !== 'idle' ? 3000 : false),
+    refetchInterval: (query) => statusRefetchInterval(query.state.data),
   });
 }
 

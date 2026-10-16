@@ -8,9 +8,10 @@ vi.mock('next-auth/react', () => ({
 }));
 const get = vi.fn();
 const post = vi.fn();
+const put = vi.fn();
 vi.mock('@/lib/api', async (orig) => {
   const mod = await orig<typeof import('@/lib/api')>();
-  return { ...mod, api: { ...mod.api, get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a) } };
+  return { ...mod, api: { ...mod.api, get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a), put: (...a: unknown[]) => put(...a) } };
 });
 
 import { SuggestPanel } from '@/components/records/suggest-panel';
@@ -41,7 +42,7 @@ async function clickRun() {
 }
 
 describe('SuggestPanel', () => {
-  beforeEach(() => { get.mockReset(); post.mockReset(); get.mockResolvedValue(status); });
+  beforeEach(() => { get.mockReset(); post.mockReset(); put.mockReset(); get.mockResolvedValue(status); });
 
   it('runs for the selected region and lists candidates in order', async () => {
     post.mockResolvedValue({ candidates: [cand('a'), cand('b', 'similar')], recall_count: 2, part_filtered: true, reranked: true, rerank_error: null });
@@ -61,6 +62,7 @@ describe('SuggestPanel', () => {
     fireEvent.click(await screen.findByTestId('suggest-candidate-a'));
     expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', type: 'shirt' }));
     expect(post).toHaveBeenCalledTimes(1);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it('marks already-linked candidates as pressed', async () => {
@@ -75,6 +77,20 @@ describe('SuggestPanel', () => {
     mount();
     expect(await screen.findByTestId('suggest-unavailable')).toBeInTheDocument();
     expect(screen.getByTestId('suggest-run')).toBeDisabled();
+  });
+
+  it('shows the unavailable hint when the status query fails', async () => {
+    get.mockRejectedValue(new Error('500'));
+    mount();
+    expect(await screen.findByTestId('suggest-unavailable')).toBeInTheDocument();
+    expect(screen.getByTestId('suggest-run')).toBeDisabled();
+  });
+
+  it('shows the backend rerank error beside the not-reranked note', async () => {
+    post.mockResolvedValue({ candidates: [cand('a', null)], recall_count: 1, part_filtered: false, reranked: false, rerank_error: 'vision timed out' });
+    mount();
+    await clickRun();
+    expect(await screen.findByTestId('suggest-rerank-error')).toHaveTextContent('vision timed out');
   });
 
   it('disabled with no selected region', async () => {

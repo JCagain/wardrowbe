@@ -86,13 +86,13 @@
   "confirmReset": "Are you sure you want to reset all preferences to defaults?",
   "embeddings": {
     "title": "Item vector index",
-    "description": "Used by AI-suggested linking. Item vectors update automatically in the background; rebuild after changing the embedding model.",
+    "description": "Used by AI-suggested linking. Item vectors update automatically in the background; changing the embedding model re-embeds everything automatically.",
     "unconfigured": "Embedding endpoint not configured (AI_EMBEDDING_* in .env).",
     "unavailable": "Embedding service unreachable — check that it is running.",
     "counts": "{embedded} of {total} items indexed ({stale} pending)",
     "sync": "Sync now",
     "rebuild": "Rebuild all",
-    "rebuildConfirm": "Recompute every item vector? Existing vectors keep working until each is replaced.",
+    "rebuildConfirm": "Recompute every item vector with the current model? Only needed to force a recompute (a model change already does this on its own).",
     "syncFailed": "Could not start sync",
     "job": {
       "idle": "Idle",
