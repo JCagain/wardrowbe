@@ -2,13 +2,14 @@
 
 import { useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { ImagePlus, RotateCcw, RotateCw, X } from 'lucide-react';
+import { ImagePlus, RotateCcw, RotateCw, ScanSearch, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 
 export interface StripPhoto {
   key: string;
   src: string;
+  regionCount?: number;
 }
 
 interface Props {
@@ -16,10 +17,11 @@ interface Props {
   onAdd: (files: File[]) => void;
   onRemove: (key: string) => void;
   onRotate?: (key: string, dir: 'cw' | 'ccw') => void;
+  onFrame?: (key: string) => void;
   canRemove: boolean;
 }
 
-export function RecordPhotoStrip({ photos, onAdd, onRemove, onRotate, canRemove }: Props) {
+export function RecordPhotoStrip({ photos, onAdd, onRemove, onRotate, onFrame, canRemove }: Props) {
   const t = useTranslations('history.records');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +31,15 @@ export function RecordPhotoStrip({ photos, onAdd, onRemove, onRotate, canRemove 
         <div key={p.key} className="relative h-32 w-24 overflow-hidden rounded-md border bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={p.src} alt="" className="h-full w-full object-cover" />
+          {p.regionCount !== undefined && p.regionCount > 0 && (
+            <span
+              data-testid="record-photo-region-count"
+              aria-label={t('regions.count', { count: p.regionCount })}
+              className="absolute right-1 top-1 rounded-full bg-green-600 px-1.5 text-xs font-medium text-white"
+            >
+              {p.regionCount}
+            </span>
+          )}
           <div className="absolute inset-x-0 bottom-0 flex justify-between bg-black/40 p-1">
             {onRotate ? (
               <>
@@ -41,6 +52,16 @@ export function RecordPhotoStrip({ photos, onAdd, onRemove, onRotate, canRemove 
               </>
             ) : (
               <span />
+            )}
+            {onFrame && (
+              <button
+                type="button"
+                data-testid="record-photo-frame"
+                aria-label={t('regions.open')}
+                onClick={() => onFrame(p.key)}
+              >
+                <ScanSearch className="h-4 w-4 text-white" />
+              </button>
             )}
             <button
               type="button"

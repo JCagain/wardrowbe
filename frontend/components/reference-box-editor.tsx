@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { clampToImage, mapPointerToImage } from '@/components/mask-brush-canvas';
+import { applyHandle, handlePoint, HANDLES, type Box, type HandleId } from '@/lib/box-geometry';
 
 /**
  * 参考框坐标契约（与 Task 6 R1 同一条）：全分辨率图像像素，`r`/`b` **含右下**
  * （同后端 `box=(l,t,r,b)` 契约——消费方喂 PIL 时才 +1）。拖拽换算复用
  * `mapPointerToImage`，越界 clamp 复用 `clampToImage`，不重写第二份。
  */
-export type ReferenceBox = { l: number; t: number; r: number; b: number };
+export type ReferenceBox = Box;
 export type Baseline = 'gray' | 'white';
 
 export type Detection = {
@@ -18,47 +19,6 @@ export type Detection = {
   box: ReferenceBox;
   cards?: Partial<Record<'white' | 'gray' | 'black', ReferenceBox>>;
 };
-
-type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-const HANDLES: readonly HandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-
-function handlePoint(box: ReferenceBox, handle: HandleId): { x: number; y: number } {
-  const cx = (box.l + box.r) / 2;
-  const cy = (box.t + box.b) / 2;
-  switch (handle) {
-    case 'nw': return { x: box.l, y: box.t };
-    case 'n': return { x: cx, y: box.t };
-    case 'ne': return { x: box.r, y: box.t };
-    case 'e': return { x: box.r, y: cy };
-    case 'se': return { x: box.r, y: box.b };
-    case 's': return { x: cx, y: box.b };
-    case 'sw': return { x: box.l, y: box.b };
-    case 'w': return { x: box.l, y: cy };
-  }
-}
-
-/**
- * 把拖到的点折进框：坐标就是含右下的图像像素——**不做 ±1 的开区间换算**，
- * 唯一的 +1 在后端 `calibrate` 内部。同时保证框不翻转（对边不许交叉）。
- */
-function applyHandle(
-  box: ReferenceBox,
-  handle: HandleId,
-  p: { x: number; y: number },
-): ReferenceBox {
-  const x = Math.round(p.x);
-  const y = Math.round(p.y);
-  switch (handle) {
-    case 'nw': return { ...box, l: Math.min(x, box.r), t: Math.min(y, box.b) };
-    case 'n': return { ...box, t: Math.min(y, box.b) };
-    case 'ne': return { ...box, r: Math.max(x, box.l), t: Math.min(y, box.b) };
-    case 'e': return { ...box, r: Math.max(x, box.l) };
-    case 'se': return { ...box, r: Math.max(x, box.l), b: Math.max(y, box.t) };
-    case 's': return { ...box, b: Math.max(y, box.t) };
-    case 'sw': return { ...box, l: Math.min(x, box.r), b: Math.max(y, box.t) };
-    case 'w': return { ...box, l: Math.min(x, box.r) };
-  }
-}
 
 /**
  * 参考框框选器（R35）：显示 `detect` 端点返回的参考框，让用户看得见并改。

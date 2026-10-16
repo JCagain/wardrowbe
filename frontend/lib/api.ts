@@ -99,6 +99,13 @@ export const api = {
       body: data ? JSON.stringify(data) : undefined,
     }),
 
+  put: <T>(endpoint: string, data?: unknown, options?: FetchOptions) =>
+    fetchApi<T>(endpoint, {
+      ...options,
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    }),
+
   patch: <T>(endpoint: string, data?: unknown, options?: FetchOptions) =>
     fetchApi<T>(endpoint, {
       ...options,

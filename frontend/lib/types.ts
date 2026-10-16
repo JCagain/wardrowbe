@@ -425,12 +425,26 @@ export interface RecordWeather {
   condition: string | null;
 }
 
+export interface GarmentRegion {
+  body_part: string;
+  box: { l: number; t: number; r: number; b: number };
+  source: 'auto' | 'manual';
+}
+
+export interface GarmentRegionsResponse {
+  photo_id: string;
+  width: number;
+  height: number;
+  regions: GarmentRegion[];
+}
+
 export interface RecordPhoto {
   id: string;
   position: number;
   image_url: string;
   medium_url?: string | null;
   thumbnail_url?: string | null;
+  garment_regions?: GarmentRegion[] | null;
 }
 
 export interface RecordItem {

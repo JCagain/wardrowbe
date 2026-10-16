@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ItemPicker } from '@/components/shared/item-picker';
+import { GarmentRegionsDialog } from '@/components/records/garment-regions-dialog';
 import { RecordPhotoStrip, type StripPhoto } from '@/components/records/record-photo-strip';
 import { getErrorMessage } from '@/lib/api';
 import { usePreferences } from '@/lib/hooks/use-preferences';
@@ -97,6 +98,7 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
   const [localPhotos, setLocalPhotos] = useState<Array<{ key: string; file: File; src: string }>>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [framingPhotoId, setFramingPhotoId] = useState<string | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const cityInitialized = useRef(isEdit);
   // 当前天气值是否来自自动预填（手改或清空后为 false；编辑页挂载时已存天气算用户填的）
@@ -163,9 +165,14 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
   }, [prefs?.cities, city]);
 
   const stripPhotos: StripPhoto[] = isEdit
-    ? record!.photos.map((p) => ({ key: p.id, src: p.thumbnail_url ?? p.image_url }))
+    ? record!.photos.map((p) => ({
+        key: p.id,
+        src: p.thumbnail_url ?? p.image_url,
+        regionCount: p.garment_regions?.length,
+      }))
     : localPhotos.map((p) => ({ key: p.key, src: p.src }));
 
+  const framingPhoto = isEdit && framingPhotoId ? record!.photos.find((p) => p.id === framingPhotoId) : undefined;
   const photoCount = isEdit ? record!.photos.length : localPhotos.length;
   const busy = createRecord.isPending || updateRecord.isPending;
   const canSave = photoCount > 0 && !!date && !busy;
@@ -279,6 +286,7 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
           onAdd={handleAddPhotos}
           onRemove={handleRemovePhoto}
           onRotate={isEdit ? handleRotate : undefined}
+          onFrame={isEdit ? setFramingPhotoId : undefined}
           canRemove={isEdit ? photoCount > 1 : true}
         />
         {photoCount === 0 && <p className="text-sm text-muted-foreground">{t('photoRequired')}</p>}
@@ -463,6 +471,16 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
           />
         </DialogContent>
       </Dialog>
+
+      {framingPhoto && (
+        <GarmentRegionsDialog
+          key={framingPhoto.id}
+          recordId={record!.id}
+          photo={framingPhoto}
+          open
+          onOpenChange={(o) => !o && setFramingPhotoId(null)}
+        />
+      )}
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

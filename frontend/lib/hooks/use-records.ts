@@ -3,7 +3,14 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { api, ApiError, getAccessToken, NetworkError, setAccessToken } from '@/lib/api';
-import type { OutfitRecord, RecordInput, RecordListResponse, RecordWeather } from '@/lib/types';
+import type {
+  GarmentRegion,
+  GarmentRegionsResponse,
+  OutfitRecord,
+  RecordInput,
+  RecordListResponse,
+  RecordWeather,
+} from '@/lib/types';
 
 function useSetTokenIfAvailable() {
   const { data: session } = useSession();
@@ -154,6 +161,26 @@ export function useRotateRecordPhoto() {
   return useMutation({
     mutationFn: ({ id, photoId, direction }: { id: string; photoId: string; direction: 'cw' | 'ccw' }) =>
       api.post<OutfitRecord>(`/records/${id}/photos/${photoId}/rotate`, { direction }),
+    onSuccess: (_r, vars) => invalidate(vars.id),
+  });
+}
+
+export function useDetectGarmentRegions() {
+  useSetTokenIfAvailable();
+  const invalidate = useInvalidateRecords();
+  return useMutation({
+    mutationFn: ({ id, photoId, signal }: { id: string; photoId: string; signal?: AbortSignal }) =>
+      api.post<GarmentRegionsResponse>(`/records/${id}/photos/${photoId}/garment-regions/detect`, undefined, { signal }),
+    onSuccess: (_r, vars) => invalidate(vars.id),
+  });
+}
+
+export function useSaveGarmentRegions() {
+  useSetTokenIfAvailable();
+  const invalidate = useInvalidateRecords();
+  return useMutation({
+    mutationFn: ({ id, photoId, regions }: { id: string; photoId: string; regions: GarmentRegion[] }) =>
+      api.put<GarmentRegionsResponse>(`/records/${id}/photos/${photoId}/garment-regions`, { regions }),
     onSuccess: (_r, vars) => invalidate(vars.id),
   });
 }
