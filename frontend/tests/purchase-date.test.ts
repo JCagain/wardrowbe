@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
+import { entryYearMonth, formatPurchaseDate, normalizePurchaseDate } from '@/lib/purchase-date';
 
 describe('purchase date', () => {
   it('accepts year-only and year-month', () => {
@@ -27,5 +27,16 @@ describe('purchase date validation', () => {
   it('rejects year zero', () => {
     expect(() => normalizePurchaseDate('0000')).toThrow();
     expect(() => normalizePurchaseDate('0000-05')).toThrow();
+  });
+});
+
+describe('entry year-month default', () => {
+  it('uses the local calendar month, zero-padded', () => {
+    expect(entryYearMonth(new Date(2026, 0, 31, 23, 59))).toBe('2026-01');
+    expect(entryYearMonth(new Date(2026, 11, 1, 0, 0))).toBe('2026-12');
+  });
+
+  it('is a value the form accepts as-is', () => {
+    expect(normalizePurchaseDate(entryYearMonth())).toBe(entryYearMonth());
   });
 });

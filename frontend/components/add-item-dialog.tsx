@@ -39,7 +39,7 @@ import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
 import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
 import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
 import type { ColorEntry, TypeEntry } from '@/lib/types';
-import { normalizePurchaseDate } from '@/lib/purchase-date';
+import { entryYearMonth, normalizePurchaseDate } from '@/lib/purchase-date';
 import { PartTypeSelect } from '@/components/vocab/part-type-select';
 import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
 import { useTranslations } from 'next-intl';
@@ -76,7 +76,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   const [style, setStyle] = useState<string[]>([]);
   const [tempLow, setTempLow] = useState('');
   const [tempHigh, setTempHigh] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(() => entryYearMonth());
   const [purchasePrice, setPurchasePrice] = useState('');
   const [lifecycle, setLifecycle] = useState<'active' | 'idle' | 'retired'>('active');
   const [archiveReason, setArchiveReason] = useState('');
@@ -252,7 +252,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     setStyle([]);
     setTempLow('');
     setTempHigh('');
-    setPurchaseDate('');
+    setPurchaseDate(entryYearMonth());
     setPurchasePrice('');
     setLifecycle('active');
     setArchiveReason('');

@@ -1,5 +1,12 @@
 const PATTERN = /^\d{4}(-\d{2})?$/;
 
+// fixes #22: a new item's purchase date defaults to the entry month (local
+// calendar), editable and clearable.
+export function entryYearMonth(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${now.getFullYear()}-${month}`;
+}
+
 export function normalizePurchaseDate(input: string): string {
   const value = input.trim();
   if (value === '') return '';
