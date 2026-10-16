@@ -1,4 +1,5 @@
 import os
+import time
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -12,6 +13,8 @@ from app.models.embedding import ItemEmbedding
 from app.models.item import ClothingItem, ItemStatus
 from app.services.embedding_client import EmbeddingUnavailableError
 from app.services.embedding_store import (
+    embedding_counts,
+    mark_all_stale,
     embedding_input_image,
     source_fingerprint,
     stale_items,
@@ -193,3 +196,38 @@ async def test_sync_skips_unreadable_image(db_session, make_item, storage, test_
     (storage / "u/b.jpg").write_bytes(b"not an image")
     result = await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage, batch_size=2)
     assert (result.done, result.skipped, result.remaining) == (3, 1, 1)
+
+
+@pytest.mark.asyncio
+async def test_sync_stops_at_deadline_between_batches(db_session, test_user, make_item, storage):
+    items = [await make_item(f"d{i}") for i in range(3)]
+    res = await sync_item_embeddings(
+        db_session, test_user.id, FakeClient(), storage, batch_size=1, deadline=time.monotonic() - 1
+    )
+    assert res.done == 0
+    ids = {i.id for i in items}
+    assert ids <= {i.id for i in await stale_items(db_session, test_user.id, "m1", storage)}
+
+
+@pytest.mark.asyncio
+async def test_mark_all_stale_forces_resync_but_keeps_vectors(db_session, test_user, make_item, storage):
+    item = await make_item("ms")
+    await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage)
+    assert item.id not in {i.id for i in await stale_items(db_session, test_user.id, "m1", storage)}
+    n = await mark_all_stale(db_session, test_user.id)
+    await db_session.commit()
+    assert n >= 1
+    assert item.id in {i.id for i in await stale_items(db_session, test_user.id, "m1", storage)}
+    row = (await db_session.execute(select(ItemEmbedding).where(ItemEmbedding.item_id == item.id))).scalar_one()
+    assert row.vector  # old vector still served until replaced
+
+
+@pytest.mark.asyncio
+async def test_embedding_counts(db_session, test_user, make_item, storage):
+    a = await make_item("c1")
+    await make_item("c2", with_file=False)  # no image → not counted
+    total0, stale0 = await embedding_counts(db_session, test_user.id, "m1", storage)
+    await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage)
+    total1, stale1 = await embedding_counts(db_session, test_user.id, "m1", storage)
+    assert total1 == total0 and stale1 == 0 and stale0 >= 1
+    assert a.id  # sanity

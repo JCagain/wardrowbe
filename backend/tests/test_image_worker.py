@@ -76,9 +76,13 @@ class TestWorkerSplit:
         assert ImageWorkerSettings.queue_name == IMAGE_QUEUE
 
     def test_image_worker_carries_both_image_jobs(self):
-        assert set(ImageWorkerSettings.functions) == {
-            rotate_item_image_job,
-            remove_item_background_job,
+        # Embedding sync is registered as an arq Function (keep_result=0), so
+        # compare by name; the two image jobs are plain callables.
+        names = {getattr(f, "name", None) or f.__name__ for f in ImageWorkerSettings.functions}
+        assert names == {
+            rotate_item_image_job.__name__,
+            remove_item_background_job.__name__,
+            "sync_embeddings_job",
         }
 
     def test_tagging_worker_no_longer_runs_image_jobs(self):

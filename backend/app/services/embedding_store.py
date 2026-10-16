@@ -8,6 +8,7 @@ else the plain working image (Ruling 82).
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ from uuid import UUID
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,13 +111,23 @@ class SyncResult:
 
 
 async def sync_item_embeddings(
-    db: AsyncSession, user_id: UUID, client, storage_path: Path, batch_size: int = 8
+    db: AsyncSession,
+    user_id: UUID,
+    client,
+    storage_path: Path,
+    batch_size: int = 8,
+    deadline: float | None = None,
 ) -> SyncResult:
-    """Embed every stale item, committing per batch so a failure resumes cleanly."""
+    """Embed every stale item, committing per batch so a failure resumes cleanly.
+
+    `deadline` is a `time.monotonic()` instant; the run stops between batches once passed.
+    """
     todo = await stale_items(db, user_id, client.model, storage_path)
     done = 0
     skipped = 0
     for start in range(0, len(todo), batch_size):
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         batch = todo[start : start + batch_size]
         prepared = []
         for item in batch:
@@ -136,3 +147,34 @@ async def sync_item_embeddings(
         done += len(prepared)
     remaining = len(await stale_items(db, user_id, client.model, storage_path))
     return SyncResult(done=done, remaining=remaining, skipped=skipped)
+
+
+async def mark_all_stale(db: AsyncSession, user_id: UUID) -> int:
+    """Full rebuild (spec §3.2 重建入口): blank fingerprints so every vector is re-made.
+
+    Old vectors keep serving recall until each is replaced (Ruling 94).
+    """
+    item_ids = select(ClothingItem.id).where(ClothingItem.user_id == user_id)
+    result = await db.execute(
+        update(ItemEmbedding)
+        .where(ItemEmbedding.item_id.in_(item_ids))
+        .values(source_fingerprint="")
+    )
+    return result.rowcount or 0
+
+
+async def embedding_counts(
+    db: AsyncSession, user_id: UUID, model: str, storage_path: Path
+) -> tuple[int, int]:
+    """(total eligible items with a working image, stale among them)."""
+    rows = (
+        await db.execute(
+            select(ClothingItem).where(
+                ClothingItem.user_id == user_id,
+                ClothingItem.status.in_((ItemStatus.ready, ItemStatus.archived)),
+            )
+        )
+    ).scalars().all()
+    total = sum(1 for i in rows if source_fingerprint(i, storage_path) is not None)
+    stale = len(await stale_items(db, user_id, model, storage_path))
+    return total, stale

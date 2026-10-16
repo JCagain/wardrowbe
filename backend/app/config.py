@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     ai_embedding_api_key: str | None = Field(default=None)
     ai_embedding_model: str = Field(default="")
     ai_embedding_timeout: int = Field(default=120)
+    # Per-run time budget of the embedding sync job. It shares arq:images (concurrency 1)
+    # with rotate/background removal, so a run yields after this many seconds and the
+    # per-minute cron picks the rest up (Ruling 93).
+    embedding_sync_budget_seconds: int = Field(default=60, ge=5)
 
     @field_validator("ai_reasoning_effort", mode="before")
     @classmethod

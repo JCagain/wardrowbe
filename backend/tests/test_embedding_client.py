@@ -163,3 +163,26 @@ def test_from_settings_none_when_unconfigured(monkeypatch):
     monkeypatch.setattr(s, "ai_embedding_base_url", "http://x/v1/")
     c = EmbeddingClient.from_settings()
     assert c is not None and c.model == "m"
+
+
+@pytest.mark.asyncio
+async def test_ping_true_on_models_200():
+    def handler(request):
+        assert request.url.path == "/v1/models"
+        assert request.headers.get("authorization") == "Bearer k"
+        return httpx.Response(200, json={"data": []})
+
+    assert await _client(handler).ping() is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["500", "connect", "badurl"])
+async def test_ping_false_on_failure(mode):
+    def handler(request):
+        if mode == "500":
+            return httpx.Response(500)
+        if mode == "connect":
+            raise httpx.ConnectError("refused", request=request)
+        raise httpx.InvalidURL("bad")
+
+    assert await _client(handler).ping() is False

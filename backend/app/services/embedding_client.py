@@ -81,6 +81,15 @@ class EmbeddingClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
+    async def ping(self, timeout: float = 3.0) -> bool:
+        """Cheap reachability check (GET {base}/models). Never raises."""
+        try:
+            async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
+                resp = await client.get(f"{self.base_url}/models", headers=self._headers())
+            return resp.status_code == 200
+        except (httpx.HTTPError, httpx.InvalidURL, httpx.UnsupportedProtocol):
+            return False
+
     async def _media_marker(self, client: httpx.AsyncClient) -> str:
         root = self.base_url.removesuffix("/v1")
         try:

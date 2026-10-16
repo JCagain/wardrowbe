@@ -1,8 +1,12 @@
 import logging
 
+from arq import cron
+from arq.worker import func
+
 from app.config import get_settings
 from app.workers.background_removal import remove_item_background_job
 from app.workers.db import close_db, init_db
+from app.workers.embedding_sync import embedding_sync_cron, sync_embeddings_job
 from app.workers.queues import IMAGE_QUEUE
 from app.workers.rotation import rotate_item_image_job
 from app.workers.settings import get_redis_settings
@@ -27,12 +31,18 @@ class ImageWorkerSettings:
     with no external AI call, and a bulk batch of them can run to hundreds of
     jobs. Sharing arq:tagging meant one such batch blocked every AI tagging job
     behind it, because that queue drains oldest-first at a concurrency of one.
+    Embedding sync also runs on this queue; each run is capped by
+    `embedding_sync_budget_seconds`.
     """
 
     functions = [
         rotate_item_image_job,
         remove_item_background_job,
+        func(sync_embeddings_job, keep_result=0),
     ]
+
+    # Every minute at :00. Only enqueues; the sync itself runs as its own job.
+    cron_jobs = [cron(embedding_sync_cron, run_at_startup=False)]
 
     on_startup = startup
     on_shutdown = shutdown
