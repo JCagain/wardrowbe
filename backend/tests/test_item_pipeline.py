@@ -66,9 +66,10 @@ def _sizes(item: ClothingItem) -> dict:
 @pytest.fixture
 def stubs(monkeypatch):
     """detect/calibrate/remove_background 全 monkeypatch，不跑 skimage/rembg。"""
-    s = SimpleNamespace(detect=None, calibrate=[], cutout=[], item=None)
+    s = SimpleNamespace(detect=None, detect_calls=[], calibrate=[], cutout=[], item=None)
 
     def detect(image):
+        s.detect_calls.append(image)
         return s.detect
 
     def calibrate(self, image_path, source, box, baseline):
@@ -137,6 +138,12 @@ async def test_no_card_skips_calibration_but_still_cuts_out(db_session, test_use
 
     item = await _reload(db_session, item.id)
     assert stubs.calibrate == []
+    # 检出读的是 _src 副本而不是工作图：副本尺寸与工作图不同时才能区分，这里
+    # 直接断言收到的图与 _src 文件像素一致
+    src = Image.open(ImageService().get_image_path(item.calibration_original_path)).convert("RGB")
+    assert len(stubs.detect_calls) == 1
+    assert stubs.detect_calls[0].size == src.size
+    assert stubs.detect_calls[0].tobytes() == src.tobytes()
     assert item.calibration_state == "skipped"
     assert len(stubs.cutout) == 1
 
@@ -160,7 +167,9 @@ async def test_already_done_steps_are_not_rerun(db_session, test_user, stubs):
     await _run(db_session, item, redis)
 
     item = await _reload(db_session, item.id)
+    assert stubs.detect_calls == []
     assert stubs.calibrate == [] and stubs.cutout == [] and redis.calls == []
+    assert item.calibration_state == "done"
     assert item.status == ItemStatus.ready
     assert item.processing_kind is None
 
@@ -193,6 +202,7 @@ async def test_cutout_failure_marks_error_and_keeps_pipeline_kind(
     assert item.status == ItemStatus.error
     assert item.processing_kind == "pipeline"
     assert item.ai_failed_at is None
+    assert item.ai_raw_response is None
     assert redis.calls == []
 
 
