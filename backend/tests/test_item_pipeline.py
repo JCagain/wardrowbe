@@ -133,6 +133,12 @@ async def test_no_card_skips_calibration_but_still_cuts_out(db_session, test_use
     item = await _make_item(db_session, test_user)
     stubs.item = item
     stubs.detect = None
+    # 先播种 _src，再把工作图换成不同尺寸/颜色：检出若读 image_path 就会断言失败
+    item.calibration_original_path = ImageService().ensure_calibration_source(item.image_path)
+    await db_session.commit()
+    Image.new("RGB", (50, 70), (250, 0, 0)).save(
+        ImageService().get_image_path(item.image_path), format="JPEG"
+    )
 
     await _run(db_session, item, FakeRedis())
 
@@ -142,6 +148,7 @@ async def test_no_card_skips_calibration_but_still_cuts_out(db_session, test_use
     # 直接断言收到的图与 _src 文件像素一致
     src = Image.open(ImageService().get_image_path(item.calibration_original_path)).convert("RGB")
     assert len(stubs.detect_calls) == 1
+    assert src.size == (400, 600)
     assert stubs.detect_calls[0].size == src.size
     assert stubs.detect_calls[0].tobytes() == src.tobytes()
     assert item.calibration_state == "skipped"
