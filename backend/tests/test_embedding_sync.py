@@ -10,6 +10,7 @@ from app.services.embedding_sync import (
     sync_job_id,
     sync_job_state,
 )
+from app.workers import embedding_sync as worker_mod
 from app.workers.queues import IMAGE_QUEUE
 from tests.test_embedding_store import FakeClient, make_item, storage  # noqa: F401
 
@@ -50,7 +51,6 @@ async def test_sync_job_state_maps_arq_status(status, expected):
         assert job_cls.call_args.kwargs["_queue_name"] == IMAGE_QUEUE
 
 
-from app.workers import embedding_sync as worker_mod
 
 
 @pytest.mark.asyncio

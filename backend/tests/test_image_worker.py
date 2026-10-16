@@ -91,6 +91,10 @@ class TestWorkerSplit:
         assert rotate_item_image_job not in WorkerSettings.functions
         assert remove_item_background_job not in WorkerSettings.functions
 
+    def test_image_worker_keeps_no_results(self):
+        # A kept failure result would block the fixed embedding-sync job id.
+        assert ImageWorkerSettings.keep_result == 0
+
     def test_image_worker_can_abort_jobs(self):
         # cancel-analysis aborts a queued rotate or background removal.
         assert ImageWorkerSettings.allow_abort_jobs is True

@@ -55,6 +55,11 @@ class ImageWorkerSettings:
     # never sees a raised exception to retry. Re-running a failed deterministic
     # image op would just reproduce the same failure.
     max_tries = 1
+    # finish_failed_job ignores the per-function keep_result=0 and would park a
+    # failure result under the fixed embedding-sync:{user} id for the default
+    # hour, making enqueue_embedding_sync return False while the job is idle.
+    # Nothing reads arq results, so keep none.
+    keep_result = 0
     health_check_interval = 30
     allow_abort_jobs = True
 
