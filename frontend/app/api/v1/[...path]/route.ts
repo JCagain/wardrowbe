@@ -78,6 +78,8 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
     // Manual because the default 'follow' throws on auth/mobile-callback, which redirects to
     // a wardrobe:// app scheme that fetch cannot follow.
     redirect: 'manual',
+    // Client aborts must reach the backend (suggest checks is_disconnected between rerank groups).
+    signal: request.signal,
   };
 
   if (hasBody && request.body) {
@@ -89,6 +91,10 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
   try {
     upstream = await fetch(url, init);
   } catch (error) {
+    // The client went away: nobody is listening, so end quietly instead of logging a fake 5xx.
+    if (request.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      return new NextResponse(null, { status: 499 });
+    }
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`Proxy to ${url} failed: ${reason}`);
     return NextResponse.json(

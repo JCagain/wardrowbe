@@ -1,6 +1,7 @@
 import json
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import numpy as np
@@ -267,3 +268,54 @@ async def test_corrupt_stored_photo_is_422(client, auth_headers, fake_emb, no_re
     r = await client.post(f"{BASE}/{rid}/photos/{pid}/suggest", json=_region(), headers=auth_headers)
     assert r.status_code == 422
     assert fake_emb.instructions == []
+
+
+@pytest.mark.asyncio
+async def test_rerank_budget_exhausted_returns_recall_order(db_session, test_user, monkeypatch):
+    """Service level: past the wall budget no group is sent; candidates stay unjudged."""
+    monkeypatch.setattr(suggest_mod, "RERANK_GROUP", 1)
+    monkeypatch.setattr(suggest_mod, "RERANK_BUDGET_SECONDS", -1)
+    for i in range(3):
+        await _item(db_session, test_user, (1, i / 10, 0, 0))
+    calls = []
+
+    async def fake_rerank(self, q, cs):
+        calls.append(1)
+        return '{"verdicts": ["same"]}'
+
+    monkeypatch.setattr(AIService, "rerank_garment_candidates", fake_rerank)
+    res = await suggest_mod.suggest_for_crop(
+        db_session, test_user.id, Image.new("RGB", (50, 50)), "tops",
+        FakeEmb(), AIService(endpoints=None), rerank=True,
+    )
+    assert calls == []
+    assert res.reranked is False
+    assert res.rerank_error == "视觉复判超时"
+    assert res.ranked and all(v is None for _, _, v in res.ranked)
+
+
+@pytest.mark.asyncio
+async def test_rerank_budget_expiring_midway_keeps_judged_groups(db_session, test_user, monkeypatch):
+    monkeypatch.setattr(suggest_mod, "RERANK_GROUP", 1)
+    for i in range(3):
+        await _item(db_session, test_user, (1, i / 10, 0, 0))
+    calls = []
+
+    async def fake_rerank(self, q, cs):
+        calls.append(1)
+        return '{"verdicts": ["same"]}'
+
+    monkeypatch.setattr(AIService, "rerank_garment_candidates", fake_rerank)
+    ticks = iter([0.0, 0.0])  # start, first group check; later checks jump past the budget
+
+    def fake_monotonic():
+        return next(ticks, 10_000.0)
+
+    # shim the module attribute only: patching time.monotonic globally would skew the event loop
+    monkeypatch.setattr(suggest_mod, "time", SimpleNamespace(monotonic=fake_monotonic))
+    res = await suggest_mod.suggest_for_crop(
+        db_session, test_user.id, Image.new("RGB", (50, 50)), "tops",
+        FakeEmb(), AIService(endpoints=None), rerank=True,
+    )
+    assert len(calls) == 1
+    assert res.reranked is True and res.rerank_error is None

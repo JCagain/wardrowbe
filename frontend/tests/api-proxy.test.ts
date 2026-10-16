@@ -72,6 +72,25 @@ describe('/api/v1 catch-all proxy', () => {
     })
   })
 
+  describe('client abort', () => {
+    it('forwards the request signal to the upstream fetch', async () => {
+      const spy = mockBackend(new Response('{}', { status: 200 }))
+      const req = new NextRequest('http://localhost:3000/api/v1/records/r/photos/p/suggest', { method: 'POST', body: '{}' })
+      await POST(req)
+      expect(initOf(spy).signal).toBe(req.signal)
+    })
+
+    it('ends quietly on AbortError without a 502 or an error log', async () => {
+      const abort = new DOMException('aborted', 'AbortError')
+      global.fetch = vi.fn().mockRejectedValue(abort) as unknown as typeof fetch
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const res = await GET(new NextRequest('http://localhost:3000/api/v1/health'))
+      expect(res.status).not.toBe(502)
+      expect(errorLog).not.toHaveBeenCalled()
+      errorLog.mockRestore()
+    })
+  })
+
   describe('url preservation', () => {
     it('preserves the signed-url query string for images', async () => {
       const spy = mockBackend(new Response('binary', { status: 200 }))

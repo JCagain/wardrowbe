@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 RECALL_K = 15  # spec: recall top 10-20
 PART_MIN = 5  # below this many part-matching hits, top up from all parts
 RERANK_GROUP = 5  # catalogue images per vision call (27B ctx 8192)
+RERANK_BUDGET_SECONDS = 150  # wall budget for all rerank groups; stays under the proxy's 300 s
 MAX_OUT = 8  # spec: 5-8 candidates (same cap rank_candidates applies)
 QUERY_INSTRUCTION: str | None = None  # Ruling 98: decided by the probe, default off
 
@@ -76,8 +78,13 @@ async def suggest_for_crop(
         storage = Path(get_settings().storage_path)
         query_b64 = image_to_b64_jpeg(crop)
         errors = []
+        started = time.monotonic()
+        timed_out = False
         for start in range(0, len(hits), RERANK_GROUP):
             if should_stop is not None and await should_stop():
+                break
+            if time.monotonic() - started > RERANK_BUDGET_SECONDS:
+                timed_out = True
                 break
             group = []
             for cid, _ in hits[start : start + RERANK_GROUP]:
@@ -96,7 +103,9 @@ async def suggest_for_crop(
             for (cid, _), v in zip(group, parse_verdicts(text, len(group)), strict=True):
                 verdicts[cid] = v
             reranked = True
-        if not reranked and errors:
+        if not reranked and timed_out:
+            rerank_error = "视觉复判超时"
+        elif not reranked and errors:
             rerank_error = errors[0]
     triples = [(cid, cos, verdicts[cid]) for cid, cos in hits]
     # Without verdicts keep recall order (part matches first, each by cosine); rank_candidates
