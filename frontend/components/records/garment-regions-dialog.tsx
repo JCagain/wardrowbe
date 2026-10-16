@@ -30,6 +30,8 @@ export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange }: Pr
   const [regions, setRegions] = useState<GarmentRegion[]>(photo.garment_regions ?? []);
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 签名 URL 含时间，refetch 会换 URL 导致 <img> 重载；对话框生命周期内冻结
+  const [imageSrc] = useState(photo.image_url);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleDetect = async () => {
@@ -101,7 +103,7 @@ export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange }: Pr
           </div>
           {detecting && <p className="text-xs text-muted-foreground">{t('slowHint')}</p>}
           <GarmentRegionEditor
-            imageSrc={photo.image_url}
+            imageSrc={imageSrc}
             regions={regions}
             bodyParts={bodyParts}
             onChange={setRegions}
@@ -112,7 +114,7 @@ export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange }: Pr
             </p>
           )}
           <div className="flex justify-end">
-            <Button type="button" data-testid="regions-save" disabled={save.isPending} onClick={handleSave}>
+            <Button type="button" data-testid="regions-save" disabled={save.isPending || detecting} onClick={handleSave}>
               {t('save')}
             </Button>
           </div>

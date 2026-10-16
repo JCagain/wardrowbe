@@ -34,6 +34,7 @@ export function RecordPhotoStrip({ photos, onAdd, onRemove, onRotate, onFrame, c
           {p.regionCount !== undefined && p.regionCount > 0 && (
             <span
               data-testid="record-photo-region-count"
+              role="img"
               aria-label={t('regions.count', { count: p.regionCount })}
               className="absolute right-1 top-1 rounded-full bg-green-600 px-1.5 text-xs font-medium text-white"
             >

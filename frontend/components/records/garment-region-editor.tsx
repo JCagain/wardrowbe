@@ -40,7 +40,7 @@ export function GarmentRegionEditor({
 }) {
   const t = useTranslations('history.records.regions');
   const [selectedRaw, setSelected] = useState<number | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [loadCount, setLoadCount] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragHandleRef = useRef<HandleId | null>(null);
@@ -77,9 +77,10 @@ export function GarmentRegionEditor({
     }
   }, [regions, selected, labelOf]);
 
+  // 每次图片 load 都重画：设置 canvas.width/height 会清空画布，且 load 可能重复触发
   useEffect(() => {
-    if (loaded) draw();
-  }, [draw, loaded]);
+    if (loadCount > 0) draw();
+  }, [draw, loadCount]);
 
   const handleImageLoad = useCallback(() => {
     const img = imgRef.current;
@@ -87,7 +88,7 @@ export function GarmentRegionEditor({
     if (img && canvas) {
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
-      setLoaded(true);
+      setLoadCount((n) => n + 1);
     }
   }, []);
 
@@ -195,6 +196,7 @@ export function GarmentRegionEditor({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           style={{
             position: 'absolute',
             inset: 0,

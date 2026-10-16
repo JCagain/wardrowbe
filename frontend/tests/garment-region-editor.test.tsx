@@ -57,3 +57,22 @@ describe('GarmentRegionEditor', () => {
     expect(spy.mock.calls.at(-1)![0]).toEqual([]);
   });
 });
+
+describe('GarmentRegionEditor redraw on image load', () => {
+  it('redraws every time the image fires load (canvas resize clears it)', () => {
+    const strokeRect = vi.fn();
+    const ctx = {
+      clearRect: vi.fn(), strokeRect, fillRect: vi.fn(), fillText: vi.fn(),
+      lineWidth: 0, strokeStyle: '', fillStyle: '', font: '',
+    };
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
+    const { container } = render(<Harness initial={[top]} spy={vi.fn()} />);
+    const img = container.querySelector('img')!;
+    fireEvent.load(img);
+    const first = strokeRect.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+    fireEvent.load(img);
+    expect(strokeRect.mock.calls.length).toBeGreaterThan(first);
+    spy.mockRestore();
+  });
+});

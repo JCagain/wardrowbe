@@ -108,3 +108,24 @@ describe('GarmentRegionsDialog', () => {
     expect(confirm).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('GarmentRegionsDialog stability', () => {
+  it('disables save while detecting', async () => {
+    post.mockImplementation(() => new Promise(() => {}));
+    mount(photo(null));
+    fireEvent.click(screen.getByTestId('regions-detect'));
+    await waitFor(() => expect(screen.getByTestId('regions-save')).toBeDisabled());
+  });
+
+  it('keeps the initial image src when the photo prop gets a new signed url', () => {
+    const qc = new QueryClient();
+    const ui = (p: RecordPhoto) => (
+      <QueryClientProvider client={qc}>
+        <GarmentRegionsDialog recordId="r1" photo={p} open onOpenChange={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui({ ...photo([r1]), image_url: 'data:image/png;base64,AAAA' }));
+    rerender(ui({ ...photo([r1]), image_url: 'data:image/png;base64,BBBB' }));
+    expect(document.querySelector('img')!.getAttribute('src')).toBe('data:image/png;base64,AAAA');
+  });
+});
