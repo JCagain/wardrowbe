@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
@@ -23,8 +23,13 @@ from app.schemas.record import (
     RecordUpdate,
     RecordWeather,
     RecordWeatherLookupResponse,
+    SuggestCandidate,
+    SuggestRequest,
+    SuggestResponse,
 )
 from app.services.ai_service import AIDisabledError, AIService, require_internal_ai
+from app.services import suggest as suggest_service
+from app.services.embedding_client import EmbeddingUnavailableError
 from app.services.garment_regions import clamp_regions, is_parseable, parse_garment_regions
 from app.services.image_service import ImageService
 from app.services.preference_service import PreferenceService
@@ -299,3 +304,67 @@ async def put_garment_regions(
     regions = clamp_regions([r.model_dump() for r in body.regions], width, height)
     photo = await service.save_garment_regions(current_user.id, record_id, photo_id, regions)
     return GarmentRegionsResponse(photo_id=photo.id, width=width, height=height, regions=regions)
+
+
+@router.post("/{record_id}/photos/{photo_id}/suggest", response_model=SuggestResponse)
+async def suggest_for_region(
+    record_id: UUID,
+    photo_id: UUID,
+    body: SuggestRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuggestResponse:
+    """Spec §3.2: candidates only — nothing is linked or written here."""
+    service = RecordService(db)
+    try:
+        photo = await service.get_photo_for_user(current_user.id, record_id, photo_id)
+    except (RecordNotFoundError, PhotoNotFoundError):
+        raise NOT_FOUND from None
+    client = suggest_service.EmbeddingClient.from_settings()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="embedding 未配置（AI_EMBEDDING_* 环境变量）",
+        )
+    width, height = _photo_size(photo.image_path)
+    clamped = clamp_regions([body.region.model_dump()], width, height)
+    if not clamped:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="框太小或在图外")
+    box = clamped[0]["box"]
+    with Image.open(Path(get_settings().storage_path) / photo.image_path) as im:
+        crop = im.convert("RGB").crop((box["l"], box["t"], box["r"] + 1, box["b"] + 1))
+    ai = None
+    if body.rerank:
+        try:
+            require_internal_ai("vision")
+            ai = AIService(endpoints=await _user_ai_endpoints(db, current_user.id))
+        except AIDisabledError:
+            ai = None
+    try:
+        res = await suggest_service.suggest_for_crop(
+            db, current_user.id, crop, body.region.body_part, client, ai,
+            rerank=body.rerank, should_stop=request.is_disconnected,
+        )
+    except EmbeddingUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"embedding 服务不可用：{e}"
+        ) from None
+    rerank_error = res.rerank_error
+    if body.rerank and ai is None:
+        rerank_error = "视觉端点未启用，仅按相似度排序"
+    return SuggestResponse(
+        candidates=[
+            SuggestCandidate(
+                id=item.id, type=item.type, name=item.name,
+                primary_colors=list(item.primary_colors or []),
+                thumbnail_path=item.thumbnail_path, image_path=item.image_path,
+                cosine=cos, verdict=v, lifecycle=item.lifecycle,
+            )
+            for item, cos, v in res.ranked
+        ],
+        recall_count=res.recall_count,
+        part_filtered=res.part_filtered,
+        reranked=res.reranked,
+        rerank_error=rerank_error,
+    )

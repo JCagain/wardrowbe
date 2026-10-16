@@ -243,3 +243,21 @@ async def test_embedding_counts(db_session, test_user, make_item, storage):
     await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage)
     total1, stale1 = await embedding_counts(db_session, test_user.id, "m1", storage)
     assert total1 == total0 and stale1 == 0 and stale0 >= 1
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_decompression_bomb(db_session, make_item, storage, test_user, monkeypatch):
+    from app.services import embedding_store
+
+    await make_item("a")
+    await make_item("b")
+    real = embedding_store.embedding_input_image
+
+    def fake(item, storage_path):
+        if item.image_path.endswith("a.jpg"):
+            raise Image.DecompressionBombError("too big")
+        return real(item, storage_path)
+
+    monkeypatch.setattr(embedding_store, "embedding_input_image", fake)
+    result = await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage, batch_size=2)
+    assert (result.done, result.skipped) == (1, 1)

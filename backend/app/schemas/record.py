@@ -222,3 +222,22 @@ class CompanionResponse(BaseModel):
     def thumbnail_url(self) -> str | None:
         path = self.thumbnail_path or self.image_path
         return sign_image_url(path) if path else None
+
+
+class SuggestRequest(BaseModel):
+    region: GarmentRegion  # input model: body_part validated against the live vocabulary
+    rerank: bool = True
+
+
+class SuggestCandidate(RecordItemResponse):
+    cosine: float
+    verdict: Literal["same", "similar", "different"] | None = None
+    lifecycle: str
+
+
+class SuggestResponse(BaseModel):
+    candidates: list[SuggestCandidate]
+    recall_count: int
+    part_filtered: bool
+    reranked: bool
+    rerank_error: str | None = None

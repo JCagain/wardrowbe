@@ -133,7 +133,7 @@ async def sync_item_embeddings(
         for item in batch:
             try:
                 img = embedding_input_image(item, storage_path)
-            except (OSError, UnidentifiedImageError) as e:
+            except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as e:
                 logger.warning("skipping embedding for item %s: unreadable image (%s)", item.id, e)
                 skipped += 1
                 continue
