@@ -10,7 +10,7 @@ cross-item cosine <= 0.95; a high max alone only prints the offending pair as a
 warning, since near-duplicate items are legitimate). These are self-consistency checks on augmented copies of the same item, not real
 outfit-photo crop recall: passing is necessary, not sufficient. --pair runs real
 crops as a reference (no hard threshold).
-Exit codes: 0 PASS, 1 collapsed vectors, 2 endpoint unavailable, 3 WEAK (recall@5 < 0.8,\nnot collapsed), 4 bad input (unknown --user-email, bad --pair path or UUID).
+Exit codes: 0 PASS, 1 collapsed vectors, 2 endpoint unavailable, 3 WEAK (recall@5 < 0.8,\nnot collapsed), 4 bad input (unknown --user-email, fewer than 2 ready items with\nimages, bad --pair path or UUID).
 """
 
 import argparse
@@ -137,8 +137,7 @@ async def _run(args) -> int:
         )
     items = [i for i in items if source_fingerprint(i, storage)][: args.limit]
     if len(items) < 2:
-        print(f"need at least 2 ready items with images, found {len(items)}")
-        return 2
+        return _bad_input(f"need at least 2 ready items with images, found {len(items)}")
     try:
         lib_imgs = [embedding_input_image(i, storage) for i in items]
         lib_vecs = await client.embed_images(lib_imgs)

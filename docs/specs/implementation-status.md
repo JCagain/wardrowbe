@@ -101,6 +101,7 @@
 | **Ruling 88**（检出只返回，保存才写） | `detect` 只返回夹好的框与图像宽高，不写库；仅当模型输出解析为 JSON 对象且其 `regions` 为列表时才成功（否则 502），合法空列表照返回为空，含义「没检出穿着」。保存（PUT）是唯一写入方，所以取消检出或关闭对话框都不会改动已存的框。理由：把「模型胡话」与「确实没有」分开，并消除检出与保存之间的竞态。代价：检出结果在点保存前只在本地，关闭对话框即丢；模型回了对象但内容全被过滤时同样返回空。 |
 | **Ruling 89**（对话框冻结图源） | 框选对话框在其生命周期内冻结图片 `src`。理由：签名 URL 内嵌时间戳，记录 refetch 会换 URL、重载图片并清空 canvas。代价：对话框开着时照片被别处替换不会反映，需关闭重开。 |
 | **Ruling 90**（同步覆盖已退役，坏图跳过） | `sync_item_embeddings` 处理状态为 `ready` 与 `archived`（已退役项的终态）的衣物，坏图（`OSError` / `UnidentifiedImageError`）记日志后跳过，计入 `SyncResult.skipped`，不中断本批与后续批次。理由：Ruling 83 要求已退役项参与召回，必须先有向量；一张坏图不能卡死同步。代价：被跳过的衣物保持过期，每次同步都会重试并再跳过。 |
+| **Ruling 91**（llama.cpp 多模态 embedding 请求格式） | `/v1/embeddings` 的每个 input 为 `{"prompt_string", "multimodal_data": [base64]}`；prompt 套 Qwen3-VL-Embedding 聊天模板（指令作 system 轮，默认 "Represent the user's input."，以 `<|endoftext|>` 收尾供 `--pooling last` 取）；媒体占位符每台服务随机，从 `GET /props` 的 `media_marker` 读，取不到回落 `<__media__>`。理由：实连发现 llama.cpp 该端点拒收 OpenAI 式 `content` 数组（500）；同一组图上聊天模板比裸占位符区分度略好（增强副本与无关图的最小间隔 0.030 对 −0.004）。代价：不再兼容 OpenRouter 式 content 数组端点；换非 Qwen 的 embedding 模型需改模板。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
@@ -146,4 +147,4 @@
 - **时间线与反查都靠「加载更多」**，不做无限滚动。
 - **网格颜色筛选默认从「主色∪辅色」改为「仅主色」**；要按辅色筛需切「颜色匹配」（fixes #41，Ruling 66）。
 - **词表加载前软词表选择器为空**（Ruling 74）：颜色 / 类型 / 风格等软词表选择器在词表请求返回前为空，标签回退显示 slug。
-- **embedding 验证脚本（`python -m scripts.embedding_probe`）判读标准**：augment 自检 recall@5 ≥ 0.8 且向量未塌缩（不同衣物两两余弦均值 ≤ 0.95；最大值 > 0.98 只打印相似度最高的一对作警告，近重复衣物属正常）；退出码 0 通过 / 1 塌缩 / 2 端点不可用 / 3 偏弱（recall@5 < 0.8 但未塌缩）/ 4 输入有误（未知邮箱、`--pair` 路径或 UUID 无效）；第二期开工前由用户起服务实跑。这两项是对同一件衣物的增强副本做的自洽检查，不是真实穿搭照裁块的召回，所以通过是必要而非充分条件；真实裁块用 `--pair 图片路径:衣物UUID` 做参考，不设硬门槛。
+- **embedding 验证脚本（`python -m scripts.embedding_probe`）判读标准**：augment 自检 recall@5 ≥ 0.8 且向量未塌缩（不同衣物两两余弦均值 ≤ 0.95；最大值 > 0.98 只打印相似度最高的一对作警告，近重复衣物属正常）；退出码 0 通过 / 1 塌缩 / 2 端点不可用 / 3 偏弱（recall@5 < 0.8 但未塌缩）/ 4 输入有误（未知邮箱、就绪且有图的衣物不足 2 件、`--pair` 路径或 UUID 无效）；第二期开工前由用户起服务实跑。这两项是对同一件衣物的增强副本做的自洽检查，不是真实穿搭照裁块的召回，所以通过是必要而非充分条件；真实裁块用 `--pair 图片路径:衣物UUID` 做参考，不设硬门槛。

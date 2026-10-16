@@ -1,8 +1,14 @@
-"""OpenAI-compatible image embeddings (spec §3.2, fixes #29/#56).
+"""Image embeddings from a llama.cpp `--embedding --mmproj` server (spec §3.2, fixes #29/#56).
 
-Request shape: `POST {base}/embeddings` with each `input` element an object
-holding a chat-style `content` array (llama.cpp `--mmproj` servers and
-OpenRouter vision-embedding models use this shape). Vectors come back
+Request shape: `POST {base}/embeddings` with each `input` element a llama.cpp
+multimodal prompt `{"prompt_string": ..., "multimodal_data": [base64]}`. The
+server rejects OpenAI-style `content` arrays on this endpoint. The prompt string
+must carry the server's media marker, which is randomized per server and read
+from `GET {root}/props` (`media_marker`); older servers use `<__media__>`.
+
+The prompt is wrapped in the Qwen3-VL-Embedding chat template (instruction as
+the system turn, default "Represent the user's input.") ending in
+`<|endoftext|>`, whose hidden state `--pooling last` returns. Vectors come back
 L2-normalized so cosine similarity is a dot product.
 """
 
@@ -15,6 +21,19 @@ import numpy as np
 from PIL import Image
 
 from app.config import get_settings
+
+
+DEFAULT_MEDIA_MARKER = "<__media__>"
+DEFAULT_INSTRUCTION = "Represent the user's input."
+
+
+def build_prompt(marker: str, instruction: str | None = None) -> str:
+    system = instruction or DEFAULT_INSTRUCTION
+    return (
+        f"<|im_start|>system\n{system}<|im_end|>\n"
+        f"<|im_start|>user\n{marker}<|im_end|>\n"
+        "<|im_start|>assistant\n<|endoftext|>"
+    )
 
 
 class EmbeddingUnavailableError(RuntimeError):
@@ -62,6 +81,15 @@ class EmbeddingClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
+    async def _media_marker(self, client: httpx.AsyncClient) -> str:
+        root = self.base_url.removesuffix("/v1")
+        try:
+            resp = await client.get(f"{root}/props", headers=self._headers())
+            marker = resp.json().get("media_marker") if resp.status_code == 200 else None
+        except (httpx.HTTPError, httpx.InvalidURL, httpx.UnsupportedProtocol, ValueError, AttributeError):
+            marker = None
+        return marker if isinstance(marker, str) and marker else DEFAULT_MEDIA_MARKER
+
     async def embed_images(
         self,
         images: Sequence[Image.Image],
@@ -71,17 +99,16 @@ class EmbeddingClient:
         out: list[np.ndarray] = []
         dim: int | None = None
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
+            prompt = build_prompt(await self._media_marker(client), instruction)
             for start in range(0, len(images), batch_size):
                 batch = images[start : start + batch_size]
-                inputs = []
-                for img in batch:
-                    content: list[dict] = []
-                    if instruction:
-                        content.append({"type": "text", "text": instruction})
-                    content.append(
-                        {"type": "image_url", "image_url": {"url": image_to_data_uri(img)}}
-                    )
-                    inputs.append({"content": content})
+                inputs = [
+                    {
+                        "prompt_string": prompt,
+                        "multimodal_data": [image_to_data_uri(img).split(",", 1)[1]],
+                    }
+                    for img in batch
+                ]
                 try:
                     resp = await client.post(
                         f"{self.base_url}/embeddings",
