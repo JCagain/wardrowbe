@@ -604,6 +604,23 @@ class AIService:
 
         return None, last_error, None
 
+    async def detect_garment_regions(self, image_path: str | Path) -> str:
+        """D7: ask the vision model for garment boxes on an outfit photo; returns raw text."""
+        image_base64 = await asyncio.to_thread(self._preprocess_image, image_path)
+        messages = [
+            {"role": "system", "content": render_tagging_prompt(load_prompt("garment_regions"))},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                ],
+            },
+        ]
+        content, err, _ = await self._call_with_fallback(messages, "garment_regions")
+        if content is None:
+            raise err or RuntimeError("garment region detection returned nothing")
+        return content
+
     async def analyze_image(self, image_path: str | Path) -> ClothingTags:
         # PIL preprocessing is CPU-bound and synchronous; run off the event loop so
         # concurrent tagging jobs don't stall each other's in-flight HTTP reads.

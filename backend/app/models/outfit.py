@@ -174,6 +174,8 @@ class OutfitPhoto(Base):
     image_path: Mapped[str] = mapped_column(String(500), nullable=False)
     medium_path: Mapped[str | None] = mapped_column(String(500))
     thumbnail_path: Mapped[str | None] = mapped_column(String(500))
+    # D7 / Ruling 84: garment boxes in full-res pixels (inclusive r/b), cleared on rotate.
+    garment_regions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

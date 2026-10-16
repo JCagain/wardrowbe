@@ -421,5 +421,18 @@ class RecordService:
         photo = self._find_photo(outfit, photo_id)
         paths = self.images.rotate_image(photo.image_path, direction)
         assign_size_paths(photo, paths)
+        photo.garment_regions = None  # Ruling 84: rotated coordinates are invalid
         await self.db.flush()
         return await self._load(user_id, record_id)
+
+    async def get_photo_for_user(self, user_id: UUID, record_id: UUID, photo_id: UUID) -> OutfitPhoto:
+        outfit = await self._load(user_id, record_id)
+        return self._find_photo(outfit, photo_id)
+
+    async def save_garment_regions(
+        self, user_id: UUID, record_id: UUID, photo_id: UUID, regions: list[dict]
+    ) -> OutfitPhoto:
+        photo = await self.get_photo_for_user(user_id, record_id, photo_id)
+        photo.garment_regions = regions
+        await self.db.flush()
+        return photo

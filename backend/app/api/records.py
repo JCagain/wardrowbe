@@ -1,15 +1,22 @@
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from PIL import Image
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.outfits import get_user_today
+from app.config import get_settings
 from app.database import get_db
+from app.models.preference import UserPreference
 from app.models.user import User
 from app.schemas.record import (
+    GarmentRegionsResponse,
+    GarmentRegionsUpdate,
     RecordCreate,
     RecordListResponse,
     RecordResponse,
@@ -17,6 +24,8 @@ from app.schemas.record import (
     RecordWeather,
     RecordWeatherLookupResponse,
 )
+from app.services.ai_service import AIDisabledError, AIService, require_internal_ai
+from app.services.garment_regions import clamp_regions, parse_garment_regions
 from app.services.image_service import ImageService
 from app.services.preference_service import PreferenceService
 from app.services.record_service import (
@@ -222,3 +231,71 @@ async def rotate_record_photo(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
     return record_to_response(outfit)
+
+
+def _photo_size(rel_path: str) -> tuple[int, int]:
+    with Image.open(Path(get_settings().storage_path) / rel_path) as im:
+        return im.size
+
+
+async def _user_ai_endpoints(db: AsyncSession, user_id) -> list[dict] | None:
+    # CLAUDE.md pitfall 3: settings-page endpoints take priority (same as the tagging worker).
+    prefs = (
+        await db.execute(select(UserPreference).where(UserPreference.user_id == user_id))
+    ).scalar_one_or_none()
+    return prefs.ai_endpoints if prefs and prefs.ai_endpoints else None
+
+
+@router.post(
+    "/{record_id}/photos/{photo_id}/garment-regions/detect",
+    response_model=GarmentRegionsResponse,
+)
+async def detect_garment_regions(
+    record_id: UUID,
+    photo_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GarmentRegionsResponse:
+    service = RecordService(db)
+    try:
+        photo = await service.get_photo_for_user(current_user.id, record_id, photo_id)
+    except (RecordNotFoundError, PhotoNotFoundError):
+        raise NOT_FOUND from None
+    try:
+        require_internal_ai("vision")
+        ai = AIService(endpoints=await _user_ai_endpoints(db, current_user.id))
+    except AIDisabledError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from None
+    storage = Path(get_settings().storage_path)
+    try:
+        raw = await ai.detect_garment_regions(storage / photo.image_path)
+    except Exception as e:  # provider/network failure: nothing to save
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"检出失败：{e}") from None
+    width, height = _photo_size(photo.image_path)
+    regions = parse_garment_regions(raw, width, height)
+    if not regions and "regions" not in raw:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="模型没有返回可解析的框")
+    photo = await service.save_garment_regions(current_user.id, record_id, photo_id, regions)
+    return GarmentRegionsResponse(photo_id=photo.id, width=width, height=height, regions=regions)
+
+
+@router.put(
+    "/{record_id}/photos/{photo_id}/garment-regions",
+    response_model=GarmentRegionsResponse,
+)
+async def put_garment_regions(
+    record_id: UUID,
+    photo_id: UUID,
+    body: GarmentRegionsUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GarmentRegionsResponse:
+    service = RecordService(db)
+    try:
+        photo = await service.get_photo_for_user(current_user.id, record_id, photo_id)
+    except (RecordNotFoundError, PhotoNotFoundError):
+        raise NOT_FOUND from None
+    width, height = _photo_size(photo.image_path)
+    regions = clamp_regions([r.model_dump() for r in body.regions], width, height)
+    photo = await service.save_garment_regions(current_user.id, record_id, photo_id, regions)
+    return GarmentRegionsResponse(photo_id=photo.id, width=width, height=height, regions=regions)

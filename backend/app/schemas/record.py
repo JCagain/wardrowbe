@@ -1,9 +1,11 @@
 from datetime import date as dt_date
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from app.utils import garment_vocabulary
 from app.services.weather_service import RECORD_CONDITIONS
 from app.utils.season import RECORD_SEASONS
 from app.utils.signed_urls import sign_image_url
@@ -98,6 +100,37 @@ class RecordUpdate(BaseModel):
         return _check_occasion(v)
 
 
+class GarmentRegionBox(BaseModel):
+    l: int
+    t: int
+    r: int
+    b: int
+
+
+class GarmentRegion(BaseModel):
+    body_part: str
+    box: GarmentRegionBox
+    source: Literal["auto", "manual"] = "manual"
+
+    @field_validator("body_part")
+    @classmethod
+    def _known_part(cls, v: str) -> str:
+        if v not in {p["value"] for p in garment_vocabulary.BODY_PARTS}:
+            raise ValueError(f"unknown body part: {v}")
+        return v
+
+
+class GarmentRegionsUpdate(BaseModel):
+    regions: list[GarmentRegion] = Field(max_length=12)
+
+
+class GarmentRegionsResponse(BaseModel):
+    photo_id: UUID
+    width: int
+    height: int
+    regions: list[GarmentRegion]
+
+
 class RecordPhotoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -106,6 +139,7 @@ class RecordPhotoResponse(BaseModel):
     image_path: str
     medium_path: str | None = None
     thumbnail_path: str | None = None
+    garment_regions: list[GarmentRegion] | None = None
 
     @computed_field
     @property
