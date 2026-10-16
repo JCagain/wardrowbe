@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.workers.background_removal import remove_item_background_job
 from app.workers.db import close_db, init_db
 from app.workers.embedding_sync import embedding_sync_cron, sync_embeddings_job
+from app.workers.pipeline import run_item_pipeline_job
 from app.workers.queues import IMAGE_QUEUE
 from app.workers.rotation import rotate_item_image_job
 from app.workers.settings import get_redis_settings
@@ -38,6 +39,7 @@ class ImageWorkerSettings:
     functions = [
         rotate_item_image_job,
         remove_item_background_job,
+        run_item_pipeline_job,
         func(sync_embeddings_job, keep_result=0),
     ]
 

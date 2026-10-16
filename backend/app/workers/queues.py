@@ -5,7 +5,7 @@ IMAGE_QUEUE = "arq:images"
 # ai_job_id (cancel, abort, the stale sweep) has to pick the queue from the
 # item's processing_kind, because arq scopes job ids per queue and a lookup on
 # the wrong queue reports not_found for a job that is very much alive.
-IMAGE_PROCESSING_KINDS = frozenset({"rotate", "background_removal"})
+IMAGE_PROCESSING_KINDS = frozenset({"rotate", "background_removal", "pipeline"})
 
 
 def queue_for_kind(processing_kind: str | None) -> str:

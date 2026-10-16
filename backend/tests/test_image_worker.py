@@ -82,6 +82,7 @@ class TestWorkerSplit:
         assert names == {
             rotate_item_image_job.__name__,
             remove_item_background_job.__name__,
+            "run_item_pipeline_job",
             "sync_embeddings_job",
         }
 
