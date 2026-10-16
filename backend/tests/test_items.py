@@ -2616,3 +2616,33 @@ class TestUnretireClearsReason:
         )
         assert unretired.status_code == 200, unretired.text
         assert unretired.json()["archive_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_replacing_main_image_resets_calibration_state(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    create = await client.post(
+        "/api/v1/items",
+        files={"image": (f"{uuid4()}.jpg", _make_test_image_bytes(1), "image/jpeg")},
+        data={"type": "shirt", "skip_ai": "true"},
+        headers=auth_headers,
+    )
+    item_id = create.json()["id"]
+    assert create.json()["calibration_state"] == "none"
+    await db_session.execute(
+        update(ClothingItem)
+        .where(ClothingItem.id == UUID(item_id))
+        .values(calibration_state="done")
+    )
+    await db_session.commit()
+    got = await client.get(f"/api/v1/items/{item_id}", headers=auth_headers)
+    assert got.json()["calibration_state"] == "done"
+
+    put = await client.put(
+        f"/api/v1/items/{item_id}/image",
+        files={"image": ("new.jpg", _make_test_image_bytes(2), "image/jpeg")},
+        headers=auth_headers,
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["calibration_state"] == "none"

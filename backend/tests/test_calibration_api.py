@@ -744,3 +744,55 @@ async def test_detect_reads_the_source_not_the_blacked_out_cutout(
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["kind"] == "gray"
+
+
+@pytest.mark.asyncio
+async def test_calibration_state_follows_apply_manual_and_reset(
+    client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+):
+    """D8：calibration_state 随校色应用 / 手动白平衡落 done，重置回 none。"""
+    item = await _make_item(db_session, test_user, _jpeg_with_gray_card())
+    r = await client.get(f"/api/v1/items/{item.id}", headers=auth_headers)
+    assert r.json()["calibration_state"] == "none"
+
+    r = await client.post(
+        f"/api/v1/items/{item.id}/calibration/manual",
+        json={"kelvin": 5500, "tint": 0},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200 and r.json()["calibration_state"] == "done"
+
+    r = await client.post(f"/api/v1/items/{item.id}/calibration/reset", headers=auth_headers)
+    assert r.status_code == 200 and r.json()["calibration_state"] == "none"
+
+    r = await client.post(
+        f"/api/v1/items/{item.id}/calibration/apply",
+        json={"box": [500, 300, 700, 460], "baseline": "gray"},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200 and r.json()["calibration_state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_ensure_calibration_source_raises_raw_errors(
+    test_user, db_session: AsyncSession
+):
+    """共享 helper 抛原始异常（不是 HTTPException），供流水线 job 使用。"""
+    from app.services.item_pipeline import ensure_calibration_source
+
+    item = await _make_item(db_session, test_user)
+    existing = item.calibration_original_path
+    assert await ensure_calibration_source(db_session, item) == existing
+
+    item.calibration_original_path = None
+    await db_session.commit()
+    seeded = await ensure_calibration_source(db_session, item)
+    assert seeded and item.calibration_original_path == seeded
+
+    item.calibration_original_path = None
+    item.image_path = "nope/missing.jpg"
+    with pytest.raises(Exception) as ei:
+        await ensure_calibration_source(db_session, item)
+    from fastapi import HTTPException
+
+    assert not isinstance(ei.value, HTTPException)

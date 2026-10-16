@@ -198,6 +198,7 @@ class ItemResponse(ItemBase):
     # mask_cleared 不在此——那是「本次校色打掉了 mask」的瞬时标志，只在校色
     # 响应（CalibrationItemResponse）上。
     mask_path: str | None = None
+    calibration_state: str = "none"
     tags: dict = Field(default_factory=dict)
     pattern: str | None = None
     material: str | None = None

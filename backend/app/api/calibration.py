@@ -22,6 +22,7 @@ from app.schemas.item import CalibrationItemResponse
 from app.services.color_calibration import detect_reference
 from app.services.image_files import assign_size_paths
 from app.services.image_service import ImageService
+from app.services.item_pipeline import ensure_calibration_source
 from app.services.item_service import ItemService
 from app.utils.auth import get_current_user
 
@@ -52,13 +53,9 @@ async def get_owned_item(db: AsyncSession, item_id: UUID, user_id: UUID) -> Clot
 
 
 async def _ensure_source(db: AsyncSession, item: ClothingItem) -> str:
-    """列为 NULL 时惰性补种 `_src` 并落列（Ruling 51）；返回副本相对路径。"""
-    if item.calibration_original_path:
-        return item.calibration_original_path
+    """惰性补种 `_src`（Ruling 51），把共享 helper 的原始异常映射成 400/500。"""
     try:
-        source_path = await asyncio.to_thread(
-            ImageService().ensure_calibration_source, item.image_path
-        )
+        return await ensure_calibration_source(db, item)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
     except Exception:
@@ -67,10 +64,6 @@ async def _ensure_source(db: AsyncSession, item: ClothingItem) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to prepare calibration source",
         ) from None
-    item.calibration_original_path = source_path
-    await db.commit()
-    await db.refresh(item, attribute_names=["calibration_original_path"])
-    return source_path
 
 
 def _check_writable(item: ClothingItem) -> str:
@@ -97,6 +90,8 @@ async def _persist_image_op(
     op: Callable[..., dict[str, str | bool]],
     args: tuple,
     action: str,
+    *,
+    calibration_state: str,
 ) -> CalibrationItemResponse:
     """跑一个阻塞的图像改写，并把三个返回路径写回物品（同 rotate/remove-background语义）。"""
     try:
@@ -115,6 +110,8 @@ async def _persist_image_op(
         ) from None
 
     assign_size_paths(item, result)
+    # D8：op 成功之后、commit 之前赋值，失败路径不会留下 "done"
+    item.calibration_state = calibration_state
     # 校色从 `_src` 重推导像素，抠图结果不再对应：两列只要校色跑过就清（不管原来
     # 有没有 mask），否则 update_mask 会拿过期 mask 合成垃圾。是否「真的清掉了
     # mask 文件」另由 mask_cleared 标志上报给 UI。
@@ -132,6 +129,7 @@ async def _persist_image_op(
             "thumbnail_path",
             "mask_path",
             "original_image_path",
+            "calibration_state",
             "updated_at",
         ],
     )
@@ -189,6 +187,7 @@ async def apply_calibration(
         ImageService().calibrate_image,
         (image_path, source_path, tuple(request.box), request.baseline),
         action="calibrate image",
+        calibration_state="done",
     )
 
 
@@ -210,6 +209,7 @@ async def manual_white_balance(
         ImageService().manual_white_balance,
         (image_path, source_path, request.kelvin, request.tint),
         action="apply manual white balance",
+        calibration_state="done",
     )
 
 
@@ -229,4 +229,5 @@ async def reset_calibration(
         ImageService().reset_calibration,
         (image_path, source_path),
         action="reset calibration",
+        calibration_state="none",
     )

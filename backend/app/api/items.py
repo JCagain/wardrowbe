@@ -1966,6 +1966,7 @@ async def replace_item_image(
     item.original_image_path = None
     item.calibration_original_path = image_paths["calibration_original_path"]
     item.mask_path = None
+    item.calibration_state = "none"
     await db.commit()
     await db.refresh(
         item,
@@ -1977,6 +1978,7 @@ async def replace_item_image(
             "original_image_path",
             "calibration_original_path",
             "mask_path",
+            "calibration_state",
             "updated_at",
         ],
     )

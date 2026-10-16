@@ -65,6 +65,11 @@ class ClothingItem(Base):
     # written by remove_background alongside the RGBA main image. NULL when the
     # item has never been matted (or the matte was undone).
     mask_path: Mapped[str | None] = mapped_column(String(500))
+    # D8: calibration progress, "none" | "done" | "skipped" (no reference found).
+    # Lets the AI-first pipeline skip finished steps and the UI show step state.
+    calibration_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="none", default="none"
+    )
     image_hash: Mapped[str | None] = mapped_column(String(16), index=True)  # pHash hex string
     # Client-generated idempotency key for the durable bulk-upload queue (frontend
     # IndexedDB record id). Unique per user when set, enforced by a partial index
