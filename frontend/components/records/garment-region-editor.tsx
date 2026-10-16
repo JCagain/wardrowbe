@@ -34,11 +34,13 @@ export function GarmentRegionEditor({
   regions,
   bodyParts,
   onChange,
+  onSelectedChange,
 }: {
   imageSrc: string;
   regions: GarmentRegion[];
   bodyParts: { value: string; label: string }[];
   onChange: (regions: GarmentRegion[]) => void;
+  onSelectedChange?: (index: number | null) => void;
 }) {
   const t = useTranslations('history.records.regions');
   const [selectedRaw, setSelected] = useState<number | null>(null);
@@ -49,6 +51,12 @@ export function GarmentRegionEditor({
 
   // 框列表被整体替换（重新检出）后，越界的选中项视为未选
   const selected = selectedRaw !== null && selectedRaw < regions.length ? selectedRaw : null;
+  // 用 ref 持有回调：父组件每次渲染传新函数也不会重复触发
+  const onSelectedChangeRef = useRef(onSelectedChange);
+  onSelectedChangeRef.current = onSelectedChange;
+  useEffect(() => {
+    onSelectedChangeRef.current?.(selected);
+  }, [selected]);
   const labelOf = useCallback(
     (part: string) => bodyParts.find((b) => b.value === part)?.label ?? part,
     [bodyParts],

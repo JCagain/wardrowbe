@@ -73,6 +73,18 @@
       "slowHint": "Detection runs on the local vision model and may take a minute.",
       "title": "Garments in this photo"
     },
+    "suggest": {
+      "run": "AI suggest for this box",
+      "cancel": "Cancel",
+      "running": "Finding matching items… this can take a minute.",
+      "unavailable": "AI suggest unavailable (embedding service not running)",
+      "pickBox": "Select a box first",
+      "empty": "No candidates — sync the item vector index in Settings first.",
+      "notReranked": "Sorted by visual similarity only (vision check unavailable).",
+      "pickHint": "Tap a candidate to add it to this record; save the record to keep it.",
+      "retired": "(retired)",
+      "verdict": { "same": "Match", "similar": "Similar", "different": "Unlikely" }
+    },
     "removePhoto": "Remove photo",
     "rotateLeft": "Rotate left",
     "rotateRight": "Rotate right",

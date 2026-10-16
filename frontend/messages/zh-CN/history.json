@@ -73,6 +73,18 @@
       "slowHint": "检出用本地视觉模型，可能要一分钟左右。",
       "title": "照片里的衣物"
     },
+    "suggest": {
+      "run": "为这个框找衣物（AI 建议）",
+      "cancel": "取消",
+      "running": "正在找匹配的衣物……可能要一分钟左右。",
+      "unavailable": "AI 建议不可用（embedding 服务未启动）",
+      "pickBox": "先选中一个框",
+      "empty": "没有候选——请先到设置页同步衣物向量索引。",
+      "notReranked": "仅按外观相似度排序（视觉复判不可用）。",
+      "pickHint": "点候选即加入本条记录；回到记录页点「保存」才会保留。",
+      "retired": "（已退役）",
+      "verdict": { "same": "同一件", "similar": "相似", "different": "不太像" }
+    },
     "removePhoto": "删除照片",
     "rotateLeft": "向左旋转",
     "rotateRight": "向右旋转",

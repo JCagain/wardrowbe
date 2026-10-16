@@ -4,17 +4,20 @@ import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { GarmentRegionEditor } from '@/components/records/garment-region-editor';
+import { SuggestPanel } from '@/components/records/suggest-panel';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useDetectGarmentRegions, useSaveGarmentRegions } from '@/lib/hooks/use-records';
 import { useBodyParts } from '@/lib/hooks/use-translated-constants';
-import type { GarmentRegion, RecordPhoto } from '@/lib/types';
+import type { GarmentRegion, RecordItem, RecordPhoto } from '@/lib/types';
 
 interface Props {
   recordId: string;
   photo: RecordPhoto;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  linkedIds: Set<string>;
+  onToggleItem: (item: RecordItem) => void;
 }
 
 // ApiError.message 已是后端 detail（见 lib/api.ts fetchApi）；网络错误是 NetworkError.message
@@ -22,12 +25,13 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange }: Props) {
+export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange, linkedIds, onToggleItem }: Props) {
   const t = useTranslations('history.records.regions');
   const bodyParts = useBodyParts();
   const detect = useDetectGarmentRegions();
   const save = useSaveGarmentRegions();
   const [regions, setRegions] = useState<GarmentRegion[]>(photo.garment_regions ?? []);
+  const [selected, setSelected] = useState<number | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 签名 URL 含时间，refetch 会换 URL 导致 <img> 重载；对话框生命周期内冻结
@@ -107,6 +111,14 @@ export function GarmentRegionsDialog({ recordId, photo, open, onOpenChange }: Pr
             regions={regions}
             bodyParts={bodyParts}
             onChange={setRegions}
+            onSelectedChange={setSelected}
+          />
+          <SuggestPanel
+            recordId={recordId}
+            photoId={photo.id}
+            region={selected !== null ? (regions[selected] ?? null) : null}
+            linkedIds={linkedIds}
+            onToggle={onToggleItem}
           />
           {error && (
             <p role="alert" data-testid="regions-error" className="text-sm text-destructive">

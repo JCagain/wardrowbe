@@ -95,6 +95,10 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
   const [occasion, setOccasion] = useState<string | null>(record?.occasion ?? null);
   const [notes, setNotes] = useState(record?.notes ?? '');
   const [items, setItems] = useState<RecordItem[]>(record?.items ?? []);
+  // AI 建议挑中的候选只进本地列表，随「保存」落库（spec §3.2 绝不自动入库）
+  const toggleRecordItem = (item: RecordItem) => {
+    setItems((prev) => (prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item]));
+  };
   const [localPhotos, setLocalPhotos] = useState<Array<{ key: string; file: File; src: string }>>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -479,6 +483,8 @@ export function RecordEditor({ record, today, onSaved, onDeleted }: Props) {
           photo={framingPhoto}
           open
           onOpenChange={(o) => !o && setFramingPhotoId(null)}
+          linkedIds={new Set(items.map((i) => i.id))}
+          onToggleItem={toggleRecordItem}
         />
       )}
 

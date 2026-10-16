@@ -7,11 +7,12 @@ vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 't' }, status: 'authenticated' }),
 }));
 
+const get = vi.fn();
 const post = vi.fn();
 const put = vi.fn();
 vi.mock('@/lib/api', async (orig) => {
   const mod = await orig<typeof import('@/lib/api')>();
-  return { ...mod, api: { ...mod.api, post: (...a: unknown[]) => post(...a), put: (...a: unknown[]) => put(...a) } };
+  return { ...mod, api: { ...mod.api, get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a), put: (...a: unknown[]) => put(...a) } };
 });
 
 import { GarmentRegionsDialog } from '@/components/records/garment-regions-dialog';
@@ -29,7 +30,7 @@ function mount(p: RecordPhoto, onOpenChange = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <GarmentRegionsDialog recordId="r1" photo={p} open onOpenChange={onOpenChange} />
+      <GarmentRegionsDialog recordId="r1" photo={p} open onOpenChange={onOpenChange} linkedIds={new Set()} onToggleItem={vi.fn()} />
     </QueryClientProvider>,
   );
   return onOpenChange;
@@ -38,6 +39,8 @@ function mount(p: RecordPhoto, onOpenChange = vi.fn()) {
 const response = (regions: GarmentRegion[]) => ({ photo_id: 'p1', width: 100, height: 100, regions });
 
 beforeEach(() => {
+  get.mockReset();
+  get.mockResolvedValue({ configured: true, available: true, model: 'm', total: 1, embedded: 1, stale: 0, job: 'idle' });
   post.mockReset();
   put.mockReset();
 });
@@ -68,7 +71,7 @@ describe('GarmentRegionsDialog', () => {
     put.mockResolvedValue(response([r1]));
     render(
       <QueryClientProvider client={qc}>
-        <GarmentRegionsDialog recordId="r1" photo={photo(null)} open onOpenChange={vi.fn()} />
+        <GarmentRegionsDialog recordId="r1" photo={photo(null)} open onOpenChange={vi.fn()} linkedIds={new Set()} onToggleItem={vi.fn()} />
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByTestId('regions-detect'));
@@ -128,6 +131,16 @@ describe('GarmentRegionsDialog', () => {
   });
 });
 
+describe('GarmentRegionsDialog suggest panel', () => {
+  it('suggest-run is enabled only once a box is selected', async () => {
+    mount(photo([r1]));
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(screen.getByTestId('suggest-run')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('region-chip-0'));
+    await waitFor(() => expect(screen.getByTestId('suggest-run')).not.toBeDisabled());
+  });
+});
+
 describe('GarmentRegionsDialog stability', () => {
   it('disables save while detecting', async () => {
     post.mockImplementation(() => new Promise(() => {}));
@@ -140,7 +153,7 @@ describe('GarmentRegionsDialog stability', () => {
     const qc = new QueryClient();
     const ui = (p: RecordPhoto) => (
       <QueryClientProvider client={qc}>
-        <GarmentRegionsDialog recordId="r1" photo={p} open onOpenChange={vi.fn()} />
+        <GarmentRegionsDialog recordId="r1" photo={p} open onOpenChange={vi.fn()} linkedIds={new Set()} onToggleItem={vi.fn()} />
       </QueryClientProvider>
     );
     const { rerender } = render(ui({ ...photo([r1]), image_url: 'data:image/png;base64,AAAA' }));
