@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from pathlib import Path
 from typing import Annotated, Literal
@@ -27,9 +28,9 @@ from app.schemas.record import (
     SuggestRequest,
     SuggestResponse,
 )
-from app.services.ai_service import AIDisabledError, AIService, require_internal_ai
 from app.services import suggest as suggest_service
-from app.services.embedding_client import EmbeddingUnavailableError
+from app.services.ai_service import AIDisabledError, AIService, require_internal_ai
+from app.services.embedding_client import EmbeddingClient, EmbeddingUnavailableError
 from app.services.garment_regions import clamp_regions, is_parseable, parse_garment_regions
 from app.services.image_service import ImageService
 from app.services.preference_service import PreferenceService
@@ -243,6 +244,11 @@ def _photo_size(rel_path: str) -> tuple[int, int]:
         return im.size
 
 
+def _crop_photo(rel_path: str, box: dict) -> Image.Image:
+    with Image.open(Path(get_settings().storage_path) / rel_path) as im:
+        return im.convert("RGB").crop((box["l"], box["t"], box["r"] + 1, box["b"] + 1))
+
+
 async def _user_ai_endpoints(db: AsyncSession, user_id) -> list[dict] | None:
     # CLAUDE.md pitfall 3: settings-page endpoints take priority (same as the tagging worker).
     prefs = (
@@ -321,19 +327,26 @@ async def suggest_for_region(
         photo = await service.get_photo_for_user(current_user.id, record_id, photo_id)
     except (RecordNotFoundError, PhotoNotFoundError):
         raise NOT_FOUND from None
-    client = suggest_service.EmbeddingClient.from_settings()
+    client = EmbeddingClient.from_settings()
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="embedding 未配置（AI_EMBEDDING_* 环境变量）",
         )
-    width, height = _photo_size(photo.image_path)
+    unreadable = HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="照片读不了"
+    )
+    try:
+        width, height = await asyncio.to_thread(_photo_size, photo.image_path)
+    except (OSError, Image.DecompressionBombError):
+        raise unreadable from None
     clamped = clamp_regions([body.region.model_dump()], width, height)
     if not clamped:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="框太小或在图外")
-    box = clamped[0]["box"]
-    with Image.open(Path(get_settings().storage_path) / photo.image_path) as im:
-        crop = im.convert("RGB").crop((box["l"], box["t"], box["r"] + 1, box["b"] + 1))
+    try:
+        crop = await asyncio.to_thread(_crop_photo, photo.image_path, clamped[0]["box"])
+    except (OSError, Image.DecompressionBombError):
+        raise unreadable from None
     ai = None
     if body.rerank:
         try:

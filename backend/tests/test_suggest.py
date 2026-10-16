@@ -15,7 +15,6 @@ from app.services.embedding_client import EmbeddingUnavailableError
 from app.services.embedding_store import upsert_embedding
 
 BASE = "/api/v1/records"
-DIM = 4
 
 
 def _jpeg(size=(200, 100)) -> bytes:
@@ -84,6 +83,7 @@ def no_rerank_ai(monkeypatch):
     monkeypatch.setattr(AIService, "rerank_garment_candidates", boom)
 
 
+@pytest.mark.asyncio
 async def test_recall_only_orders_by_cosine(client, auth_headers, db_session, test_user, fake_emb, no_rerank_ai):
     near = await _item(db_session, test_user, (1, 0.1, 0, 0))
     far = await _item(db_session, test_user, (0, 1, 0, 0))
@@ -231,3 +231,39 @@ async def test_stops_reranking_when_client_disconnects(db_session, test_user, mo
     )
     assert len(calls) == 1
     assert res.reranked is True  # partial rerank still counts; unjudged ones stay None
+
+
+@pytest.mark.asyncio
+async def test_recall_only_caps_at_eight(client, auth_headers, db_session, test_user, fake_emb, no_rerank_ai):
+    for i in range(12):
+        await _item(db_session, test_user, (1, i / 20, 0, 0))
+    rid, pid = await _record(client, auth_headers)
+    body = (await client.post(f"{BASE}/{rid}/photos/{pid}/suggest", json={**_region(), "rerank": False},
+                              headers=auth_headers)).json()
+    assert len(body["candidates"]) == 8
+
+
+@pytest.mark.asyncio
+async def test_all_different_still_returns_five(client, auth_headers, db_session, test_user, fake_emb, monkeypatch):
+    for i in range(7):
+        await _item(db_session, test_user, (1, i / 20, 0, 0))
+
+    async def fake_rerank(self, q, cs):
+        return json.dumps({"verdicts": ["different"] * len(cs)})
+
+    monkeypatch.setattr(AIService, "rerank_garment_candidates", fake_rerank)
+    rid, pid = await _record(client, auth_headers)
+    body = (await client.post(f"{BASE}/{rid}/photos/{pid}/suggest", json=_region(), headers=auth_headers)).json()
+    assert body["reranked"] is True
+    assert len(body["candidates"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_corrupt_stored_photo_is_422(client, auth_headers, fake_emb, no_rerank_ai):
+    rid, pid = await _record(client, auth_headers)
+    rec = (await client.get(f"{BASE}/{rid}", headers=auth_headers)).json()
+    path = rec["photos"][0]["image_path"]
+    (Path(get_settings().storage_path) / path).write_bytes(b"not an image")
+    r = await client.post(f"{BASE}/{rid}/photos/{pid}/suggest", json=_region(), headers=auth_headers)
+    assert r.status_code == 422
+    assert fake_emb.instructions == []
