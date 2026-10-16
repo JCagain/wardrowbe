@@ -31,6 +31,7 @@ import { useClothingColors, useOccasions } from '@/lib/hooks/use-translated-cons
 import { toF, toCelsius } from '@/lib/temperature';
 import { toast } from 'sonner';
 import { CitySettingsCard } from '@/components/settings/city-settings-card';
+import { EmbeddingIndexCard } from '@/components/settings/embedding-index-card';
 import { useTranslations } from 'next-intl';
 
 const CM_TO_IN = 0.393701;
@@ -833,6 +834,8 @@ export default function SettingsPage() {
         </Card>
 
         <CitySettingsCard />
+
+        <EmbeddingIndexCard />
 
         {/* Temperature & Comfort */}
         <Card>

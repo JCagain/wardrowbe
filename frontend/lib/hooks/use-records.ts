@@ -10,6 +10,7 @@ import type {
   RecordInput,
   RecordListResponse,
   RecordWeather,
+  SuggestResponse,
 } from '@/lib/types';
 
 function useSetTokenIfAvailable() {
@@ -181,6 +182,26 @@ export function useSaveGarmentRegions() {
     mutationFn: ({ id, photoId, regions }: { id: string; photoId: string; regions: GarmentRegion[] }) =>
       api.put<GarmentRegionsResponse>(`/records/${id}/photos/${photoId}/garment-regions`, { regions }),
     onSuccess: (_r, vars) => invalidate(vars.id),
+  });
+}
+
+export function useSuggestForRegion() {
+  useSetTokenIfAvailable();
+  // 建议只读、绝不写库，所以不 invalidate 任何查询
+  return useMutation({
+    mutationFn: ({
+      id,
+      photoId,
+      region,
+      rerank = true,
+      signal,
+    }: {
+      id: string;
+      photoId: string;
+      region: GarmentRegion;
+      rerank?: boolean;
+      signal?: AbortSignal;
+    }) => api.post<SuggestResponse>(`/records/${id}/photos/${photoId}/suggest`, { region, rerank }, { signal }),
   });
 }
 

@@ -84,6 +84,22 @@
     "favoriteColors": "Favorite Colors"
   },
   "confirmReset": "Are you sure you want to reset all preferences to defaults?",
+  "embeddings": {
+    "title": "Item vector index",
+    "description": "Used by AI-suggested linking. Item vectors update automatically in the background; rebuild after changing the embedding model.",
+    "unconfigured": "Embedding endpoint not configured (AI_EMBEDDING_* in .env).",
+    "unavailable": "Embedding service unreachable — check that it is running.",
+    "counts": "{embedded} of {total} items indexed ({stale} pending)",
+    "sync": "Sync now",
+    "rebuild": "Rebuild all",
+    "rebuildConfirm": "Recompute every item vector? Existing vectors keep working until each is replaced.",
+    "syncFailed": "Could not start sync",
+    "job": {
+      "idle": "Idle",
+      "queued": "Queued…",
+      "running": "Syncing…"
+    }
+  },
   "location": {
     "approximateDetected": "Approximate location filled in. Review it, then save.",
     "approximateDetectedWithReason": "{reason} Approximate location filled in. Review it, then save.",

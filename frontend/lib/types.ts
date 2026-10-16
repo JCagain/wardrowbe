@@ -496,3 +496,31 @@ export interface RecordInput {
   notes?: string | null;
   item_ids: string[];
 }
+
+export type EmbeddingJobState = 'idle' | 'queued' | 'running';
+
+export interface EmbeddingStatus {
+  configured: boolean;
+  available: boolean;
+  model: string | null;
+  total: number;
+  embedded: number;
+  stale: number;
+  job: EmbeddingJobState;
+}
+
+export type SuggestVerdict = 'same' | 'similar' | 'different';
+
+export interface SuggestCandidate extends RecordItem {
+  cosine: number;
+  verdict: SuggestVerdict | null;
+  lifecycle: string;
+}
+
+export interface SuggestResponse {
+  candidates: SuggestCandidate[];
+  recall_count: number;
+  part_filtered: boolean;
+  reranked: boolean;
+  rerank_error: string | null;
+}

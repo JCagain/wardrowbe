@@ -84,6 +84,22 @@
     "favoriteColors": "喜欢的颜色"
   },
   "confirmReset": "确定要将所有偏好恢复为默认值吗？",
+  "embeddings": {
+    "title": "衣物向量索引",
+    "description": "供 AI 建议关联使用。衣物向量会在后台自动更新；换 embedding 模型后请全部重建。",
+    "unconfigured": "未配置 embedding 端点（.env 里的 AI_EMBEDDING_*）。",
+    "unavailable": "连不上 embedding 服务——请确认服务已启动。",
+    "counts": "已索引 {embedded} / {total} 件（待更新 {stale} 件）",
+    "sync": "立即同步",
+    "rebuild": "全部重建",
+    "rebuildConfirm": "重新计算所有衣物向量？在逐件替换完成前，旧向量仍可用。",
+    "syncFailed": "无法开始同步",
+    "job": {
+      "idle": "空闲",
+      "queued": "排队中…",
+      "running": "同步中…"
+    }
+  },
   "location": {
     "approximateDetected": "已填入大致位置。请确认后保存。",
     "approximateDetectedWithReason": "{reason} 已填入大致位置。请确认后保存。",
