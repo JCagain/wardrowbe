@@ -35,7 +35,9 @@
 | 59 | k8s 进摘名单，README 标注下线 | ✅ | af0b5ea |
 | 60 | 原文 §10 两个「16.」 | ✅（裁定，不改原文） | —（Ruling 79） |
 | 61 | §10.7 两态作废，以 §10.16 三态为准 | ✅ | 已随 #48 / lifecycle 实现 |
-| 56 | embedding 配置 | M2，未做 | — |
+| 29 | embedding 存储与同步 | ⚠️ 第一期：`item_embeddings` 表 + 指纹过期 + 断点续跑同步函数（ea0c7e1）；worker 作业与重建入口在第二期 | ea0c7e1 |
+| 39 | AI 建议关联：召回 + 框选 | ⚠️ 第一期：余弦召回（7fc60bb）+ D7 框选（3da114e + ca50bf8 后端，577cf20 + 41531d6 前端）；建议端点与按钮在第二期 | 7fc60bb, 3da114e, ca50bf8, 577cf20, 41531d6 |
+| 56 | embedding 配置 | ✅ env 配置 + 客户端（a01244b），Ruling 80 | a01244b |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -88,6 +90,16 @@
 | **Ruling 77**（家庭评分） | `/outfits/{id}/family-rating(s)` 三路由去装饰器、函数保留；路由级测试移入 `tests/pruned/`；响应里的 `family_ratings*` 字段保留，不再有新写入（已有评分照常返回）。理由：spec §7「后端路由关闭或不挂」。代价：无。 |
 | **Ruling 78**（锁 zh-CN） | request config 固定 zh-CN，不读 cookie / Accept-Language；zh-CN 仍以 en 为底合并消息；LocaleSwitcher 归档 `components/dormant/` 并进入口守卫；后端 `user.locale` 列与校验不动（前端不读）。理由：fixes D4。代价：无。 |
 | **Ruling 79**（原文 §10 编号） | 原文不改。fixes 与代码注释沿用原文编号，§10.16 有两条（天气预填 / 状态三态）时以上下文区分；新写的注释引用 §10.16 须带标题（如「§10.16 状态三态」）。理由：fixes #60 只是勘误，原件不改。代价：编号查找需看标题。 |
+| **Ruling 80**（embedding 只走 env） | embedding 端点只读 `AI_EMBEDDING_BASE_URL / _API_KEY / _MODEL`（`Settings.embedding_configured`），不进设置页的 `ai_endpoints`。理由：避开 CLAUDE.md 坑 3（设置页优先于 env）在第二个端点上重演。代价：换端点要改 `.env` 并 `docker compose up -d` 重建容器；`AI_EMBEDDING_TIMEOUT` 未在 docker-compose 转发（仅 env 可读，需要时写进 `.env` 并补转发）。 |
+| **Ruling 81**（指纹扫描判过期） | 向量是否过期由 `source_fingerprint`（工作图 `path:mtime_ns:size` + mask 同款）与已存值比对，扫描时判定，不在各改图端点挂钩。理由：改像素的端点多（校色 / 抠图 / 画笔 / 旋转 / 换主图），挂钩必漏。代价：同路径、同 mtime、同大小的改写检测不到；每次扫描对每件 ready 衣物 stat 一次（个人规模可忽略）。 |
+| **Ruling 82**（向量输入 = 白底抠图） | 衣物向量的输入与打标一致，取「当前最佳像素」：有 mask 文件时抠图合成到白底，否则用工作图。理由：背景不应进入相似度。代价：无 mask 的衣物按原图算。（透明通道的扩展见 Ruling 86。） |
+| **Ruling 83**（候选含闲置 / 已退役） | 召回候选不按生命周期状态过滤，闲置与已退役的衣物也参与；只按用户、模型（以及可选的部位）过滤。理由：穿搭照里可能出现已退役的旧衣，漏召回比多召回更糟。代价：候选里会有已退役项，由第二期界面标注或排序。 |
+| **Ruling 84**（框存照片行） | `garment_regions` 存在 `outfit_photos` 行的 JSON 列，坐标为原图像素；旋转照片时清空（坐标系已变，留着就是错框）；保存时夹到图像尺寸内。理由：框属于照片，不属于记录。代价：旋转后需重画；框不随图像裁切 / 缩放迁移。 |
+| **Ruling 85**（框带部位，D7 细化） | 每个框带 `body_part`（词表内部位），检出时模型给出，非法部位丢弃，用户可改；单照最多 12 个框，小于 8 像素的框丢弃，越界夹到图内、反向坐标交换。理由：第二期召回按部位过滤候选（`load_candidates(body_part=...)`）。代价：模型误判部位时需手改。 |
+| **Ruling 86**（透明工作图也白底合成） | `embedding_input_image` 只要工作图带 alpha（RGBA / LA / 带 transparency 的 P）就合成到白底，不限于存在 mask 文件。理由：D6 把抠图存成 RGBA，直接 `convert("RGB")` 会让 alpha 0 处的隐藏背景漏进向量。代价：不透明图无变化，无代价。 |
+| **Ruling 87**（框选界面，用户裁定 10-15） | 照片条缩略图显示框数徽标；重新检出会覆盖现有框，先确认；灯箱不叠加框。理由：用户裁定。代价：灯箱里看不到框。 |
+| **Ruling 88**（检出失败不写） | 检出仅当模型输出解析为 JSON 对象且其 `regions` 为列表时才成功；否则返回 502 且不写库（已有框保留）。合法空列表照存为空，含义「没检出穿着」。理由：把「模型胡话」与「确实没有」分开。代价：模型回了对象但内容全被过滤时同样存空。 |
+| **Ruling 89**（对话框冻结图源） | 框选对话框在其生命周期内冻结图片 `src`。理由：签名 URL 内嵌时间戳，记录 refetch 会换 URL、重载图片并清空 canvas。代价：对话框开着时照片被别处替换不会反映，需关闭重开。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
@@ -133,3 +145,4 @@
 - **时间线与反查都靠「加载更多」**，不做无限滚动。
 - **网格颜色筛选默认从「主色∪辅色」改为「仅主色」**；要按辅色筛需切「颜色匹配」（fixes #41，Ruling 66）。
 - **词表加载前软词表选择器为空**（Ruling 74）：颜色 / 类型 / 风格等软词表选择器在词表请求返回前为空，标签回退显示 slug。
+- **embedding 验证脚本（`python -m scripts.embedding_probe`）判读标准**：augment 自检 recall@5 ≥ 0.8 且不同衣物最大余弦 ≤ 0.98；第二期开工前由用户起服务实跑。这两项是对同一件衣物的增强副本做的自洽检查，不是真实穿搭照裁块的召回，所以通过是必要而非充分条件；真实裁块用 `--pair 图片路径:衣物UUID` 做参考，不设硬门槛。
