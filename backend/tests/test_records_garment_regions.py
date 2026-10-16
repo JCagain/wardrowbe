@@ -134,3 +134,32 @@ async def test_other_users_photo_is_404(client, auth_headers, other_auth_headers
     url = f"{BASE}/{rid}/photos/{pid}/garment-regions"
     assert (await client.post(url + "/detect", headers=other_auth_headers)).status_code == 404
     assert (await client.put(url, json={"regions": []}, headers=other_auth_headers)).status_code == 404
+
+
+async def _detect_with(monkeypatch, client, headers, rid, pid, text):
+    async def fake(self, image_path):
+        return text
+
+    monkeypatch.setattr(AIService, "detect_garment_regions", fake)
+    return await client.post(f"{BASE}/{rid}/photos/{pid}/garment-regions/detect", headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_detect_valid_empty_regions_is_200(client, auth_headers, monkeypatch):
+    rid, pid = await _record(client, auth_headers)
+    resp = await _detect_with(monkeypatch, client, auth_headers, rid, pid, '{"regions": []}')
+    assert resp.status_code == 200
+    assert resp.json()["regions"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["I can't find any regions in this photo.", '{"regions": "x"}'])
+async def test_detect_unusable_output_is_502_and_keeps_existing(client, auth_headers, monkeypatch, text):
+    rid, pid = await _record(client, auth_headers)
+    keep = {"regions": [{"body_part": "tops", "box": {"l": 0, "t": 0, "r": 50, "b": 50}, "source": "manual"}]}
+    put = await client.put(f"{BASE}/{rid}/photos/{pid}/garment-regions", json=keep, headers=auth_headers)
+    saved = put.json()["regions"]
+    resp = await _detect_with(monkeypatch, client, auth_headers, rid, pid, text)
+    assert resp.status_code == 502
+    rec = (await client.get(f"{BASE}/{rid}", headers=auth_headers)).json()
+    assert rec["photos"][0]["garment_regions"] == saved

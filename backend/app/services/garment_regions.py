@@ -40,6 +40,12 @@ def _finish(part: str, l: int, t: int, r: int, b: int, width: int, height: int, 
     return {"body_part": part, "box": {"l": l, "t": t, "r": r, "b": b}, "source": source}
 
 
+def is_parseable(text: str) -> bool:
+    """True when the model output is a JSON object whose `regions` is a list (possibly empty)."""
+    data = _extract(text)
+    return isinstance(data, dict) and isinstance(data.get("regions"), list)
+
+
 def parse_garment_regions(text: str, width: int, height: int) -> list[dict]:
     data = _extract(text)
     raw = data.get("regions") if isinstance(data, dict) else None

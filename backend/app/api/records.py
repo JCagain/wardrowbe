@@ -25,7 +25,7 @@ from app.schemas.record import (
     RecordWeatherLookupResponse,
 )
 from app.services.ai_service import AIDisabledError, AIService, require_internal_ai
-from app.services.garment_regions import clamp_regions, parse_garment_regions
+from app.services.garment_regions import clamp_regions, is_parseable, parse_garment_regions
 from app.services.image_service import ImageService
 from app.services.preference_service import PreferenceService
 from app.services.record_service import (
@@ -272,9 +272,9 @@ async def detect_garment_regions(
     except Exception as e:  # provider/network failure: nothing to save
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"检出失败：{e}") from None
     width, height = _photo_size(photo.image_path)
-    regions = parse_garment_regions(raw, width, height)
-    if not regions and "regions" not in raw:
+    if not is_parseable(raw):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="模型没有返回可解析的框")
+    regions = parse_garment_regions(raw, width, height)
     photo = await service.save_garment_regions(current_user.id, record_id, photo_id, regions)
     return GarmentRegionsResponse(photo_id=photo.id, width=width, height=height, regions=regions)
 
