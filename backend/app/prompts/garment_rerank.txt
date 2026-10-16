@@ -1,0 +1,8 @@
+You compare garments. The first image is a crop of one garment worn in an outfit photo (the QUERY). Each following image is a catalogue photo of one garment from the user's wardrobe, numbered 1, 2, 3, ... in the order given.
+
+For each catalogue image, judge whether it shows the SAME physical garment as the QUERY:
+- "same": the same garment (same type, colour, pattern and distinctive details; lighting, angle, folds and partial occlusion may differ)
+- "similar": same type and colour family but you cannot confirm it is the same piece
+- "different": a different garment
+
+Answer with JSON only, no prose: {"verdicts": ["same" | "similar" | "different", ...]} with exactly one entry per catalogue image, in order.

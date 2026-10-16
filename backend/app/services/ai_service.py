@@ -621,6 +621,25 @@ class AIService:
             raise err or RuntimeError("garment region detection returned nothing")
         return content
 
+    async def rerank_garment_candidates(self, query_b64: str, candidate_b64s: list[str]) -> str:
+        """Spec §3.2 stage two: judge which catalogue images show the query garment."""
+        content: list[dict] = [
+            {"type": "text", "text": "QUERY:"},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{query_b64}"}},
+            {"type": "text", "text": f"{len(candidate_b64s)} catalogue images follow, numbered from 1."},
+        ]
+        for i, b64 in enumerate(candidate_b64s, start=1):
+            content.append({"type": "text", "text": f"{i}:"})
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        messages = [
+            {"role": "system", "content": load_prompt("garment_rerank")},
+            {"role": "user", "content": content},
+        ]
+        text, err, _ = await self._call_with_fallback(messages, "garment_rerank")
+        if text is None:
+            raise err or RuntimeError("garment rerank returned nothing")
+        return text
+
     async def analyze_image(self, image_path: str | Path) -> ClothingTags:
         # PIL preprocessing is CPU-bound and synchronous; run off the event loop so
         # concurrent tagging jobs don't stall each other's in-flight HTTP reads.
