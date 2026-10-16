@@ -38,6 +38,12 @@
 | 29 | embedding 存储与同步 | ✅ 向量表 + 指纹过期（ea0c7e1）；image 队列同步作业 + 每分钟 cron + 设置页同步/全部重建（95138cb, c5ba702, 1a7b139, d05fa8d） | ea0c7e1, 95138cb, c5ba702, 1a7b139, d05fa8d |
 | 39 | AI 建议关联：召回 + 框选 | ⚠️ 功能完成：单框建议端点（召回 top-15 按部位、视觉分组复判、5–8 候选、绝不写库）+ 框选对话框内挑选（55b1eb8, a2aab90, 600ee07, 167f8f1）；**召回质量待用户录够衣物后实跑 probe 确认** | 7fc60bb, 3da114e, ca50bf8, 577cf20, 41531d6, 55b1eb8, a2aab90, 600ee07, 167f8f1 |
 | 56 | embedding 配置 | ✅ env 配置 + 客户端（a01244b），Ruling 80 | a01244b |
+| D3 / 19 | 温度不由 AI 打，纯手填：`temp_low` / `temp_high` 可空数值列，录入页与详情页手填，打标提示与输出均无温度 | ✅ | 879c760（列）, ecb67ca（表单） |
+| 20 / 24 | `subtype` 自由文本直传；UI 显示名「备注」，列名沿用 `subtype` 不迁移 | ✅ | ecb67ca |
+| 22 | 购买时间默认 = 录入日的年月（本地日历），可改可清；批量上传无表单，保持为空（Ruling 101） | ✅ | 4f2adb7 |
+| 64 | 记录测试：photos（`test_record_photos_api.py` 增删/重排/旋转）、city（`test_records_api.py` 设与清空、`test_weather_lookup_uses_city_coordinates`）、季节推导（`test_season.py`、`test_create_minimal_defaults_today_and_derived_season`、`record-season.test.ts`）、天气预填与历史天气（`test_weather_for_date.py` 近期走 forecast / 久远走 archive）、0 件保存（`test_create_minimal_…`、`test_patch_to_zero_items_and_back`） | ✅（逐项核对） | 随记录计划各 commit |
+| 65 | 反查（`test_records_reverse_lookup_by_item`）、wear_count 手改与自动 ±（`test_manual_wear_count_then_records_delta`、`test_records_api.py` 增删/改日期/删记录/不为负）、常搭共现（`test_companions_*`） | ✅（逐项核对） | 4e01293 |
+| 66 | 网格筛选补的维度：部位、色系、具体色（主/辅/任一）、风格，另含季节（`test_item_filters.py`、`wardrobe-filters.test.ts`） | ✅（逐项核对） | 33675c5, cc663ce |
 
 **fixes #6 与 #7a 的措辞冲突**：#6 写「校色/抠图/旋转都不得覆盖它」，#7a 要求旋转同步旋转它。以 **#7a 为准**——「不可变」指不得被处理产物覆盖，不禁止几何同步。
 
@@ -111,6 +117,7 @@
 | **Ruling 98**（查询侧指令） | 查询侧指令默认关（`QUERY_INSTRUCTION=None`，用模型默认 system 轮），待用户实跑 probe 的 `--instruction` 对比后再定。理由：第一期冒烟没有真实裁块可比。代价：可能不是最优召回。 |
 | **Ruling 99**（挑选入库） | 挑中的候选只进编辑页本地关联列表，随记录「保存」才落库；对话框的「保存」只存框。理由：spec §3.2 / 原则 4「永不自动入库」。代价：用户要记得回到记录页保存（文案提示）。 |
 | **Ruling 100**（无复判时的排序） | 当没有任何一组产生复判结果（rerank 关闭、视觉禁用或全部分组失败）时，建议端点按召回序返回候选，最多 8 件；召回序为部位命中在前、回落补位在后。`rank_candidates`（判定优先、余弦其次）只在至少有一个 verdict 之后才应用。理由：计划中的 `rank_candidates` 纯按余弦重排，会把部位命中的候选压在其他部位的高余弦补位之下。代价：复判之后，同判定的候选之间部位优先级丢失。 |
+| **Ruling 101**（购买时间默认） | 单件录入表单的购买时间初值 = 打开表单当刻的本地年月（`entryYearMonth`），关闭重置时重新取；批量上传不填。理由：fixes #22 要求可改可清，批量上传没有可见的字段让用户改或清，静默盖上日期等于写入用户没看见的数据。代价：批量录入的衣物购买时间为空，需在详情页补。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
