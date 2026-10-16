@@ -61,6 +61,25 @@ describe('GarmentRegionsDialog', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it('detect does not invalidate record queries (nothing changed server-side); save does', async () => {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    post.mockResolvedValue(response([r1]));
+    put.mockResolvedValue(response([r1]));
+    render(
+      <QueryClientProvider client={qc}>
+        <GarmentRegionsDialog recordId="r1" photo={photo(null)} open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId('regions-detect'));
+    await waitFor(() => expect(screen.getByTestId('region-chip-0')).toBeInTheDocument());
+    expect(put).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('regions-save'));
+    await waitFor(() => expect(put).toHaveBeenCalled());
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+  });
+
   it('shows the backend detail on detect failure and stays open', async () => {
     post.mockRejectedValue(Object.assign(new Error('X_DETAIL'), { status: 502 }));
     const onOpenChange = mount(photo(null));

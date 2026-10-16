@@ -6,6 +6,7 @@ import pytest
 from app.models.item import ClothingItem, ItemStatus
 from app.services.embedding_recall import load_candidates, top_k
 from app.services.embedding_store import upsert_embedding
+from app.utils.item_lifecycle import terminal_status
 
 
 def _u(*xs):
@@ -51,6 +52,7 @@ async def test_load_candidates_filters_user_model_and_part(db_session, test_user
         )
         if lifecycle:
             it.lifecycle = lifecycle
+            it.status = terminal_status(lifecycle, ItemStatus.ready)
         db_session.add(it)
         return it
 

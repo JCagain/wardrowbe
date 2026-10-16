@@ -111,6 +111,16 @@ async def test_connection_error_raises_unavailable():
         await _client(handler).embed_images([_img()])
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [httpx.InvalidURL("bad url"), httpx.UnsupportedProtocol("no scheme")])
+async def test_bad_url_errors_raise_unavailable(exc):
+    def handler(request):
+        raise exc
+
+    with pytest.raises(EmbeddingUnavailableError):
+        await _client(handler).embed_images([_img()])
+
+
 def test_from_settings_none_when_unconfigured(monkeypatch):
     from app.config import get_settings
 

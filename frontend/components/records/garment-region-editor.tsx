@@ -17,6 +17,8 @@ import type { GarmentRegion } from '@/lib/types';
 const LINE_CSS_PX = 2;
 const HANDLE_CSS_PX = 8;
 const LABEL_CSS_PX = 12;
+// 与后端 GarmentRegionsUpdate.max_length 一致
+const MAX_REGIONS = 12;
 const SELECTED_COLOR = '#22c55e';
 const OTHER_COLOR = '#94a3b8';
 // 图片尚未加载（naturalWidth 为 0）时新增框的兜底尺寸
@@ -226,7 +228,7 @@ export function GarmentRegionEditor({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" data-testid="regions-add" className="rounded border px-2 py-1 text-sm" onClick={handleAdd}>
+        <button type="button" data-testid="regions-add" disabled={regions.length >= MAX_REGIONS} className="rounded border px-2 py-1 text-sm disabled:opacity-40" onClick={handleAdd}>
           {t('add')}
         </button>
         <button

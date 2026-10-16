@@ -7,13 +7,14 @@ a mask exists or the working image has transparency (cut-outs are RGBA PNGs),
 else the plain working image (Ruling 82).
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 import numpy as np
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.embedding import ItemEmbedding
 from app.models.item import ClothingItem, ItemStatus
 from app.services.mask_service import composite_on_white
+
+logger = logging.getLogger(__name__)
 
 
 def _stat_part(storage_path: Path, rel: str | None) -> str | None:
@@ -61,7 +64,10 @@ async def stale_items(
         await db.execute(
             select(ClothingItem, ItemEmbedding)
             .outerjoin(ItemEmbedding, ItemEmbedding.item_id == ClothingItem.id)
-            .where(ClothingItem.user_id == user_id, ClothingItem.status == ItemStatus.ready)
+            .where(
+                ClothingItem.user_id == user_id,
+                ClothingItem.status.in_((ItemStatus.ready, ItemStatus.archived)),
+            )
             .order_by(ClothingItem.created_at, ClothingItem.id)
         )
     ).all()
@@ -100,6 +106,7 @@ async def upsert_embedding(
 class SyncResult:
     done: int
     remaining: int
+    skipped: int = 0
 
 
 async def sync_item_embeddings(
@@ -108,16 +115,24 @@ async def sync_item_embeddings(
     """Embed every stale item, committing per batch so a failure resumes cleanly."""
     todo = await stale_items(db, user_id, client.model, storage_path)
     done = 0
+    skipped = 0
     for start in range(0, len(todo), batch_size):
         batch = todo[start : start + batch_size]
-        prepared = [
-            (item, source_fingerprint(item, storage_path), embedding_input_image(item, storage_path))
-            for item in batch
-        ]
+        prepared = []
+        for item in batch:
+            try:
+                img = embedding_input_image(item, storage_path)
+            except (OSError, UnidentifiedImageError) as e:
+                logger.warning("skipping embedding for item %s: unreadable image (%s)", item.id, e)
+                skipped += 1
+                continue
+            prepared.append((item, source_fingerprint(item, storage_path), img))
+        if not prepared:
+            continue
         vectors = await client.embed_images([img for _, _, img in prepared], batch_size=batch_size)
         for (item, fp, _), vec in zip(prepared, vectors, strict=True):
             await upsert_embedding(db, item.id, client.model, fp, vec)
         await db.commit()
-        done += len(batch)
+        done += len(prepared)
     remaining = len(await stale_items(db, user_id, client.model, storage_path))
-    return SyncResult(done=done, remaining=remaining)
+    return SyncResult(done=done, remaining=remaining, skipped=skipped)

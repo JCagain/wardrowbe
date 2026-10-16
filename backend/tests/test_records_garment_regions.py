@@ -53,7 +53,7 @@ def stub_detect(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_detect_saves_and_returns_pixel_boxes(client, auth_headers, stub_detect):
+async def test_detect_returns_pixel_boxes_without_saving(client, auth_headers, stub_detect):
     rid, pid = await _record(client, auth_headers)
     resp = await client.post(f"{BASE}/{rid}/photos/{pid}/garment-regions/detect", headers=auth_headers)
     assert resp.status_code == 200, resp.text
@@ -61,7 +61,7 @@ async def test_detect_saves_and_returns_pixel_boxes(client, auth_headers, stub_d
     assert (body["width"], body["height"]) == (200, 100)
     assert body["regions"] == [{"body_part": "tops", "box": {"l": 0, "t": 0, "r": 99, "b": 49}, "source": "auto"}]
     rec = (await client.get(f"{BASE}/{rid}", headers=auth_headers)).json()
-    assert rec["photos"][0]["garment_regions"] == body["regions"]
+    assert rec["photos"][0]["garment_regions"] is None
 
 
 @pytest.mark.asyncio
@@ -120,9 +120,11 @@ async def test_put_clamps_validates_and_persists(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_rotate_clears_regions(client, auth_headers, stub_detect):
+async def test_rotate_clears_regions(client, auth_headers):
     rid, pid = await _record(client, auth_headers)
-    await client.post(f"{BASE}/{rid}/photos/{pid}/garment-regions/detect", headers=auth_headers)
+    box = {"l": 0, "t": 0, "r": 50, "b": 50}
+    saved = [{"body_part": "tops", "box": box, "source": "manual"}]
+    await client.put(f"{BASE}/{rid}/photos/{pid}/garment-regions", json={"regions": saved}, headers=auth_headers)
     resp = await client.post(f"{BASE}/{rid}/photos/{pid}/rotate", json={"direction": "cw"}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["photos"][0]["garment_regions"] is None
@@ -163,3 +165,32 @@ async def test_detect_unusable_output_is_502_and_keeps_existing(client, auth_hea
     assert resp.status_code == 502
     rec = (await client.get(f"{BASE}/{rid}", headers=auth_headers)).json()
     assert rec["photos"][0]["garment_regions"] == saved
+
+
+@pytest.mark.asyncio
+async def test_detect_leaves_existing_regions_untouched(client, auth_headers, stub_detect):
+    rid, pid = await _record(client, auth_headers)
+    keep = {"regions": [{"body_part": "bottoms", "box": {"l": 0, "t": 0, "r": 50, "b": 50}, "source": "manual"}]}
+    saved = (await client.put(f"{BASE}/{rid}/photos/{pid}/garment-regions", json=keep, headers=auth_headers)).json()["regions"]
+    resp = await client.post(f"{BASE}/{rid}/photos/{pid}/garment-regions/detect", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["regions"] != saved
+    rec = (await client.get(f"{BASE}/{rid}", headers=auth_headers)).json()
+    assert rec["photos"][0]["garment_regions"] == saved
+
+
+@pytest.mark.asyncio
+async def test_stored_region_with_unknown_part_still_serializes(client, auth_headers, db_session):
+    from uuid import UUID
+
+    from app.models.outfit import OutfitPhoto
+
+    rid, pid = await _record(client, auth_headers)
+    photo = await db_session.get(OutfitPhoto, UUID(pid))
+    photo.garment_regions = [
+        {"body_part": "removed-part", "box": {"l": 0, "t": 0, "r": 9, "b": 9}, "source": "manual"}
+    ]
+    await db_session.commit()
+    resp = await client.get(f"{BASE}/{rid}", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["photos"][0]["garment_regions"][0]["body_part"] == "removed-part"

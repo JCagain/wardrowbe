@@ -40,6 +40,11 @@ describe('GarmentRegionEditor', () => {
     expect(screen.getByTestId('regions-delete')).not.toBeDisabled();
   });
 
+  it('disables add at the 12-box cap', () => {
+    render(<Harness initial={Array.from({ length: 12 }, () => top)} spy={vi.fn()} />);
+    expect(screen.getByTestId('regions-add')).toBeDisabled();
+  });
+
   it('changes the part of the selected box and marks it manual', () => {
     const spy = vi.fn();
     render(<Harness initial={[top]} spy={spy} />);

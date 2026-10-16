@@ -107,10 +107,17 @@ class GarmentRegionBox(BaseModel):
     b: int
 
 
-class GarmentRegion(BaseModel):
+class GarmentRegionOut(BaseModel):
+    """Response side: no vocabulary check, so a part later removed from the editable
+    vocabulary cannot 500 every record response."""
+
     body_part: str
     box: GarmentRegionBox
     source: Literal["auto", "manual"] = "manual"
+
+
+class GarmentRegion(GarmentRegionOut):
+    """Input side: body_part must be in the current vocabulary."""
 
     @field_validator("body_part")
     @classmethod
@@ -128,7 +135,7 @@ class GarmentRegionsResponse(BaseModel):
     photo_id: UUID
     width: int
     height: int
-    regions: list[GarmentRegion]
+    regions: list[GarmentRegionOut]
 
 
 class RecordPhotoResponse(BaseModel):
@@ -139,7 +146,7 @@ class RecordPhotoResponse(BaseModel):
     image_path: str
     medium_path: str | None = None
     thumbnail_path: str | None = None
-    garment_regions: list[GarmentRegion] | None = None
+    garment_regions: list[GarmentRegionOut] | None = None
 
     @computed_field
     @property

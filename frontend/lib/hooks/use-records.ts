@@ -167,11 +167,10 @@ export function useRotateRecordPhoto() {
 
 export function useDetectGarmentRegions() {
   useSetTokenIfAvailable();
-  const invalidate = useInvalidateRecords();
+  // 检出只返回框、服务端不存，所以不 invalidate 记录；保存才写库
   return useMutation({
     mutationFn: ({ id, photoId, signal }: { id: string; photoId: string; signal?: AbortSignal }) =>
       api.post<GarmentRegionsResponse>(`/records/${id}/photos/${photoId}/garment-regions/detect`, undefined, { signal }),
-    onSuccess: (_r, vars) => invalidate(vars.id),
   });
 }
 

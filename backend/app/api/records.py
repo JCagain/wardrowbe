@@ -269,13 +269,13 @@ async def detect_garment_regions(
     storage = Path(get_settings().storage_path)
     try:
         raw = await ai.detect_garment_regions(storage / photo.image_path)
-    except Exception as e:  # provider/network failure: nothing to save
+    except Exception as e:  # provider/network failure
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"检出失败：{e}") from None
     width, height = _photo_size(photo.image_path)
     if not is_parseable(raw):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="模型没有返回可解析的框")
     regions = parse_garment_regions(raw, width, height)
-    photo = await service.save_garment_regions(current_user.id, record_id, photo_id, regions)
+    # Detect only returns; PUT is the sole writer, so cancelling never changes stored boxes.
     return GarmentRegionsResponse(photo_id=photo.id, width=width, height=height, regions=regions)
 
 

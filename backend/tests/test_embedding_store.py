@@ -18,6 +18,7 @@ from app.services.embedding_store import (
     sync_item_embeddings,
     upsert_embedding,
 )
+from app.utils.item_lifecycle import terminal_status
 
 
 @pytest.fixture
@@ -34,7 +35,7 @@ def _write(storage, rel, color=(10, 20, 30), mode="RGB", size=(40, 30)):
 
 @pytest_asyncio.fixture
 async def make_item(db_session, test_user, storage):
-    async def _make(name="a", status=ItemStatus.ready, user_id=None, with_file=True):
+    async def _make(name="a", status=ItemStatus.ready, user_id=None, with_file=True, lifecycle=None):
         rel = f"u/{name}.jpg"
         if with_file:
             _write(storage, rel)
@@ -43,6 +44,9 @@ async def make_item(db_session, test_user, storage):
             status=status, primary_colors=["blue"], wear_count=0, wears_since_wash=0,
             needs_wash=False,
         )
+        if lifecycle:
+            item.lifecycle = lifecycle
+            item.status = terminal_status(lifecycle, status)
         db_session.add(item)
         await db_session.commit()
         return item
@@ -170,3 +174,22 @@ async def test_sync_ignores_other_users(db_session, make_item, storage, test_use
     await make_item("theirs", user_id=other.id)
     result = await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage)
     assert result.done == 1
+
+
+@pytest.mark.asyncio
+async def test_retired_items_are_stale_and_synced(db_session, make_item, storage, test_user):
+    retired = await make_item("old", lifecycle="retired")
+    assert retired.status == ItemStatus.archived
+    ids = {i.id for i in await stale_items(db_session, test_user.id, "m1", storage)}
+    assert retired.id in ids
+    result = await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage)
+    assert (result.done, result.remaining) == (1, 0)
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_unreadable_image(db_session, make_item, storage, test_user):
+    for n in "abcd":
+        await make_item(n)
+    (storage / "u/b.jpg").write_bytes(b"not an image")
+    result = await sync_item_embeddings(db_session, test_user.id, FakeClient(), storage, batch_size=2)
+    assert (result.done, result.skipped, result.remaining) == (3, 1, 1)

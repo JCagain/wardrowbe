@@ -90,7 +90,12 @@ class EmbeddingClient:
                     )
                     resp.raise_for_status()
                     payload = resp.json()
-                except (httpx.HTTPError, ValueError) as e:
+                except (
+                    httpx.HTTPError,
+                    httpx.InvalidURL,
+                    httpx.UnsupportedProtocol,
+                    ValueError,
+                ) as e:
                     raise EmbeddingUnavailableError(f"embedding request failed: {e}") from e
                 vectors = self._parse(payload, len(batch))
                 for v in vectors:

@@ -5,11 +5,12 @@ Usage (inside the backend container):
         [--instruction "Find the catalogue photo of this garment"]
         [--pair /data/wardrobe/crops/shirt.jpg:<item-uuid> ...]
 
-Pass: augmented self-retrieval recall@5 >= 0.8 and max cross-item cosine <= 0.98.
-These are self-consistency checks on augmented copies of the same item, not real
+Pass: augmented self-retrieval recall@5 >= 0.8 and vectors not collapsed (mean
+cross-item cosine <= 0.95; a high max alone only prints the offending pair as a
+warning, since near-duplicate items are legitimate). These are self-consistency checks on augmented copies of the same item, not real
 outfit-photo crop recall: passing is necessary, not sufficient. --pair runs real
 crops as a reference (no hard threshold).
-Exit codes: 0 pass-able run, 1 collapsed vectors, 2 endpoint unavailable.
+Exit codes: 0 PASS, 1 collapsed vectors, 2 endpoint unavailable, 3 WEAK (recall@5 < 0.8,\nnot collapsed), 4 bad input (unknown --user-email, bad --pair path or UUID).
 """
 
 import argparse
@@ -20,7 +21,7 @@ from pathlib import Path
 from uuid import UUID
 
 import numpy as np
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -32,6 +33,9 @@ from app.services.embedding_recall import top_k
 from app.services.embedding_store import embedding_input_image, source_fingerprint
 
 GRAY = (128, 128, 128)
+COLLAPSE_MEAN = 0.95
+NEAR_DUP_MAX = 0.98
+RECALL_PASS = 0.8
 
 
 def augment(img: Image.Image, seed: int) -> Image.Image:
@@ -56,13 +60,47 @@ def retrieval_metrics(ranks: list[int | None], ks=(1, 5, 10)) -> dict[str, float
     return out
 
 
-def distinctness(vectors: list[np.ndarray]) -> dict[str, float]:
+def distinctness(vectors: list[np.ndarray]) -> dict:
     if len(vectors) < 2:
-        return {"max": 0.0, "mean": 0.0}
+        return {"max": 0.0, "mean": 0.0, "pair": None}
     m = np.stack([v / np.linalg.norm(v) for v in vectors])
     sims = m @ m.T
     iu = np.triu_indices(len(vectors), k=1)
-    return {"max": float(sims[iu].max()), "mean": float(sims[iu].mean())}
+    vals = sims[iu]
+    k = int(vals.argmax())
+    return {
+        "max": float(vals[k]),
+        "mean": float(vals.mean()),
+        "pair": (int(iu[0][k]), int(iu[1][k])),
+    }
+
+
+def verdict(d: dict, recall5: float) -> tuple[int, str]:
+    """Exit code and label: collapse is judged on the mean, never the max alone."""
+    if d["mean"] > COLLAPSE_MEAN:
+        return 1, "FAIL"
+    return (0, "PASS") if recall5 >= RECALL_PASS else (3, "WEAK")
+
+
+def _bad_input(msg: str) -> int:
+    print(f"error: {msg}")
+    return 4
+
+
+def _parse_pairs(specs: list[str]) -> list[tuple[Path, UUID]] | str:
+    out = []
+    for spec in specs:
+        path, sep, item_id = spec.rpartition(":")
+        if not sep or not path:
+            return f"--pair {spec!r} must look like PATH:ITEM_UUID"
+        try:
+            uid = UUID(item_id)
+        except ValueError:
+            return f"--pair {spec!r}: {item_id!r} is not a valid UUID"
+        if not Path(path).is_file():
+            return f"--pair {spec!r}: no such file {path}"
+        out.append((Path(path), uid))
+    return out
 
 
 async def _run(args) -> int:
@@ -76,9 +114,16 @@ async def _run(args) -> int:
     if not client.base_url or not client.model:
         print("embedding endpoint not configured (--base-url/--model or AI_EMBEDDING_*)")
         return 2
+    pairs = _parse_pairs(args.pair)
+    if isinstance(pairs, str):
+        return _bad_input(pairs)
     storage = Path(s.storage_path)
     async with async_session_maker() as db:
-        user = (await db.execute(select(User).where(User.email == args.user_email))).scalar_one()
+        user = (
+            await db.execute(select(User).where(User.email == args.user_email))
+        ).scalar_one_or_none()
+        if user is None:
+            return _bad_input(f"no user with email {args.user_email!r}")
         items = (
             (
                 await db.execute(
@@ -100,12 +145,14 @@ async def _run(args) -> int:
         queries = [augment(img, seed=n) for n, img in enumerate(lib_imgs)]
         q_vecs = await client.embed_images(queries, instruction=args.instruction)
         pair_vecs = []
-        for spec in args.pair:
-            path, item_id = spec.rsplit(":", 1)
-            with Image.open(path) as im:
-                crop = im.convert("RGB")
+        for path, item_id in pairs:
+            try:
+                with Image.open(path) as im:
+                    crop = ImageOps.exif_transpose(im).convert("RGB")
+            except OSError as e:
+                return _bad_input(f"--pair image {path} unreadable: {e}")
             vec = (await client.embed_images([crop], instruction=args.instruction))[0]
-            pair_vecs.append((UUID(item_id), vec))
+            pair_vecs.append((item_id, vec))
     except EmbeddingUnavailableError as e:
         print(f"endpoint unavailable: {e}")
         return 2
@@ -131,12 +178,22 @@ async def _run(args) -> int:
         rank = ids.index(target) + 1 if target in ids else None
         top5 = ", ".join(f"{names.get(cid, cid)}:{score:.3f}" for cid, score in ranked[:5])
         print(f"pair {target}: rank={rank}  top5: {top5}")
-    if d["max"] > 0.98:
-        print("FAIL: vectors collapsed — check --pooling last and that --mmproj is loaded")
-        return 1
-    verdict = "PASS" if m["recall@5"] >= 0.8 else "WEAK"
-    print(f"{verdict}: augmented recall@5={m['recall@5']:.3f} (pass >= 0.8)")
-    return 0
+    code, label = verdict(d, m["recall@5"])
+    if d["max"] > NEAR_DUP_MAX and d["pair"]:
+        i, j = d["pair"]
+        print(
+            f"warning: most similar pair cos={d['max']:.4f}: "
+            f"{items[i].id} ({names[items[i].id]}) / {items[j].id} ({names[items[j].id]}) "
+            "- near-duplicate items? fine if the mean is normal"
+        )
+    if code == 1:
+        print(
+            f"FAIL: vectors collapsed (mean cosine {d['mean']:.4f} > {COLLAPSE_MEAN}) "
+            "- check --pooling last and that --mmproj is loaded"
+        )
+    else:
+        print(f"{label}: augmented recall@5={m['recall@5']:.3f} (pass >= {RECALL_PASS})")
+    return code
 
 
 def main() -> None:
