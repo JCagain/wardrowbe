@@ -133,7 +133,7 @@ describe('ItemDetailDialog pipeline feedback', () => {
   });
 
   it('maps failed-tag to a failed tag step', () => {
-    renderDialog({ ...ITEM, status: 'error', processing_kind: null, tagging_status: 'untagged' } as unknown as Item);
+    renderDialog({ ...ITEM, mask_path: 'a.mask.png', status: 'error', processing_kind: null, tagging_status: 'untagged' } as unknown as Item);
     expect(screen.getByTestId('pipeline-tag').getAttribute('title')).toMatch(/failed/);
     expect(screen.getByTestId('pipeline-cutout').getAttribute('title')).toBeNull();
   });
@@ -146,7 +146,10 @@ describe('ItemDetailDialog pipeline feedback', () => {
 
   it('shows the tag step as running while the item is tagging', () => {
     renderDialog({ ...ITEM, status: 'processing', processing_kind: null } as unknown as Item);
-    expect(screen.getByTestId('pipeline-tag')).toBeDisabled();
+    const tag = screen.getByTestId('pipeline-tag');
+    expect(tag).toBeDisabled();
+    expect(tag.querySelector('[aria-label$="running"]')).not.toBeNull();
+    expect(screen.getByTestId('pipeline-cutout').querySelector('[aria-label$="running"]')).toBeNull();
   });
 
   it('toasts an error when calibration detection rejects', async () => {
