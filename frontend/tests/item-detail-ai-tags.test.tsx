@@ -25,6 +25,7 @@ vi.mock('@/lib/hooks/use-items', () => {
   ];
   const out: Record<string, unknown> = {};
   for (const n of names) out[n] = mk(n);
+  out.useItem = () => ({ data: undefined });
   out.useItemWearStats = () => ({ data: undefined, isLoading: false });
   out.useItemWearHistory = () => ({ data: undefined, isLoading: false });
   return out;

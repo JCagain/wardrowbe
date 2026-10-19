@@ -25,6 +25,7 @@ vi.mock('@/lib/hooks/use-items', () => {
   ];
   const out: Record<string, unknown> = {};
   for (const n of names) out[n] = mk(n);
+  out.useItem = () => ({ data: undefined });
   out.useItemWearStats = () => ({ data: undefined, isLoading: false });
   out.useItemWearHistory = () => ({ data: undefined, isLoading: false });
   return out;
@@ -78,8 +79,8 @@ function setMut(name: string, mutateAsync: ReturnType<typeof vi.fn>) {
   m.muts[name] = { mutateAsync, mutate: vi.fn(), isPending: false };
 }
 
-function renderDialog() {
-  return render(<ItemDetailDialog item={ITEM} open onOpenChange={vi.fn()} />);
+function renderDialog(item: Item = ITEM) {
+  return render(<ItemDetailDialog item={item} open onOpenChange={vi.fn()} />);
 }
 
 beforeEach(() => {
@@ -89,6 +90,17 @@ beforeEach(() => {
 });
 
 describe('ItemDetailDialog pipeline feedback', () => {
+  it('shows calibration as done when the item has calibration_state=done', () => {
+    renderDialog({ ...ITEM, calibration_state: 'done' } as Item);
+    const btn = screen.getByTestId('pipeline-calibrate');
+    expect(btn).toBeDisabled();
+  });
+
+  it('shows the tag step as running while the item is tagging', () => {
+    renderDialog({ ...ITEM, status: 'processing', processing_kind: null } as unknown as Item);
+    expect(screen.getByTestId('pipeline-tag')).toBeDisabled();
+  });
+
   it('toasts an error when calibration detection rejects', async () => {
     setMut('useDetectCalibration', vi.fn().mockRejectedValue(new Error('boom')));
     renderDialog();

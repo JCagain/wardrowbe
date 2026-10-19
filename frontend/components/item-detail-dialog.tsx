@@ -39,7 +39,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
+import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useItem, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
@@ -59,6 +59,7 @@ import {
 } from '@/lib/item-edit-form';
 import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
 import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
+import { pipelineStage, type PipelineStage } from '@/lib/item-pipeline';
 import { ImagePipelineSteps, type CalibrationState } from '@/components/image-pipeline-steps';
 import { ReferenceBoxEditor, type Baseline, type Detection, type ReferenceBox } from '@/components/reference-box-editor';
 import MaskBrushCanvas from '@/components/mask-brush-canvas';
@@ -81,9 +82,15 @@ function cornersToBox(corners: [number, number, number, number]): ReferenceBox {
   return { l, t, r, b };
 }
 
+const RUNNING_STEP: Partial<Record<PipelineStage, 'calibrate' | 'cutout' | 'tag'>> = { calibrating: 'calibrate', cutting: 'cutout', tagging: 'tag' };
+const FAILED_STEP: Partial<Record<PipelineStage, 'image' | 'tag'>> = { 'failed-image': 'image', 'failed-tag': 'tag' };
+
 // Images now use signed URLs from backend (item.image_url, item.thumbnail_url)
 
-export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDetailDialogProps) {
+  // 轮询取活数据：处理中每 2s 刷新，步骤条的 running/failed 与 calibration_state 才跟得上
+  const { data: liveItem } = useItem(itemProp?.id ?? '', { poll: true });
+  const item = itemProp ? (liveItem ?? itemProp) : null;
   const t = useTranslations('wardrobe.itemDetail');
   const tc = useTranslations('common');
   const tw = useTranslations('wardrobe');
@@ -123,11 +130,9 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     wash_interval: undefined,
   });
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  // 图片管线会话态（R38）：校色状态不落库——ClothingItem 没有校色状态列，
-  // 拿工作图与 calibration_original_path 比对是假信号。对话框打开/换 item 归
-  // 'none'；检测没检出归 'skipped'；应用成功归 'done'。刷新页面即重来，反正
-  // 「重置回原图」一直可点。
-  const [calibration, setCalibration] = useState<CalibrationState>('none');
+  // 图片管线：`calibration_state` 落库（Ruling 102，取代 Ruling 38）；本地 state 只是
+  // item.calibration_state 的镜像，框编辑器打开期间临时为 'pending'。
+  const [calibration, setCalibration] = useState<CalibrationState>(item?.calibration_state ?? 'none');
   const [detection, setDetection] = useState<Detection | null>(null);
   const [showManualWb, setShowManualWb] = useState(false);
   const [kelvin, setKelvin] = useState(6500);
@@ -164,12 +169,18 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
       setIsEditing(false);
       setActiveImageIndex(0);
       // 换 item 就是新的会话：校色状态/框选/滑块/画笔全部重来
-      setCalibration('none');
+      setCalibration(item.calibration_state ?? 'none');
       setDetection(null);
       setShowManualWb(false);
       setShowBrush(false);
     }
   }, [item?.id]);
+
+  // item 数据变化（refetch/轮询）时回灌落库状态；框编辑器打开（'pending'）时不动
+  useEffect(() => {
+    if (!item) return;
+    setCalibration((c) => (c === 'pending' ? c : (item.calibration_state ?? 'none')));
+  }, [item?.calibration_state]);
 
   useEffect(() => {
     setHasMask(Boolean(item?.mask_path));
@@ -278,7 +289,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   // 并把依附它的 'pending' 退回 'none'（done/skipped 是已发生的事实，保留）。
   const clearStaleDetection = () => {
     setDetection(null);
-    setCalibration((c) => (c === 'pending' ? 'none' : c));
+    setCalibration((c) => (c === 'pending' ? (item?.calibration_state ?? 'none') : c));
   };
 
   const handleRotate = async (direction: 'cw' | 'ccw') => {
@@ -378,7 +389,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
         box: [box.l, box.t, box.r, box.b],
         baseline,
       });
-      setCalibration('done');
+      setCalibration(result.calibration_state ?? 'done');
       setDetection(null);
       handleMaskCleared(result);
       setImageKey((k) => k + 1);
@@ -391,7 +402,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const handleManualWb = async () => {
     try {
       const result = await manualWb.mutateAsync({ id: item.id, kelvin, tint });
-      setCalibration('done');
+      setCalibration(result.calibration_state ?? 'done');
       setDetection(null);
       setShowManualWb(false);
       handleMaskCleared(result);
@@ -405,7 +416,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const handleResetCalibration = async () => {
     try {
       const result = await resetCalibration.mutateAsync(item.id);
-      setCalibration('none');
+      setCalibration(result.calibration_state ?? 'none');
       setDetection(null);
       setShowManualWb(false);
       handleMaskCleared(result);
@@ -433,6 +444,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
     }
   };
 
+  const stage = pipelineStage(item);
   const isAnalyzing = reanalyzeItem.isPending || item.status === 'processing';
 
   // Use signed URL from backend for better quality in detail view
@@ -447,7 +459,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden [&>button]:hidden">
+        <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[92vh] flex flex-col p-0 overflow-hidden [&>button]:hidden">
           {/* Header - sticky */}
           <DialogHeader className="flex flex-row items-center gap-2 space-y-0 p-4 border-b flex-shrink-0">
             {/* Below sm the title keeps its 45% cap and the actions stay in a
@@ -605,8 +617,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
           </DialogHeader>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto overscroll-contain p-6 pt-4">
-            <div className="grid gap-6 sm:grid-cols-2 [&>*]:min-w-0">
+          <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden overscroll-contain p-6 pt-4">
+            <div className="md:grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-6 space-y-6 md:space-y-0 [&>*]:min-w-0">
+            {/* 左列：主图、细节图条、步骤条、校色/白平衡/画笔 */}
+            <div className="space-y-6 md:max-h-[calc(92vh-9rem)] md:overflow-y-auto md:pr-1">
             {/* Image Gallery */}
             <div className="space-y-2">
               <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
@@ -743,6 +757,8 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
             <div className="space-y-2">
               <ImagePipelineSteps
                 calibration={calibration}
+                running={RUNNING_STEP[stage] ?? null}
+                failed={FAILED_STEP[stage] ?? null}
                 hasMask={hasMask}
                 tagged={item.tagging_status === 'tagged'}
                 onCalibrate={handleCalibrate}
@@ -829,8 +845,10 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
               )}
             </div>
 
-            {/* Details */}
-            <div className="space-y-4">
+            </div>
+
+            {/* 右列：查看态详情 / 编辑表单 / 记录与常搭 */}
+            <div className="space-y-4 md:max-h-[calc(92vh-9rem)] md:overflow-y-auto md:pr-1">
               {isEditing ? (
                 <ItemEditForm
                   item={item}
