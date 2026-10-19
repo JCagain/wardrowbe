@@ -10,7 +10,7 @@ const toastMock = vi.hoisted(() => ({
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 type Mut = { mutateAsync: ReturnType<typeof vi.fn>; mutate: ReturnType<typeof vi.fn>; isPending: boolean };
-const m = vi.hoisted(() => ({ muts: {} as Record<string, unknown> }));
+const m = vi.hoisted(() => ({ muts: {} as Record<string, unknown>, live: undefined as unknown }));
 
 vi.mock('@/lib/hooks/use-items', () => {
   const mk = (name: string) => () => {
@@ -25,7 +25,7 @@ vi.mock('@/lib/hooks/use-items', () => {
   ];
   const out: Record<string, unknown> = {};
   for (const n of names) out[n] = mk(n);
-  out.useItem = () => ({ data: undefined });
+  out.useItem = () => ({ data: m.live });
   out.useItemWearStats = () => ({ data: undefined, isLoading: false });
   out.useItemWearHistory = () => ({ data: undefined, isLoading: false });
   return out;
@@ -85,11 +85,59 @@ function renderDialog(item: Item = ITEM) {
 
 beforeEach(() => {
   m.muts = {};
+  m.live = undefined;
   Object.values(toastMock).forEach((f) => f.mockReset());
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 describe('ItemDetailDialog pipeline feedback', () => {
+  it('re-syncs the calibrate step when the item calibration_state changes', () => {
+    const { rerender } = renderDialog({ ...ITEM, calibration_state: 'none' } as Item);
+    expect(screen.getByTestId('pipeline-calibrate')).not.toBeDisabled();
+    rerender(<ItemDetailDialog item={{ ...ITEM, calibration_state: 'done' } as Item} open onOpenChange={vi.fn()} />);
+    expect(screen.getByTestId('pipeline-calibrate')).toBeDisabled();
+    expect(screen.getByTestId('pipeline-calibrate').textContent).toMatch(/state\.done/);
+  });
+
+  it('re-syncs from the live (polled) item', () => {
+    const base = { ...ITEM, calibration_state: 'none' } as Item;
+    m.live = { ...base, calibration_state: 'done' };
+    renderDialog(base);
+    expect(screen.getByTestId('pipeline-calibrate')).toBeDisabled();
+  });
+
+  it('does not clobber pending while the box editor is open', async () => {
+    setMut('useDetectCalibration', vi.fn().mockResolvedValue({ kind: 'gray', box: [10, 10, 60, 60] }));
+    const base = { ...ITEM, calibration_state: 'none' } as Item;
+    const { rerender } = renderDialog(base);
+    fireEvent.click(screen.getByTestId('pipeline-calibrate'));
+    await waitFor(() =>
+      expect(screen.getByTestId('pipeline-calibrate').textContent).toMatch(/state\.pending/),
+    );
+    rerender(<ItemDetailDialog item={{ ...base, calibration_state: 'done' } as Item} open onOpenChange={vi.fn()} />);
+    expect(screen.getByTestId('pipeline-calibrate').textContent).toMatch(/state\.pending/);
+  });
+
+  it('maps stage cutting to a running cutout step', () => {
+    renderDialog({ ...ITEM, mask_path: null, status: 'processing', processing_kind: 'background_removal' } as unknown as Item);
+    const cut = screen.getByTestId('pipeline-cutout');
+    expect(cut).toBeDisabled();
+    expect(cut.querySelector('[aria-label$="running"]')).not.toBeNull();
+    expect(screen.getByTestId('pipeline-tag').querySelector('[aria-label$="running"]')).toBeNull();
+  });
+
+  it('maps failed-image to a failed cutout step', () => {
+    renderDialog({ ...ITEM, mask_path: null, status: 'error', processing_kind: 'pipeline' } as unknown as Item);
+    expect(screen.getByTestId('pipeline-cutout').getAttribute('title')).toMatch(/failed/);
+    expect(screen.getByTestId('pipeline-tag').getAttribute('title')).toBeNull();
+  });
+
+  it('maps failed-tag to a failed tag step', () => {
+    renderDialog({ ...ITEM, status: 'error', processing_kind: null, tagging_status: 'untagged' } as unknown as Item);
+    expect(screen.getByTestId('pipeline-tag').getAttribute('title')).toMatch(/failed/);
+    expect(screen.getByTestId('pipeline-cutout').getAttribute('title')).toBeNull();
+  });
+
   it('shows calibration as done when the item has calibration_state=done', () => {
     renderDialog({ ...ITEM, calibration_state: 'done' } as Item);
     const btn = screen.getByTestId('pipeline-calibrate');
