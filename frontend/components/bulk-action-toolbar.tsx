@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Trash2, RefreshCw, Loader2, CheckSquare, Square, MinusSquare, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RotateCcw, RotateCw, Eraser } from 'lucide-react';
+import { X, Trash2, RefreshCw, Loader2, CheckSquare, Square, MinusSquare, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RotateCcw, RotateCw, Eraser, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -34,10 +34,12 @@ interface BulkActionToolbarProps {
   onReanalyze?: () => void;
   onRotate?: (direction: 'cw' | 'ccw') => void;
   onRemoveBackground?: () => void;
+  onRunPipeline?: () => void;
   isDeleting?: boolean;
   isReanalyzing?: boolean;
   isRotating?: boolean;
   isRemovingBackground?: boolean;
+  isRunningPipeline?: boolean;
   variant?: BulkDeleteVariant;
   // Pagination props
   page: number;
@@ -56,10 +58,12 @@ export function BulkActionToolbar({
   onReanalyze,
   onRotate,
   onRemoveBackground,
+  onRunPipeline,
   isDeleting = false,
   isReanalyzing = false,
   isRotating = false,
   isRemovingBackground = false,
+  isRunningPipeline = false,
   variant = 'items',
   page,
   pageSize,
@@ -203,6 +207,24 @@ export function BulkActionToolbar({
                 )}
               </Button>
             </>
+          )}
+          {onRunPipeline && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={onRunPipeline}
+              disabled={isRunningPipeline}
+              aria-label={tWardrobe('bulkActions.pipeline')}
+              title={tWardrobe('bulkActions.pipelineHint')}
+              data-testid="bulk-pipeline"
+            >
+              {isRunningPipeline ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+            </Button>
           )}
           {onRemoveBackground && (
             <AlertDialog>

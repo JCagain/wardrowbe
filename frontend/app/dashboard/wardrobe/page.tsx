@@ -27,7 +27,7 @@ import { AddItemDialog } from '@/components/add-item-dialog';
 import { AnalysisQueuePanel } from '@/components/analysis-queue-panel';
 import { ItemDetailDialog } from '@/components/item-detail-dialog';
 import { BulkActionToolbar, BulkSelection } from '@/components/bulk-action-toolbar';
-import { useItems, useItem, useItemTypes, useReanalyzeItem, useCancelAnalysis, useBulkDeleteItems, useBulkReanalyzeItems, useBulkCancelAnalysis, useBulkRotateItems, useBulkRemoveBackgroundItems, useRemoveBackground, useTaggingProgress, BulkOperationParams, tagProcessingLabel, formatAnalyzingElapsed, deriveQueueSummary } from '@/lib/hooks/use-items';
+import { useItems, useItem, useItemTypes, useReanalyzeItem, useCancelAnalysis, useBulkDeleteItems, useBulkReanalyzeItems, useBulkCancelAnalysis, useBulkRotateItems, useBulkRemoveBackgroundItems, useBulkPipeline, useRemoveBackground, useTaggingProgress, BulkOperationParams, tagProcessingLabel, formatAnalyzingElapsed, deriveQueueSummary } from '@/lib/hooks/use-items';
 import { useUserProfile } from '@/lib/hooks/use-user';
 import { Item } from '@/lib/types';
 import { useClothingColors, useSubtypeLabel } from '@/lib/hooks/use-translated-constants';
@@ -456,6 +456,7 @@ export default function WardrobePage() {
   const bulkCancelAnalysis = useBulkCancelAnalysis();
   const bulkRotate = useBulkRotateItems();
   const bulkRemoveBackground = useBulkRemoveBackgroundItems();
+  const bulkPipeline = useBulkPipeline();
   const removeBackground = useRemoveBackground();
 
   const items = data?.items || [];
@@ -673,6 +674,25 @@ export default function WardrobePage() {
       handleClearSelection();
     } catch {
       toast.error(t('bulkActions.removeBackgroundError'));
+    }
+  };
+
+  const handleBulkPipeline = async () => {
+    const params = getBulkParams();
+    try {
+      const result = await bulkPipeline.mutateAsync(params);
+      if (result.queued > 0) {
+        toast.success(t('bulkActions.pipelineQueued', { count: result.queued }));
+      }
+      if (result.skipped > 0) {
+        toast.info(t('bulkActions.pipelineSkipped', { count: result.skipped }));
+      }
+      if (result.failed > 0) {
+        toast.error(t('bulkActions.pipelinePartialFailed', { count: result.failed }));
+      }
+      handleClearSelection();
+    } catch {
+      toast.error(t('bulkActions.pipelineError'));
     }
   };
 
@@ -969,10 +989,12 @@ export default function WardrobePage() {
         onReanalyze={handleBulkReanalyze}
         onRotate={handleBulkRotate}
         onRemoveBackground={handleBulkRemoveBackground}
+        onRunPipeline={handleBulkPipeline}
         isDeleting={bulkDelete.isPending}
         isReanalyzing={bulkReanalyze.isPending}
         isRotating={bulkRotate.isPending}
         isRemovingBackground={bulkRemoveBackground.isPending}
+        isRunningPipeline={bulkPipeline.isPending}
         variant="items"
         page={page}
         pageSize={pageSize}
