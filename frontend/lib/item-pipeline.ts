@@ -35,3 +35,27 @@ export function pipelineStage(
   }
   return 'idle';
 }
+
+const RUNNING: ReadonlySet<PipelineStage> = new Set<PipelineStage>(['calibrating', 'cutting', 'tagging']);
+
+/**
+ * 录入模式下 AI 结果到达时怎么处理表单（AI 先录入，Task 6）。
+ * - 未初始化：管线还在跑 → 'wait'；已停（idle/failed-*）→ 'init'
+ * - 已初始化且刚打完标（idle + tagged）：表单没改过 → 'init'（自动刷新），改过 → 'offer-overwrite'
+ * - 其他 → 'keep'：AI 结果永不静默覆盖用户改过的值
+ * 「刚打完标」由调用方用 ref 记上一次的 stage / tagged_at 判断后经 justFinishedTagging 传入。
+ */
+export function entryFormSync(args: {
+  initialized: boolean;
+  dirty: boolean;
+  stage: PipelineStage;
+  taggingStatus: 'pending' | 'tagged';
+  justFinishedTagging: boolean;
+}): 'wait' | 'init' | 'offer-overwrite' | 'keep' {
+  const { initialized, dirty, stage, taggingStatus, justFinishedTagging } = args;
+  if (!initialized) return RUNNING.has(stage) ? 'wait' : 'init';
+  if (justFinishedTagging && stage === 'idle' && taggingStatus === 'tagged') {
+    return dirty ? 'offer-overwrite' : 'init';
+  }
+  return 'keep';
+}

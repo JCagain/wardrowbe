@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import Image from 'next/image';
 import {
   Heart,
@@ -39,7 +39,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useItem, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
+import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useAddItemImage, useDeleteItemImage, useSetPrimaryImage, useItem, useDetectCalibration, useApplyCalibration, useManualWhiteBalance, useResetCalibration, useCancelAnalysis, type CalibrationItem, type CalibrationDetection } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useBodyParts,
@@ -52,14 +52,14 @@ import {
   useSubtypeLabel,
 } from '@/lib/hooks/use-translated-constants';
 
-import { normalizePurchaseDate } from '@/lib/purchase-date';
+import { entryYearMonth, normalizePurchaseDate } from '@/lib/purchase-date';
 import {
   editFormFromItem,
   type EditForm,
 } from '@/lib/item-edit-form';
 import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
 import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
-import { pipelineStage, type PipelineStage } from '@/lib/item-pipeline';
+import { entryFormSync, pipelineStage, type PipelineStage } from '@/lib/item-pipeline';
 import { ImagePipelineSteps, type CalibrationState } from '@/components/image-pipeline-steps';
 import { ReferenceBoxEditor, type Baseline, type Detection, type ReferenceBox } from '@/components/reference-box-editor';
 import MaskBrushCanvas from '@/components/mask-brush-canvas';
@@ -72,8 +72,12 @@ import { useTranslations } from 'next-intl';
 
 interface ItemDetailDialogProps {
   item: Item | null;
+  /** 只知道 id 时（新建物品不一定在当前分页/筛选的列表里）由窗口自己取 */
+  itemId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** 'entry'：AI 先录入的录入态（Task 6）——打开即编辑，底栏保存/放弃，关窗三选 */
+  mode?: 'view' | 'entry';
 }
 
 // detect 端点回 [l,t,r,b]（含右下），框选器吃对象坐标；换算只在这里，不做 ±1
@@ -84,13 +88,27 @@ function cornersToBox(corners: [number, number, number, number]): ReferenceBox {
 
 const RUNNING_STEP: Partial<Record<PipelineStage, 'calibrate' | 'cutout' | 'tag'>> = { calibrating: 'calibrate', cutting: 'cutout', tagging: 'tag' };
 const FAILED_STEP: Partial<Record<PipelineStage, 'image' | 'tag'>> = { 'failed-image': 'image', 'failed-tag': 'tag' };
+const ENTRY_STATUS_KEY: Record<Exclude<PipelineStage, 'idle'>, string> = {
+  calibrating: 'entry.status.calibrating',
+  cutting: 'entry.status.cutting',
+  tagging: 'entry.status.tagging',
+  'failed-image': 'entry.status.failedImage',
+  'failed-tag': 'entry.status.failedTag',
+};
 
 // Images now use signed URLs from backend (item.image_url, item.thumbnail_url)
 
-export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDetailDialogProps) {
+export function ItemDetailDialog({
+  item: itemProp,
+  itemId,
+  open,
+  onOpenChange,
+  mode = 'view',
+}: ItemDetailDialogProps) {
+  const isEntry = mode === 'entry';
   // 轮询取活数据：处理中每 2s 刷新，步骤条的 running/failed 与 calibration_state 才跟得上
-  const { data: liveItem } = useItem(itemProp?.id ?? '', { poll: true });
-  const item = itemProp ? (liveItem ?? itemProp) : null;
+  const { data: liveItem } = useItem(itemProp?.id ?? itemId ?? '', { poll: true });
+  const item = itemProp || itemId ? (liveItem ?? itemProp ?? null) : null;
   const t = useTranslations('wardrobe.itemDetail');
   const tc = useTranslations('common');
   const tw = useTranslations('wardrobe');
@@ -162,11 +180,46 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
   const applyCalibration = useApplyCalibration();
   const manualWb = useManualWhiteBalance();
   const resetCalibration = useResetCalibration();
+  const cancelAnalysis = useCancelAnalysis();
+
+  // —— entry 模式（AI 先录入）——
+  // initialized/dirty 放 ref：同步 effect 换 id 时要在同一轮里读到重置后的值
+  const entryRef = useRef({
+    id: null as string | null,
+    stage: null as PipelineStage | null,
+    taggedAt: undefined as string | null | undefined,
+    initialized: false,
+    dirty: false,
+  });
+  const [entryInit, setEntryInit] = useState(false);
+  const [offerOverwrite, setOfferOverwrite] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showCloseChoice, setShowCloseChoice] = useState(false);
+  const [entryBusy, setEntryBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const stage: PipelineStage = item ? pipelineStage(item) : 'idle';
+
+  // 按某次 AI 结果（或「不等了，直接填」）初始化表单；购买日期空则默认录入当月（fixes #22）
+  const initEntryForm = (src: Item) => {
+    const form = editFormFromItem(src, typeEntries);
+    if (!form.purchase_date) form.purchase_date = entryYearMonth();
+    setEditForm(form);
+    entryRef.current.initialized = true;
+    entryRef.current.dirty = false;
+    setEntryInit(true);
+    setOfferOverwrite(false);
+  };
+
+  // 表单任一改动都记 dirty：之后到达的 AI 结果只「提议覆盖」，不静默覆盖
+  const setEntryForm: Dispatch<SetStateAction<EditForm>> = (update) => {
+    entryRef.current.dirty = true;
+    setEditForm(update);
+  };
 
   useEffect(() => {
     if (item) {
       setEditForm(editFormFromItem(item, typeEntries));
-      setIsEditing(false);
+      setIsEditing(isEntry);
       setActiveImageIndex(0);
       // 换 item 就是新的会话：校色状态/框选/滑块/画笔全部重来
       setCalibration(item.calibration_state ?? 'none');
@@ -174,7 +227,44 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
       setShowManualWb(false);
       setShowBrush(false);
     }
-  }, [item?.id]);
+  }, [item?.id, isEntry]);
+
+  // AI 结果 → 表单（entryFormSync）。「刚打完标」= 上次看到的 stage 是 tagging，
+  // 或 tagged_at 变了（2s 轮询可能跳过 tagging 段）。
+  useEffect(() => {
+    if (!isEntry || !item) return;
+    const r = entryRef.current;
+    if (r.id !== item.id) {
+      Object.assign(r, { id: item.id, stage: null, taggedAt: undefined, initialized: false, dirty: false });
+      setEntryInit(false);
+      setOfferOverwrite(false);
+    }
+    const prevStage = r.stage;
+    const prevTaggedAt = r.taggedAt;
+    const taggedAt = item.tagged_at ?? null;
+    r.stage = stage;
+    r.taggedAt = taggedAt;
+    const justFinishedTagging =
+      stage === 'idle' &&
+      (prevStage === 'tagging' || (prevTaggedAt !== undefined && prevTaggedAt !== taggedAt));
+    const action = entryFormSync({
+      initialized: r.initialized,
+      dirty: r.dirty,
+      stage,
+      taggingStatus: item.tagging_status,
+      justFinishedTagging,
+    });
+    if (action === 'init') initEntryForm(item);
+    else if (action === 'offer-overwrite') setOfferOverwrite(true);
+  }, [isEntry, item?.id, stage, item?.tagging_status, item?.tagged_at]);
+
+  // 打标中每秒走一次，状态行显示已用秒数
+  useEffect(() => {
+    if (!isEntry || stage !== 'tagging') return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [isEntry, stage]);
 
   // item 数据变化（refetch/轮询）时回灌落库状态；框编辑器打开（'pending'）时不动
   useEffect(() => {
@@ -188,10 +278,11 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
 
   if (!item) return null;
 
-  const handleSave = async () => {
+  // 返回是否保存成功（entry 模式据此关窗）
+  const handleSave = async (): Promise<boolean> => {
     if (editForm.primary_colors.length === 0) {
       toast.error(t('primaryColorRequired'));
-      return;
+      return false;
     }
     let purchaseDate: string | null = null;
     try {
@@ -199,7 +290,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
       purchaseDate = normalizePurchaseDate(editForm.purchase_date) || null;
     } catch {
       toast.error(t('invalidPurchaseDate'));
-      return;
+      return false;
     }
     try {
       await updateItem.mutateAsync({
@@ -229,10 +320,69 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
           tags: { ...item.tags, style: editForm.style, season: editForm.season },
         },
       });
-      setIsEditing(false);
+      if (!isEntry) setIsEditing(false);
+      return true;
     } catch (error) {
       console.error('Failed to update item:', error);
+      return false;
     }
+  };
+
+  // 保存：打标还在跑就先取消（防作业晚到覆盖用户值），再走 PATCH
+  const handleEntrySave = async () => {
+    if (entryBusy) return;
+    setEntryBusy(true);
+    try {
+      if (item.status === 'processing') {
+        try {
+          await cancelAnalysis.mutateAsync(item.id);
+        } catch (error) {
+          console.error('Failed to cancel analysis before saving:', error);
+          toast.error(t('entry.cancelError'));
+          return;
+        }
+      }
+      if (await handleSave()) {
+        toast.success(t('entry.saved'));
+        onOpenChange(false);
+      }
+    } finally {
+      setEntryBusy(false);
+    }
+  };
+
+  // 放弃 / 关窗删除：在跑先取消（取消失败也照删——物品没了，迟到的作业落不了地），再删
+  const handleEntryDelete = async () => {
+    if (entryBusy) return;
+    setEntryBusy(true);
+    try {
+      if (item.status === 'processing') {
+        try {
+          await cancelAnalysis.mutateAsync(item.id);
+        } catch (error) {
+          console.error('Failed to cancel analysis before deleting:', error);
+        }
+      }
+      await deleteItem.mutateAsync(item.id);
+      setShowDiscardConfirm(false);
+      setShowCloseChoice(false);
+      onOpenChange(false);
+      toast.success(t('entry.discarded'));
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      toast.error(t('actions.deleteError'));
+    } finally {
+      setEntryBusy(false);
+    }
+  };
+
+  // entry 模式拦截关窗（X / Esc / 点遮罩）：三选——保留 / 删除 / 继续编辑
+  const handleDialogOpenChange = (next: boolean) => {
+    if (!next && isEntry) {
+      setShowCloseChoice(true);
+      return;
+    }
+    onOpenChange(next);
   };
 
   // 摘不删（spec §7）：与上面的 hooks 一并下线。
@@ -444,7 +594,19 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
     }
   };
 
-  const stage = pipelineStage(item);
+  const entryStatus =
+    stage === 'idle'
+      ? item.tagging_status === 'tagged'
+        ? t('entry.status.done')
+        : t('entry.status.notTagged')
+      : stage === 'tagging'
+        ? t('entry.status.tagging', {
+            seconds: item.ai_started_at
+              ? Math.max(0, Math.round((now - Date.parse(item.ai_started_at)) / 1000))
+              : 0,
+          })
+        : t(ENTRY_STATUS_KEY[stage]);
+  const columnMaxH = isEntry ? 'md:max-h-[calc(92vh-14rem)]' : 'md:max-h-[calc(92vh-9rem)]';
   const isAnalyzing = reanalyzeItem.isPending || item.status === 'processing';
 
   // Use signed URL from backend for better quality in detail view
@@ -458,7 +620,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[92vh] flex flex-col p-0 overflow-hidden [&>button]:hidden">
           {/* Header - sticky */}
           <DialogHeader className="flex flex-row items-center gap-2 space-y-0 p-4 border-b flex-shrink-0">
@@ -479,6 +641,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
                 cannot be reached at all. */}
             <div className="flex-1 min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-none">
               <div className="flex w-max ml-auto items-center gap-1">
+                {!isEntry && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -492,6 +655,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
                     }`}
                   />
                 </Button>
+                )}
                 {/* 摘不删（spec §7）：「找搭配 / 建议搭配」入口已下线——suggest/pairings 休眠。 */}
                 <Button
                   variant="ghost"
@@ -586,6 +750,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
                     e.target.value = '';
                   }}
                 />
+                {!isEntry && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -603,12 +768,13 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
                     <Pencil className="h-5 w-5" />
                   )}
                 </Button>
+                )}
               </div>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleDialogOpenChange(false)}
               className="rounded-full flex-shrink-0"
               title={tc('close')}
             >
@@ -616,11 +782,25 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
             </Button>
           </DialogHeader>
 
+          {isEntry && (
+            <div
+              data-testid="entry-status"
+              className={`flex items-center gap-2 px-6 py-2 border-b text-sm flex-shrink-0 ${
+                stage === 'failed-image' || stage === 'failed-tag'
+                  ? 'text-destructive'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              {RUNNING_STEP[stage] && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>{entryStatus}</span>
+            </div>
+          )}
+
           {/* Scrollable content */}
           <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden overscroll-contain p-6 pt-4">
             <div className="md:grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-6 space-y-6 md:space-y-0 [&>*]:min-w-0">
             {/* 左列：主图、细节图条、步骤条、校色/白平衡/画笔 */}
-            <div className="space-y-6 md:max-h-[calc(92vh-9rem)] md:overflow-y-auto md:pr-1">
+            <div className={`space-y-6 ${columnMaxH} md:overflow-y-auto md:pr-1`}>
             {/* Image Gallery */}
             <div className="space-y-2">
               <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
@@ -848,12 +1028,38 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
             </div>
 
             {/* 右列：查看态详情 / 编辑表单 / 记录与常搭 */}
-            <div className="space-y-4 md:max-h-[calc(92vh-9rem)] md:overflow-y-auto md:pr-1">
+            <div className={`space-y-4 ${columnMaxH} md:overflow-y-auto md:pr-1`}>
+              {isEntry && !entryInit && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  <span>{t('entry.waiting')}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    data-testid="entry-fill-now"
+                    onClick={() => initEntryForm(item)}
+                  >
+                    {t('entry.fillNow')}
+                  </Button>
+                </div>
+              )}
+              {isEntry && offerOverwrite && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  data-testid="entry-overwrite"
+                  onClick={() => initEntryForm(item)}
+                >
+                  {t('entry.overwrite')}
+                </Button>
+              )}
               {isEditing ? (
+                <fieldset disabled={isEntry && !entryInit} className="min-w-0">
                 <ItemEditForm
                   item={item}
                   form={editForm}
-                  setForm={setEditForm}
+                  setForm={isEntry ? setEntryForm : setEditForm}
                   bodyParts={bodyParts}
                   typeEntries={typeEntries}
                   colorOptions={colorOptions}
@@ -867,7 +1073,9 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
                   isSaving={updateItem.isPending}
                   onSave={handleSave}
                   onCancel={() => setIsEditing(false)}
+                  hideActions={isEntry}
                 />
+                </fieldset>
               ) : (
                 <ItemViewDetails
                   item={item}
@@ -887,7 +1095,7 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
             </div>
 
             {/* Delete button - separated from other actions for safety */}
-            {!isEditing && (
+            {!isEditing && !isEntry && (
               <div className="pt-4 border-t mt-4">
                 <Button
                   variant="ghost"
@@ -901,8 +1109,91 @@ export function ItemDetailDialog({ item: itemProp, open, onOpenChange }: ItemDet
               </div>
             )}
           </div>
+
+          {isEntry && (
+            <div className="flex items-center justify-between gap-2 px-6 py-3 border-t flex-shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                data-testid="entry-discard"
+                disabled={entryBusy}
+                onClick={() => setShowDiscardConfirm(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t('entry.discard')}
+              </Button>
+              <Button
+                type="button"
+                data-testid="entry-save"
+                disabled={entryBusy}
+                onClick={handleEntrySave}
+              >
+                {entryBusy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {tc('save')}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
+
+      {/* entry：放弃这件 */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('entry.discardConfirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('entry.discardConfirm.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              data-testid="entry-discard-confirm"
+              disabled={entryBusy}
+              onClick={handleEntryDelete}
+            >
+              {entryBusy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {t('entry.discard')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* entry：直接关窗时三选 */}
+      <AlertDialog open={showCloseChoice} onOpenChange={setShowCloseChoice}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('entry.closeConfirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('entry.closeConfirm.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="entry-close-cancel">
+              {t('entry.closeConfirm.continue')}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              data-testid="entry-close-delete"
+              disabled={entryBusy}
+              onClick={handleEntryDelete}
+            >
+              {t('entry.closeConfirm.delete')}
+            </Button>
+            <Button
+              type="button"
+              data-testid="entry-close-keep"
+              disabled={entryBusy}
+              onClick={() => {
+                setShowCloseChoice(false);
+                onOpenChange(false);
+              }}
+            >
+              {t('entry.closeConfirm.keep')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>

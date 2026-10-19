@@ -39,6 +39,8 @@ export interface ItemEditFormProps {
   isSaving: boolean;
   onSave: () => void;
   onCancel: () => void;
+  /** entry 模式由窗口底栏给保存/放弃，表单自己的按钮行不显示 */
+  hideActions?: boolean;
 }
 
 export function ItemEditForm({
@@ -58,6 +60,7 @@ export function ItemEditForm({
   isSaving,
   onSave,
   onCancel,
+  hideActions = false,
 }: ItemEditFormProps) {
   const t = useTranslations('wardrobe.itemDetail');
   const tc = useTranslations('common');
@@ -291,6 +294,7 @@ export function ItemEditForm({
           {t('view.washIntervalHint')}
         </p>
       </div>
+      {!hideActions && (
       <div className="flex gap-2 pt-2">
         <Button
           variant="outline"
@@ -310,6 +314,7 @@ export function ItemEditForm({
           {tc('save')}
         </Button>
       </div>
+      )}
     </div>
   );
 }

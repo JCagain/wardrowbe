@@ -27,7 +27,10 @@
       "uploadButton": "Upload {count, plural, one {# Item} other {# Items}}",
       "uploadError": "Failed to upload items. Please try again.",
       "uploadMore": "Upload More",
-      "uploadingCount": "{count, plural, one {Uploading # item...} other {Uploading # items...}}"
+      "uploadingCount": "{count, plural, one {Uploading # item...} other {Uploading # items...}}",
+      "runAi": "AI process this batch",
+      "aiQueued": "{count, plural, one {# item queued for AI processing} other {# items queued for AI processing}}",
+      "aiQueueError": "Failed to start AI processing for this batch"
     },
     "bulkUpload": "Bulk Upload",
     "dropzone": "Drag & drop an image, or tap to select",
@@ -60,7 +63,13 @@
     "tempRange": "Temperature",
     "title": "Add Items",
     "typeLabel": "Type (AI will detect if empty)",
-    "uploading": "Uploading..."
+    "uploading": "Uploading...",
+    "entry": {
+      "runAi": "AI process",
+      "skipAi": "Skip AI, fill in directly",
+      "createError": "Failed to create the item. Please try again.",
+      "pipelineEnqueueError": "Item created, but AI processing could not be started — you can run each step in the item window."
+    }
   },
   "ai": {
     "analysisFailed": "Analysis Failed",
@@ -286,6 +295,35 @@
       "times": "{count}×",
       "retired": "Retired",
       "loadError": "Failed to load companions"
+    },
+    "entry": {
+      "status": {
+        "calibrating": "Calibrating color…",
+        "cutting": "Cutting out…",
+        "tagging": "Tagging… {seconds}s",
+        "failedImage": "AI processing failed at calibration / cutout",
+        "failedTag": "AI processing failed at tagging",
+        "notTagged": "Tagging has not run",
+        "done": "AI processing done"
+      },
+      "waiting": "Waiting for AI results…",
+      "fillNow": "Don't wait, fill in now",
+      "overwrite": "AI results updated — overwrite the form with them",
+      "discard": "Discard this item",
+      "saved": "Item saved",
+      "discarded": "Item discarded",
+      "cancelError": "Could not stop AI processing, so the form was not saved. Please try again.",
+      "discardConfirm": {
+        "title": "Discard this item?",
+        "description": "The item and its photo will be deleted."
+      },
+      "closeConfirm": {
+        "title": "Close the entry window?",
+        "description": "The form has not been saved.",
+        "keep": "Keep in wardrobe",
+        "delete": "Delete this item",
+        "continue": "Continue editing"
+      }
     }
   },
   "lightbox": {

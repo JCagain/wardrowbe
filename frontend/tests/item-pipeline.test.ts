@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pipelineStage } from '@/lib/item-pipeline';
+import { entryFormSync, pipelineStage } from '@/lib/item-pipeline';
 
 type In = Parameters<typeof pipelineStage>[0];
 const base: In = {
@@ -52,5 +52,51 @@ describe('pipelineStage', () => {
     expect(s({ status: 'processing', processing_kind: 'rotate' })).toBe('idle');
     expect(s({ status: 'error', processing_kind: 'background_removal' })).toBe('failed-image');
     expect(s({ status: 'error', processing_kind: 'rotate' })).toBe('failed-image');
+  });
+});
+
+describe('entryFormSync', () => {
+  type A = Parameters<typeof entryFormSync>[0];
+  const a: A = {
+    initialized: false,
+    dirty: false,
+    stage: 'idle',
+    taggingStatus: 'pending',
+    justFinishedTagging: false,
+  };
+  const f = (o: Partial<A>) => entryFormSync({ ...a, ...o });
+
+  it('waits while a running stage has not produced results yet', () => {
+    for (const stage of ['calibrating', 'cutting', 'tagging'] as const) {
+      expect(f({ stage })).toBe('wait');
+    }
+  });
+  it('initializes once idle or failed when not yet initialized', () => {
+    for (const stage of ['idle', 'failed-image', 'failed-tag'] as const) {
+      expect(f({ stage })).toBe('init');
+    }
+  });
+  it('re-initializes a clean form when tagging just finished', () => {
+    expect(
+      f({ initialized: true, stage: 'idle', taggingStatus: 'tagged', justFinishedTagging: true }),
+    ).toBe('init');
+  });
+  it('offers to overwrite a dirty form when tagging just finished', () => {
+    expect(
+      f({
+        initialized: true,
+        dirty: true,
+        stage: 'idle',
+        taggingStatus: 'tagged',
+        justFinishedTagging: true,
+      }),
+    ).toBe('offer-overwrite');
+  });
+  it('keeps the form otherwise', () => {
+    expect(f({ initialized: true, stage: 'tagging' })).toBe('keep');
+    expect(f({ initialized: true, dirty: true, stage: 'idle', taggingStatus: 'tagged' })).toBe('keep');
+    expect(
+      f({ initialized: true, stage: 'idle', taggingStatus: 'pending', justFinishedTagging: true }),
+    ).toBe('keep');
   });
 });

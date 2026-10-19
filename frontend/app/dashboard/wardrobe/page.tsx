@@ -352,6 +352,8 @@ export default function WardrobePage() {
     excludedIds: new Set(),
   });
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  // AI 先录入：新建物品后详情窗口以 entry 模式打开
+  const [entryMode, setEntryMode] = useState(false);
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   const [vocabFilters, setVocabFilters] = useState<VocabFilterState>(() => readVocabFilters(searchParams));
   const [sortIndex, setSortIndex] = useState(() => {
@@ -977,7 +979,14 @@ export default function WardrobePage() {
         onPageChange={handlePageChange}
       />
 
-      <AddItemDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
+      <AddItemDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onCreated={(id) => {
+          setEntryMode(true);
+          setDetailItemId(id);
+        }}
+      />
       <AnalysisQueuePanel
         open={queuePanelOpen}
         onOpenChange={setQueuePanelOpen}
@@ -987,10 +996,13 @@ export default function WardrobePage() {
       />
       <ItemDetailDialog
         item={detailItem}
+        itemId={detailItemId}
+        mode={entryMode ? 'entry' : 'view'}
         open={!!detailItemId}
         onOpenChange={(open) => {
           if (!open) {
             setDetailItemId(null);
+            setEntryMode(false);
             // Clear only the ?item= param, keep filters/page/sort intact
             if (searchParams.has('item')) {
               const params = new URLSearchParams(searchParams.toString());

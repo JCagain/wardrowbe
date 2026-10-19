@@ -27,7 +27,10 @@
       "uploadButton": "{count, plural, one {上传 # 件单品} other {上传 # 件单品}}",
       "uploadError": "上传单品失败，请重试。",
       "uploadMore": "继续上传",
-      "uploadingCount": "{count, plural, one {正在上传 # 件单品...} other {正在上传 # 件单品...}}"
+      "uploadingCount": "{count, plural, one {正在上传 # 件单品...} other {正在上传 # 件单品...}}",
+      "runAi": "AI 处理这批",
+      "aiQueued": "{count, plural, one {# 件单品已加入 AI 处理队列} other {# 件单品已加入 AI 处理队列}}",
+      "aiQueueError": "这批单品的 AI 处理启动失败"
     },
     "bulkUpload": "批量上传",
     "dropzone": "拖放图片，或点击选择",
@@ -60,7 +63,13 @@
     "tempRange": "温度",
     "title": "添加单品",
     "typeLabel": "类型（留空则由 AI 检测）",
-    "uploading": "上传中..."
+    "uploading": "上传中...",
+    "entry": {
+      "runAi": "AI 处理",
+      "skipAi": "跳过 AI，直接填写",
+      "createError": "创建单品失败，请重试。",
+      "pipelineEnqueueError": "物品已建，可在窗口内逐步处理"
+    }
   },
   "ai": {
     "analysisFailed": "分析失败",
@@ -286,6 +295,35 @@
       "times": "{count} 次",
       "retired": "已退役",
       "loadError": "加载常搭失败"
+    },
+    "entry": {
+      "status": {
+        "calibrating": "正在校色…",
+        "cutting": "正在抠图…",
+        "tagging": "正在打标… {seconds} 秒",
+        "failedImage": "AI 处理失败：校色 / 抠图",
+        "failedTag": "AI 处理失败：打标",
+        "notTagged": "打标未进行",
+        "done": "AI 处理完成"
+      },
+      "waiting": "正在等待 AI 结果…",
+      "fillNow": "不等了，直接填",
+      "overwrite": "AI 结果已更新，用它覆盖表单",
+      "discard": "放弃这件",
+      "saved": "单品已保存",
+      "discarded": "已放弃这件单品",
+      "cancelError": "无法停止 AI 处理，表单未保存，请重试。",
+      "discardConfirm": {
+        "title": "放弃这件单品？",
+        "description": "单品及其照片将被删除。"
+      },
+      "closeConfirm": {
+        "title": "关闭录入窗口？",
+        "description": "表单尚未保存。",
+        "keep": "保留在衣橱",
+        "delete": "删除这件",
+        "continue": "继续编辑"
+      }
     }
   },
   "lightbox": {

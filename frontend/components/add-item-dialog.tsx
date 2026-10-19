@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,26 +27,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useCreateItem, useBulkCreateItems, BulkUploadResponse } from '@/lib/hooks/use-items';
 import {
-  useBodyParts,
-  useClothingColors,
-  useClothingTypes,
-  useStyles,
-} from '@/lib/hooks/use-translated-constants';
-import { useVocabManagement } from '@/lib/hooks/use-vocabulary';
-import { VocabAddDialog } from '@/components/vocab/vocab-add-dialog';
-import { StyleMultiSelect } from '@/components/vocab/style-multi-select';
-import type { ColorEntry, TypeEntry } from '@/lib/types';
-import { entryYearMonth, normalizePurchaseDate } from '@/lib/purchase-date';
-import { PartTypeSelect } from '@/components/vocab/part-type-select';
-import { ColorMultiSelect } from '@/components/vocab/color-multi-select';
+  useCreateItem,
+  useBulkCreateItems,
+  useBulkPipeline,
+  useRunPipeline,
+  BulkUploadResponse,
+} from '@/lib/hooks/use-items';
 import { useTranslations } from 'next-intl';
-import { ImagePipelineSteps } from '@/components/image-pipeline-steps';
 
 interface AddItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** AI 先录入（Task 6）：物品已建好，交给宽窗口 entry 模式；runAi = 管线是否已入队 */
+  onCreated?: (itemId: string, runAi: boolean) => void;
 }
 
 interface FileWithPreview {
@@ -56,31 +49,12 @@ interface FileWithPreview {
   id: string;
 }
 
-export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
+export function AddItemDialog({ open, onOpenChange, onCreated }: AddItemDialogProps) {
   const t = useTranslations('wardrobe.addItem');
   const tc = useTranslations('common');
-  const bodyParts = useBodyParts();
-  const typeEntries = useClothingTypes();
-  const colorOptions = useClothingColors();
-  const styleOptions = useStyles();
-  const vocab = useVocabManagement();
-  // Single upload state
+  // Single upload state：只选图——表单在 entry 窗口里填（AI 先录入）
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [type, setType] = useState('');
-  const [bodyPart, setBodyPart] = useState('');
-  const [name, setName] = useState('');
-  const [brand, setBrand] = useState('');
-  const [primaryColors, setPrimaryColors] = useState<string[]>([]);
-  const [secondaryColors, setSecondaryColors] = useState<string[]>([]);
-  const [style, setStyle] = useState<string[]>([]);
-  const [tempLow, setTempLow] = useState('');
-  const [tempHigh, setTempHigh] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(() => entryYearMonth());
-  const [purchasePrice, setPurchasePrice] = useState('');
-  const [lifecycle, setLifecycle] = useState<'active' | 'idle' | 'retired'>('active');
-  const [archiveReason, setArchiveReason] = useState('');
-  const [notes, setNotes] = useState('');
 
   // Bulk upload state
   const [bulkFiles, setBulkFiles] = useState<FileWithPreview[]>([]);
@@ -93,7 +67,10 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
   const blobUrlsRef = useRef<Set<string>>(new Set());
 
   const createItem = useCreateItem();
+  const runPipeline = useRunPipeline();
   const bulkCreateItems = useBulkCreateItems();
+  const bulkPipeline = useBulkPipeline();
+  const [bulkAiQueued, setBulkAiQueued] = useState(false);
 
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
@@ -147,46 +124,47 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     multiple: true,
   });
 
-  const handleSingleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  // AI 先录入：只带 image 建物品 →（可选）入队管线 → 交给 entry 窗口
+  const handleSingleCreate = async (runAi: boolean) => {
     if (!file) return;
-
-    let normalizedPurchaseDate = '';
-    try {
-      normalizedPurchaseDate = normalizePurchaseDate(purchaseDate);
-    } catch {
-      toast.error(t('invalidPurchaseDate'));
-      return;
-    }
 
     const formData = new FormData();
     formData.append('image', file);
-    // Type is optional - AI will detect if not provided
-    if (type) formData.append('type', type);
-    if (bodyPart) formData.append('body_part', bodyPart);
-    if (name) formData.append('name', name);
-    if (brand) formData.append('brand', brand);
-    // Arrays travel comma-separated, matching the endpoint's existing form convention.
-    if (primaryColors.length) formData.append('primary_colors', primaryColors.join(','));
-    if (secondaryColors.length) formData.append('secondary_colors', secondaryColors.join(','));
-    if (style.length) formData.append('style', style.join(','));
-    if (tempLow !== '') formData.append('temp_low', tempLow);
-    if (tempHigh !== '') formData.append('temp_high', tempHigh);
-    if (normalizedPurchaseDate) formData.append('purchase_date', normalizedPurchaseDate);
-    if (purchasePrice !== '') formData.append('purchase_price', purchasePrice);
-    // lifecycle is the authority (spec §5); the boolean travels as the
-    // retired compat view so both faces of the status agree on arrival.
-    formData.append('lifecycle', lifecycle);
-    formData.append('is_archived', String(lifecycle === 'retired'));
-    if (lifecycle === 'retired' && archiveReason.trim()) formData.append('archive_reason', archiveReason.trim());
-    if (notes) formData.append('notes', notes);
 
+    let itemId: string;
     try {
-      await createItem.mutateAsync(formData);
-      handleClose();
+      const created = await createItem.mutateAsync(formData);
+      itemId = created.id;
     } catch (error) {
       console.error('Failed to create item:', error);
+      toast.error(t('entry.createError'));
+      return;
+    }
+
+    let queued = false;
+    if (runAi) {
+      try {
+        await runPipeline.mutateAsync({ id: itemId });
+        queued = true;
+      } catch (error) {
+        console.error('Failed to enqueue pipeline:', error);
+        toast.warning(t('entry.pipelineEnqueueError'));
+      }
+    }
+
+    onCreated?.(itemId, queued);
+    handleClose();
+  };
+
+  const handleBulkRunAi = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const result = await bulkPipeline.mutateAsync({ item_ids: ids });
+      setBulkAiQueued(true);
+      toast.success(t('bulk.aiQueued', { count: result.queued }));
+    } catch (error) {
+      console.error('Failed to enqueue bulk pipeline:', error);
+      toast.error(t('bulk.aiQueueError'));
     }
   };
 
@@ -227,6 +205,11 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     }
   };
 
+  // 本次直传成功的物品（BulkUploadResult.item 带 id）——「AI 处理这批」的对象
+  const bulkSuccessIds = (bulkResult?.results ?? [])
+    .filter((r) => r.success && r.item)
+    .map((r) => r.item!.id);
+
   // Check if there are unsaved files that would be lost on close
   const hasUnsavedFiles = (file !== null) || (bulkFiles.length > 0 && !bulkResult);
 
@@ -243,20 +226,6 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     // Single upload cleanup
     setFile(null);
     setPreview(null);
-    setType('');
-    setBodyPart('');
-    setName('');
-    setBrand('');
-    setPrimaryColors([]);
-    setSecondaryColors([]);
-    setStyle([]);
-    setTempLow('');
-    setTempHigh('');
-    setPurchaseDate(entryYearMonth());
-    setPurchasePrice('');
-    setLifecycle('active');
-    setArchiveReason('');
-    setNotes('');
 
     // Bulk upload cleanup - also clean up from the ref
     bulkFiles.forEach((f) => {
@@ -265,6 +234,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     });
     setBulkFiles([]);
     setBulkResult(null);
+    setBulkAiQueued(false);
     setSkipAi(false);
     setActiveTab('single');
     setShowCloseConfirm(false);
@@ -295,13 +265,14 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
     });
     setBulkFiles([]);
     setBulkResult(null);
+    setBulkAiQueued(false);
     setSkipAi(false);
   };
 
   return (
     <>
     <Dialog open={open} onOpenChange={handleCloseRequest}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
@@ -317,7 +288,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
 
           {/* Single Item Upload */}
           <TabsContent value="single" className="space-y-4 overflow-y-auto min-h-0">
-            <form onSubmit={handleSingleSubmit} className="space-y-4">
+            <div className="space-y-4">
               {!preview ? (
                 <div
                   {...getSingleRootProps()}
@@ -343,7 +314,7 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   <img
                     src={preview}
                     alt={t('previewAlt')}
-                    className="w-full h-48 object-cover rounded-lg"
+                    className="w-full h-80 object-contain bg-muted rounded-lg"
                   />
                   <Button
                     type="button"
@@ -357,192 +328,36 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                 </div>
               )}
 
-              {/* R39 / Ruling 42：录入页只挂步骤条做「上传后的下一步」指引。此时还没有
-                  item，校色/抠图/打标都得在详情页进行——只显示状态，不给可点的按钮。 */}
-              {preview && (
-                <ImagePipelineSteps
-                  interactive={false}
-                  calibration="none"
-                  hasMask={false}
-                  tagged={false}
-                />
-              )}
-
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>{t('typeLabel')}</Label>
-                  <PartTypeSelect
-                    parts={bodyParts}
-                    entries={typeEntries}
-                    bodyPart={bodyPart}
-                    type={type}
-                    onBodyPartChange={setBodyPart}
-                    onTypeChange={setType}
-                    entryHandlers={vocab.handlersFor('types')}
-                    onAddEntry={() => vocab.openAdd('types')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="name">{t('namePlaceholder')}</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={t('nameInputPlaceholder')}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="brand">{t('brandPlaceholder')}</Label>
-                    <Input
-                      id="brand"
-                      value={brand}
-                      onChange={(e) => setBrand(e.target.value)}
-                      placeholder={t('brandInputPlaceholder')}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="purchase-price">{t('purchasePrice')}</Label>
-                    <Input
-                      id="purchase-price"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={purchasePrice}
-                      onChange={(e) => setPurchasePrice(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t('primaryColors')}</Label>
-                  <ColorMultiSelect
-                    values={primaryColors}
-                    options={colorOptions}
-                    onChange={setPrimaryColors}
-                    entryHandlers={vocab.handlersFor('colors')}
-                    onAddEntry={() => vocab.openAdd('colors')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t('secondaryColors')}</Label>
-                  <ColorMultiSelect
-                    values={secondaryColors}
-                    options={colorOptions}
-                    onChange={setSecondaryColors}
-                    entryHandlers={vocab.handlersFor('colors')}
-                    onAddEntry={() => vocab.openAdd('colors')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t('style')}</Label>
-                  <StyleMultiSelect
-                    values={style}
-                    options={styleOptions}
-                    onChange={setStyle}
-                    entryHandlers={vocab.handlersFor('styles')}
-                    onAddEntry={() => vocab.openAdd('styles')}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="temp-low">{t('tempLow')}</Label>
-                    <Input
-                      id="temp-low"
-                      type="number"
-                      value={tempLow}
-                      onChange={(e) => setTempLow(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="temp-high">{t('tempHigh')}</Label>
-                    <Input
-                      id="temp-high"
-                      type="number"
-                      value={tempHigh}
-                      onChange={(e) => setTempHigh(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="purchase-date">{t('purchaseDate')}</Label>
-                  <Input
-                    id="purchase-date"
-                    value={purchaseDate}
-                    onChange={(e) => setPurchaseDate(e.target.value)}
-                    placeholder={t('purchaseDatePlaceholder')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t('status')}</Label>
-                  <div className="flex gap-2">
-                    {([['active', t('statusActive')], ['idle', t('statusIdle')], ['retired', t('statusRetired')]] as const).map(
-                      ([value, label]) => (
-                        <Button
-                          key={value}
-                          type="button"
-                          size="sm"
-                          variant={lifecycle === value ? 'default' : 'outline'}
-                          aria-pressed={lifecycle === value}
-                          onClick={() => setLifecycle(value)}
-                        >
-                          {label}
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                </div>
-
-                {lifecycle === 'retired' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="archive-reason">{t('archiveReason')}</Label>
-                    <Input
-                      id="archive-reason"
-                      value={archiveReason}
-                      onChange={(e) => setArchiveReason(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">{t('notesPlaceholder')}</Label>
-                  <Input
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder={t('notesInputPlaceholder')}
-                  />
-                </div>
-              </div>
-
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={handleCloseRequest}>
                   {tc('cancel')}
                 </Button>
                 <Button
-                  type="submit"
-                  disabled={!file || createItem.isPending}
+                  type="button"
+                  variant="outline"
+                  data-testid="entry-skip-ai"
+                  disabled={!file || createItem.isPending || runPipeline.isPending}
+                  onClick={() => handleSingleCreate(false)}
                 >
-                  {createItem.isPending ? (
+                  {t('entry.skipAi')}
+                </Button>
+                <Button
+                  type="button"
+                  data-testid="entry-run-ai"
+                  disabled={!file || createItem.isPending || runPipeline.isPending}
+                  onClick={() => handleSingleCreate(true)}
+                >
+                  {createItem.isPending || runPipeline.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       {t('uploading')}
                     </>
                   ) : (
-                    t('submit')
+                    t('entry.runAi')
                   )}
                 </Button>
               </div>
-            </form>
+            </div>
           </TabsContent>
 
           {/* Bulk Upload */}
@@ -717,6 +532,17 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
                   <Button variant="outline" onClick={clearBulkFiles}>
                     {t('bulk.uploadMore')}
                   </Button>
+                  {bulkSuccessIds.length > 0 && (
+                    <Button
+                      variant="outline"
+                      data-testid="bulk-run-ai"
+                      disabled={bulkAiQueued || bulkPipeline.isPending}
+                      onClick={() => handleBulkRunAi(bulkSuccessIds)}
+                    >
+                      {bulkPipeline.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('bulk.runAi')}
+                    </Button>
+                  )}
                   <Button onClick={handleClose}>
                     {tc('done')}
                   </Button>
@@ -744,12 +570,6 @@ export function AddItemDialog({ open, onOpenChange }: AddItemDialogProps) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-      <VocabAddDialog
-        kind={vocab.addKind ?? 'styles'}
-        open={vocab.addKind !== null}
-        onOpenChange={vocab.closeAdd}
-        family={vocab.addKind === 'types' ? bodyPart || undefined : undefined}
-      />
     </>
   );
 }

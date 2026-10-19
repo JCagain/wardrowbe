@@ -21,7 +21,7 @@ vi.mock('@/lib/hooks/use-items', () => {
     'useUpdateItem', 'useDeleteItem', 'useReanalyzeItem', 'useRotateImage', 'useRemoveBackground',
     'useRestoreOriginal', 'useReplaceItemImage', 'useAddItemImage', 'useDeleteItemImage',
     'useSetPrimaryImage', 'useDetectCalibration', 'useApplyCalibration', 'useManualWhiteBalance',
-    'useResetCalibration',
+    'useResetCalibration', 'useCancelAnalysis',
   ];
   const out: Record<string, unknown> = {};
   for (const n of names) out[n] = mk(n);
