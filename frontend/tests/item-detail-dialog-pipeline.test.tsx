@@ -40,7 +40,9 @@ vi.mock('@/lib/hooks/use-translated-constants', () => ({
   useMaterialLabel: () => (v: string) => v,
   useSubtypeLabel: () => (v: string) => v,
 }));
-vi.mock('@/lib/hooks/use-vocabulary', () => ({ useVocabManagement: () => ({}) }));
+vi.mock('@/lib/hooks/use-vocabulary', () => ({
+  useVocabManagement: () => ({ handlersFor: () => ({}), openAdd: vi.fn(), closeAdd: vi.fn(), addKind: null }),
+}));
 vi.mock('@/lib/hooks/use-features', () => ({ useFeatures: () => ({ data: {} }) }));
 vi.mock('next/image', () => ({
   // eslint-disable-next-line @next/next/no-img-element
@@ -219,5 +221,34 @@ describe('ItemDetailDialog pipeline feedback', () => {
     fireEvent.click(screen.getByTitle('titles.rotateRight'));
 
     await waitFor(() => expect(screen.queryByTestId('box-apply')).toBeNull());
+  });
+
+  // final-findings #5：流水线步骤在跑时，主图会被 job 改写——旋转/换图/设主图一律禁用
+  it('disables rotate, replace and set-primary while a pipeline step runs', () => {
+    const running = {
+      ...ITEM,
+      mask_path: null,
+      calibration_state: 'done',
+      status: 'processing',
+      processing_kind: 'pipeline',
+      additional_images: [{ id: 'img-2', image_url: 'http://x/b.jpg', thumbnail_url: 'http://x/b.jpg' }],
+    } as unknown as Item;
+    renderDialog(running);
+    fireEvent.click(screen.getByTitle('actions.editItem'));
+    expect(screen.getByTitle('titles.rotateLeft')).toBeDisabled();
+    expect(screen.getByTitle('titles.rotateRight')).toBeDisabled();
+    expect(screen.getByTitle('titles.replaceImage')).toBeDisabled();
+    expect(screen.getByTitle('titles.setAsPrimary')).toBeDisabled();
+  });
+
+  it('keeps rotate, replace and set-primary enabled when idle', () => {
+    renderDialog({
+      ...ITEM,
+      additional_images: [{ id: 'img-2', image_url: 'http://x/b.jpg', thumbnail_url: 'http://x/b.jpg' }],
+    } as unknown as Item);
+    fireEvent.click(screen.getByTitle('actions.editItem'));
+    expect(screen.getByTitle('titles.rotateLeft')).not.toBeDisabled();
+    expect(screen.getByTitle('titles.replaceImage')).not.toBeDisabled();
+    expect(screen.getByTitle('titles.setAsPrimary')).not.toBeDisabled();
   });
 });

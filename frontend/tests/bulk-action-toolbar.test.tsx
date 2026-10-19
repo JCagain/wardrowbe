@@ -83,6 +83,7 @@ vi.mock('@/lib/hooks/use-items', async (importOriginal) => {
     useReanalyzeItem: idle,
     useCancelAnalysis: idle,
     useRemoveBackground: idle,
+    useRunPipeline: idle,
     useBulkDeleteItems: idle,
     useBulkReanalyzeItems: idle,
     useBulkCancelAnalysis: idle,

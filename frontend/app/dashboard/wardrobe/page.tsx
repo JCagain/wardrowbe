@@ -27,7 +27,7 @@ import { AddItemDialog } from '@/components/add-item-dialog';
 import { AnalysisQueuePanel } from '@/components/analysis-queue-panel';
 import { ItemDetailDialog } from '@/components/item-detail-dialog';
 import { BulkActionToolbar, BulkSelection } from '@/components/bulk-action-toolbar';
-import { useItems, useItem, useItemTypes, useReanalyzeItem, useCancelAnalysis, useBulkDeleteItems, useBulkReanalyzeItems, useBulkCancelAnalysis, useBulkRotateItems, useBulkRemoveBackgroundItems, useBulkPipeline, useRemoveBackground, useTaggingProgress, BulkOperationParams, tagProcessingLabel, formatAnalyzingElapsed, deriveQueueSummary } from '@/lib/hooks/use-items';
+import { useItems, useItem, useItemTypes, useReanalyzeItem, useCancelAnalysis, useBulkDeleteItems, useBulkReanalyzeItems, useBulkCancelAnalysis, useBulkRotateItems, useBulkRemoveBackgroundItems, useBulkPipeline, useRemoveBackground, useRunPipeline, useTaggingProgress, BulkOperationParams, tagProcessingLabel, formatAnalyzingElapsed, deriveQueueSummary } from '@/lib/hooks/use-items';
 import { useUserProfile } from '@/lib/hooks/use-user';
 import { Item } from '@/lib/types';
 import { useClothingColors, useSubtypeLabel } from '@/lib/hooks/use-translated-constants';
@@ -68,6 +68,7 @@ function ItemCard({
   onSelect,
   onRetry,
   onRetryBackgroundRemoval,
+  onRetryPipeline,
   onCancelAnalysis,
   onClick,
   onDismissError,
@@ -79,6 +80,7 @@ function ItemCard({
   onSelect: (id: string, checked: boolean) => void;
   onRetry?: (id: string) => void;
   onRetryBackgroundRemoval?: (id: string) => void;
+  onRetryPipeline?: (id: string) => void;
   onCancelAnalysis?: (id: string) => void;
   onClick?: () => void;
   onDismissError?: (id: string) => void;
@@ -94,9 +96,13 @@ function ItemCard({
   const isError = item.status === 'error' && !errorDismissed;
   const isBackgroundRemovalKind = item.processing_kind === 'background_removal';
   const isRotateKind = item.processing_kind === 'rotate';
-  // Neither rotation nor background removal touches AI tagging, so their
-  // failures must not be reported as an analysis failure or offer its retry.
-  const isImageOpKind = isBackgroundRemovalKind || isRotateKind;
+  // D8 pipeline: processing_kind stays 'pipeline' only while (or after failing)
+  // in its image steps; the tagging hand-off clears it.
+  const isPipelineKind = item.processing_kind === 'pipeline';
+  // Neither rotation, background removal nor the pipeline's image steps touch
+  // AI tagging, so their failures must not be reported as an analysis failure
+  // or offer its retry.
+  const isImageOpKind = isBackgroundRemovalKind || isRotateKind || isPipelineKind;
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -203,7 +209,9 @@ function ItemCard({
                 ? t('ai.backgroundRemovalFailed')
                 : isRotateKind
                   ? t('ai.rotateFailed')
-                  : t('ai.analysisFailed')}
+                  : isPipelineKind
+                    ? t('ai.pipelineFailed')
+                    : t('ai.analysisFailed')}
             </span>
             {!isImageOpKind && item.ai_error && (
               <span
@@ -223,7 +231,9 @@ function ItemCard({
                   ? undefined
                   : isBackgroundRemovalKind
                     ? onRetryBackgroundRemoval
-                    : onRetry;
+                    : isPipelineKind
+                      ? onRetryPipeline
+                      : onRetry;
                 if (!retry) return null;
                 return (
                   <Button
@@ -458,6 +468,7 @@ export default function WardrobePage() {
   const bulkRemoveBackground = useBulkRemoveBackgroundItems();
   const bulkPipeline = useBulkPipeline();
   const removeBackground = useRemoveBackground();
+  const runPipeline = useRunPipeline();
 
   const items = data?.items || [];
   const total = data?.total || 0;
@@ -479,6 +490,7 @@ export default function WardrobePage() {
       i.status === 'error' &&
       i.processing_kind !== 'background_removal' &&
       i.processing_kind !== 'rotate' &&
+      i.processing_kind !== 'pipeline' &&
       dismissedErrors.has(`${i.id}:${i.updated_at}`)
   ).length;
   const errorCount = Math.max(0, (taggingProgress?.failed ?? 0) - dismissedOnPage);
@@ -501,6 +513,11 @@ export default function WardrobePage() {
 
   const handleRetryBackgroundRemoval = (itemId: string) => {
     removeBackground.mutate({ id: itemId });
+  };
+
+  // Completed steps are skipped server-side, so this resumes at the failed step.
+  const handleRetryPipeline = (itemId: string) => {
+    runPipeline.mutate({ id: itemId });
   };
 
 
@@ -967,6 +984,7 @@ export default function WardrobePage() {
                 onSelect={handleSelect}
                 onRetry={handleRetry}
                 onRetryBackgroundRemoval={handleRetryBackgroundRemoval}
+                onRetryPipeline={handleRetryPipeline}
                 onCancelAnalysis={handleCancelAnalysis}
                 onClick={() => setDetailItemId(item.id)}
                 onDismissError={handleDismissError}

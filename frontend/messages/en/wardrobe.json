@@ -82,6 +82,7 @@
     "confident": "{percent}% confident",
     "dismiss": "Dismiss",
     "failedCount": "{count} failed",
+    "pipelineFailed": "AI processing failed",
     "queue": {
       "title": "AI analysis queue",
       "description": "What the analyzer is working on right now, and how the current batch is going.",

@@ -198,6 +198,8 @@ export function ItemDetailDialog({
   const [entryBusy, setEntryBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const stage: PipelineStage = item ? pipelineStage(item) : 'idle';
+  // 流水线步骤在跑：job 拥有主图三档，旋转/换图/设主图会被后端 409（final-findings #5）
+  const imageLocked = !!RUNNING_STEP[stage];
 
   // 按某次 AI 结果（或「不等了，直接填」）初始化表单；购买日期空则默认录入当月（fixes #22）
   const initEntryForm = (src: Item) => {
@@ -671,7 +673,7 @@ export function ItemDetailDialog({
                   variant="ghost"
                   size="icon"
                   onClick={() => handleRotate('ccw')}
-                  disabled={rotateImage.isPending}
+                  disabled={rotateImage.isPending || imageLocked}
                   title={t('titles.rotateLeft')}
                 >
                   {rotateImage.isPending ? (
@@ -684,7 +686,7 @@ export function ItemDetailDialog({
                   variant="ghost"
                   size="icon"
                   onClick={() => handleRotate('cw')}
-                  disabled={rotateImage.isPending}
+                  disabled={rotateImage.isPending || imageLocked}
                   title={t('titles.rotateRight')}
                 >
                   {rotateImage.isPending ? (
@@ -727,7 +729,7 @@ export function ItemDetailDialog({
                   variant="ghost"
                   size="icon"
                   onClick={() => replaceImageInputRef.current?.click()}
-                  disabled={replaceImage.isPending}
+                  disabled={replaceImage.isPending || imageLocked}
                   title={t('titles.replaceImage')}
                 >
                   {replaceImage.isPending ? (
@@ -874,8 +876,9 @@ export function ItemDetailDialog({
                       {isEditing && (
                         <div className="absolute -top-1 -right-1 flex gap-0.5">
                           <button
-                            className="bg-primary text-primary-foreground rounded-full p-0.5 hover:bg-primary/90"
+                            className="bg-primary text-primary-foreground rounded-full p-0.5 hover:bg-primary/90 disabled:opacity-50"
                             title={t('titles.setAsPrimary')}
+                            disabled={setPrimary.isPending || imageLocked}
                             onClick={() => {
                               setPrimary.mutate(
                                 { itemId: item.id, imageId: img.id },

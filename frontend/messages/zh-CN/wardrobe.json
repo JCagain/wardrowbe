@@ -82,6 +82,7 @@
     "confident": "{percent}% 置信度",
     "dismiss": "关闭",
     "failedCount": "{count} 件失败",
+    "pipelineFailed": "AI 处理失败",
     "queue": {
       "title": "AI analysis queue",
       "description": "What the analyzer is working on right now, and how the current batch is going.",
