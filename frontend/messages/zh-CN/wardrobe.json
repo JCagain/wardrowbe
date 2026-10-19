@@ -304,6 +304,7 @@
     "calibrateError": "参考卡检测失败",
     "cutout": "抠图",
     "editMask": "编辑遮罩",
+    "failed": "失败，点击重试",
     "grayCard": "灰卡",
     "kelvin": "色温",
     "manualWbError": "白平衡应用失败",
@@ -314,6 +315,7 @@
     "retagError": "无法启动打标",
     "retagQueued": "已加入打标队列",
     "retagDeferred": "AI 视觉未启用，未启动打标",
+    "running": "进行中…",
     "state": {
       "done": "已完成",
       "none": "未做",

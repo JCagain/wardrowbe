@@ -78,7 +78,9 @@ export interface Item {
   ai_error?: string | null;
   ai_unrecognized_type?: string | null;
   ai_started_at?: string | null;
-  processing_kind?: 'background_removal' | 'rotate' | null;
+  processing_kind?: 'background_removal' | 'rotate' | 'pipeline' | null;
+  // 校色状态（落库，Task 1）：none 未做 / done 已校 / skipped 无参照卡跳过
+  calibration_state: 'none' | 'done' | 'skipped';
   tagging_status: 'pending' | 'tagged';
   tagged_by?: 'auto' | 'manual' | null;
   tagged_at?: string | null;

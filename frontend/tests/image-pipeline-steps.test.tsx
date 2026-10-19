@@ -136,4 +136,19 @@ describe('ImagePipelineSteps', () => {
     expect(within(steps[1]).getByTestId('pipeline-cutout')).toBeInTheDocument();
     expect(within(steps[2]).getByTestId('pipeline-tag')).toBeInTheDocument();
   });
+
+  it('disables the running step and keeps the failed step clickable', () => {
+    const { rerender } = render(
+      <ImagePipelineSteps calibration="done" hasMask={false} tagged={false} running="cutout" {...handlers()} />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.getByTestId('pipeline-cutout')).toBeDisabled();
+
+    const h = handlers();
+    rerender(
+      <ImagePipelineSteps calibration="done" hasMask={false} tagged={false} failed="image" {...h} />,
+    );
+    expect(screen.getByTestId('pipeline-cutout')).toBeEnabled();
+    expect(screen.getByTestId('pipeline-calibrate')).toBeDisabled();
+  });
 });

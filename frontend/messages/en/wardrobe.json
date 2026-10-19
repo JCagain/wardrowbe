@@ -304,6 +304,7 @@
     "calibrateError": "Failed to detect the reference card",
     "cutout": "Cut out",
     "editMask": "Edit mask",
+    "failed": "Failed — click to retry",
     "grayCard": "Gray card",
     "kelvin": "Color temperature",
     "manualWbError": "Failed to apply white balance",
@@ -314,6 +315,7 @@
     "retagError": "Failed to start tagging",
     "retagQueued": "Tagging queued",
     "retagDeferred": "AI vision is disabled, so tagging was not started",
+    "running": "Running…",
     "state": {
       "done": "Done",
       "none": "Not yet",

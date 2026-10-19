@@ -80,7 +80,7 @@ export function useTaggingProgress() {
   });
 }
 
-export function useItem(itemId: string) {
+export function useItem(itemId: string, opts?: { poll?: boolean }) {
   const { status } = useSession();
   useSetTokenIfAvailable();
 
@@ -88,6 +88,10 @@ export function useItem(itemId: string) {
     queryKey: ['item', itemId],
     queryFn: () => api.get<Item>(`/items/${itemId}`),
     enabled: !!itemId && status !== 'loading',
+    // poll 且仍在处理中才轮询，处理完自动停
+    refetchInterval: opts?.poll
+      ? (query) => ((query.state.data as Item | undefined)?.status === 'processing' ? 2000 : false)
+      : undefined,
   });
 }
 
@@ -1433,4 +1437,54 @@ export function useBulkCreateItems() {
     ...mutation,
     uploadProgress,
   };
+}
+
+export interface BulkPipelineResponse extends BulkBatchResponse {
+  queued: number;
+  failed: number;
+  skipped: number;
+}
+
+export function useRunPipeline() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async ({ id, forceTag = false }: { id: string; forceTag?: boolean }) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return api.post<{ status: string; job_id: string }>(`/items/${id}/pipeline`, {
+        force_tag: forceTag,
+      });
+    },
+    onSettled: (_data, _err, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['tagging-progress'] });
+    },
+  });
+}
+
+export function useBulkPipeline() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (params: BulkOperationParams) => {
+      if (session?.accessToken) {
+        setAccessToken(session.accessToken as string);
+      }
+      return drainBulkAction<BulkPipelineResponse>('/items/bulk/pipeline', params, [
+        'queued',
+        'failed',
+        'skipped',
+      ]);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['item'] });
+      queryClient.invalidateQueries({ queryKey: ['tagging-progress'] });
+    },
+  });
 }
