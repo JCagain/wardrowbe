@@ -26,6 +26,14 @@ describe('pipelineStage', () => {
       s({ status: 'processing', processing_kind: 'pipeline', calibration_state: 'skipped' }),
     ).toBe('cutting');
   });
+  // T4a：pipeline 在跑、已校色/跳过且已有 mask → 只剩打标段
+  it('tagging: pipeline job, calibrated or skipped, mask present (T4a)', () => {
+    for (const calibration_state of ['done', 'skipped'] as const) {
+      expect(
+        s({ status: 'processing', processing_kind: 'pipeline', calibration_state, mask_path: 'm.png' }),
+      ).toBe('tagging');
+    }
+  });
   it('tagging: processing without a kind', () => {
     expect(s({ status: 'processing' })).toBe('tagging');
   });
