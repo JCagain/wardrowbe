@@ -63,7 +63,7 @@
 | **Ruling 28** | mask 与图像尺寸不一致即报错（400），不静默缩放——没有合法路径会造成不一致。 |
 | **Ruling 38** | 校色状态是**会话态**，不落库。刷新后步骤条显示「未校色」；重置随时可用，不影响正确性。将来若加列，只改详情页初始化处。 |
 | **抠图前备份** | `_orig.jpg` 是**当前抠图**的来源像素：抠图时首次生成；旋转时同步旋转；重新校色或还原原图时作废（删文件、`original_image_path` 置空）；画笔补抠与重抠都从它取 RGB（rembg 会把透明区 RGB 清零）。 |
-| **Ruling 42**（录入页步骤条） | 录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
+| **Ruling 42**（录入页步骤条） | **已被 Ruling 104 取代**。原文：录入页还没有物品，步骤条只作指引：`interactive={false}`，状态 span，无操作按钮。 |
 | **Ruling 45** | 单张与批量上传两条路径都不再自动入队 `tag_item_image`（含批量只为自动打标而建的 redis 池）；`skip_ai` 入参保留但不起作用（D2 兼容）。 |
 | **Ruling 46** | 上传后 `mark_pending(set_ready=True)`：status=ready、tagging_status=pending（`set_ready=False` 会让物品卡在 processing）。 |
 | **Ruling 47** | 白底合成图是临时产物：写系统临时目录、不进存储目录，`analysis_input()` 在 `finally` 里删除。 |
@@ -132,6 +132,9 @@
 | **Ruling 111**（批量上传与 AI 处理） | 批量上传正常走暂存队列，不在上传对话框提供「AI 处理这批」（该按钮只在直传兜底路径出现）；批量的正常路径 = 上传后在衣橱多选 → 工具条「AI 处理」。删掉了批量页签的 skip-AI 勾选与「会自动打标」提示，换成指向工具条的提示。理由：上传本就不自动打标（D2），旧提示误导；不改暂存队列行为。代价：批量录入多一步「多选 → AI 处理」。 |
 | **Ruling 112**（entry 状态行文案） | idle 且 tagging_status=pending 显示中性的「打标未进行」，不写「视觉未启用」。理由：跳过 AI 直接填写也是这个状态。代价：视觉确实未启用时提示不够具体。 |
 | **Ruling 113**（提前保存） | AI 结果到达前保存，表单用物品当前值；没有主色时被既有「主色必填」规则拦下。理由：主色必填是既有裁定。代价：想提前保存须先选主色；提前保存不带购买时间默认值。 |
+| **Ruling 114**（流水线取消 = 等线程、只落文件列） | 流水线 job 的图像步骤（补种 `_src`、自动校色、抠图）经 `item_pipeline._run_image_op` 跑：被取消（arq abort = `task.cancel()`，可能连发多次）时先吞下取消、等 `to_thread` 线程跑完；成功则先 rollback，再用一条按 `image_path` compare-and-set 的 UPDATE 只写文件列（三档、mask、`_orig`、`_src`，校色步另写 `calibration_state="done"`）并短事务提交，然后重新抛出取消；绝不写 status/processing_kind/ai_*。理由：线程不随取消停止，抠图会写 .png 并删旧 .jpg 三档，job 若直接退出则 DB 指向已删文件（录入窗口「直接填→保存」在抠图中触发）。代价：取消要等当前图像操作跑完才真正结束；期间主图被换掉则新文件成孤儿。 |
+| **Ruling 115**（自动校色不碰已有抠图） | `auto_calibrate`：`calibration_state == "none"` 且已有 `mask_path` 时直接返回 "none"，不检出、不改像素，状态留 "none"；抠图步本就有 mask 即跳过，所以流水线永不重抠已有抠图。理由：校色会作废抠图（含画笔修过的 mask），流水线不该替用户毁掉手工结果。代价：这类物品自动流水线不校色，需要时由用户手动校色（之后要重抠）。 |
+| **Ruling 116**（打标交接前回读） | 图像步骤结束、交接打标前回读 `status`/`processing_kind`；已不是 processing + pipeline（用户取消或保存时取消端点已翻回 ready）就收手：不入队打标、不改状态，job 返回 `cancelled`。理由：取消端点 abort 失败或超时也会翻状态，晚到的交接会把物品拉回 processing 并入队打标，覆盖用户刚保存的值。代价：每次交接多一次 SELECT。 |
 | **R39** | 管线 UI 的挂载与 mutation 归属：详情页挂步骤条、参考框编辑器、mask 画笔；录入页只挂步骤条。`onTag` 原调 `POST /items/{id}/retag`，**已被 Ruling 49 取代**（改调 `POST /items/{id}/analyze`）；`tagged` = `tagging_status === 'tagged'`。`mask_cleared` 为 true 时提示「请重新抠图」并重置本地 hasMask。 |
 | **R34** | `ItemResponse` 暴露 `mask_path`；`mask_cleared` 只留在校色响应上。 |
 | **R35**（参考框编辑器） | 画三个卡框、主框高亮；四角与边中点手柄可拖；灰卡/白纸基准切换；`onApply(box, baseline)` / `onManual()`；坐标为全分辨率图像像素，box 含右下。 |
@@ -181,6 +184,7 @@
 - **AI 建议的召回质量尚未用真实数据验证**：库里衣物不足；见下方「五、AI 建议实跑检查点」。
 - **手动「检测参考卡」检不出时步骤条显示「跳过」只是会话态**，不落库（流水线检不出才落 `skipped`）；刷新后回到 `none`。
 - **宽窗口两列高度用 `calc(92vh-9rem)`**，依赖头部高度；未经浏览器实测前视为待验。
+- **取消后立刻删除仍可能留孤儿文件**（Ruling 114）：取消端点不等 job 结束，「取消→删除」时在跑的图像线程照样写完新文件；物品已删，取消路径的 UPDATE 命中 0 行，这些文件成孤儿。只是磁盘泄漏，不影响数据一致性。
 
 ## 五、AI 建议实跑检查点
 
