@@ -29,6 +29,8 @@ from app.schemas.item import (
     BulkDeleteRequest,
     BulkDeleteResponse,
     BulkFilters,
+    BulkPipelineRequest,
+    BulkPipelineResponse,
     BulkRemoveBackgroundRequest,
     BulkRemoveBackgroundResponse,
     BulkRotateRequest,
@@ -44,6 +46,8 @@ from app.schemas.item import (
     ItemUpdate,
     LogWashRequest,
     LogWearRequest,
+    PipelineQueuedResponse,
+    PipelineRequest,
     RemoveBackgroundRequest,
     ReorderImagesRequest,
     TaggingProgressResponse,
@@ -978,6 +982,96 @@ async def bulk_remove_background_items(
     )
 
 
+@router.post("/bulk/pipeline", response_model=BulkPipelineResponse)
+async def bulk_pipeline_items(
+    request: BulkPipelineRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> BulkPipelineResponse:
+    item_service = ItemService(db)
+    queued = 0
+    failed = 0
+    errors: list[str] = []
+
+    item_ids, next_cursor, has_more = await _resolve_bulk_item_ids(
+        item_service, current_user.id, request, "pipeline"
+    )
+
+    candidates: list[ClothingItem] = []
+    for item_id in item_ids:
+        item = await item_service.get_by_id(item_id, current_user.id)
+        if not item:
+            errors.append(f"Item {item_id} not found or not owned by user")
+            failed += 1
+            continue
+        if not item.image_path:
+            errors.append(f"Item {item_id} has no image")
+            failed += 1
+            continue
+        candidates.append(item)
+
+    # 有活作业的跳过（同 bulk remove-background）：processing 但无 ai_job_id 的
+    # 是入队失败遗留，给新作业。
+    to_queue = [i for i in candidates if not (i.status == ItemStatus.processing and i.ai_job_id)]
+    skipped = len(candidates) - len(to_queue)
+    prev_status = {i.id: i.status for i in to_queue}
+
+    for item in to_queue:
+        item.status = ItemStatus.processing
+        item.processing_kind = "pipeline"
+        item.ai_started_at = None
+    await db.commit()
+
+    def _restore(item: ClothingItem) -> None:
+        item.status = prev_status[item.id]
+        item.processing_kind = None
+
+    redis = None
+    try:
+        redis = await create_pool(get_redis_settings())
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis for bulk pipeline: {e}")
+        for item in to_queue:
+            _restore(item)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to connect to job queue",
+        ) from None
+
+    try:
+        for item in to_queue:
+            try:
+                job = await redis.enqueue_job(
+                    "run_item_pipeline_job",
+                    str(item.id),
+                    False,
+                    _queue_name=IMAGE_QUEUE,
+                )
+                if job is None:
+                    raise RuntimeError("enqueue_job returned None")
+                item.ai_job_id = job.job_id
+                queued += 1
+            except Exception as e:
+                logger.error(f"Failed to queue pipeline for {item.id}: {e}")
+                errors.append(f"Failed to queue pipeline for item {item.id}")
+                _restore(item)
+                failed += 1
+        await db.commit()
+    finally:
+        if redis:
+            await redis.aclose()
+
+    return BulkPipelineResponse(
+        queued=queued,
+        failed=failed,
+        skipped=skipped,
+        errors=errors,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
 @router.get("/types")
 async def get_item_types(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1838,6 +1932,65 @@ async def remove_item_background(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to remove background",
         ) from None
+
+
+@router.post("/{item_id}/pipeline", response_model=PipelineQueuedResponse)
+async def queue_item_pipeline(
+    item_id: UUID,
+    request: PipelineRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> PipelineQueuedResponse:
+    item_service = ItemService(db)
+    item = await item_service.get_by_id(item_id, current_user.id)
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found",
+        )
+
+    if not item.image_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Item has no image",
+        )
+
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        return PipelineQueuedResponse(status="already_queued", job_id=item.ai_job_id)
+
+    restore_status = terminal_status(item.lifecycle, ItemStatus.ready)
+    item.status = ItemStatus.processing
+    item.processing_kind = "pipeline"
+    item.ai_started_at = None
+    await db.commit()
+
+    redis = None
+    try:
+        redis = await create_pool(get_redis_settings())
+        job = await redis.enqueue_job(
+            "run_item_pipeline_job",
+            str(item.id),
+            request.force_tag,
+            _queue_name=IMAGE_QUEUE,
+        )
+        if job is None:
+            raise RuntimeError("enqueue_job returned None")
+        item.ai_job_id = job.job_id
+        await db.commit()
+        return PipelineQueuedResponse(status="queued", job_id=job.job_id)
+    except Exception as e:
+        logger.error(f"Failed to queue pipeline for {item.id}: {e}")
+        item.status = restore_status
+        item.processing_kind = None
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to queue pipeline job",
+        ) from None
+    finally:
+        if redis:
+            await redis.aclose()
 
 
 @router.post("/{item_id}/restore-original", response_model=ItemResponse)

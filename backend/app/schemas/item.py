@@ -484,6 +484,28 @@ class BulkRemoveBackgroundResponse(BulkBatchResponse):
     errors: list[str] = Field(default_factory=list)
 
 
+class PipelineRequest(BaseModel):
+    force_tag: bool = Field(
+        default=False, description="Re-run tagging even when the item is already tagged"
+    )
+
+
+class PipelineQueuedResponse(BaseModel):
+    status: Literal["queued", "already_queued"]
+    job_id: str
+
+
+class BulkPipelineRequest(BulkSelectionRequest):
+    pass
+
+
+class BulkPipelineResponse(BulkBatchResponse):
+    queued: int
+    failed: int
+    skipped: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 class ItemImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
