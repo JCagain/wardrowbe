@@ -121,18 +121,42 @@ describe('ItemDetailDialog entry mode', () => {
     expect(order).toEqual(['cancel', 'update']);
   });
 
-  it('save on an idle item patches without cancelling', async () => {
-    const cancel = vi.fn();
-    const update = vi.fn().mockResolvedValue({});
-    setMut('useCancelAnalysis', cancel);
-    setMut('useUpdateItem', update);
+  // 轮询的 status 可能晚 ~2s：props 里是 ready，也照样先取消再 PATCH
+  it('save still cancels before patching when the polled status is stale (ready)', async () => {
+    const order: string[] = [];
+    setMut('useCancelAnalysis', vi.fn(async (id: string) => { order.push(`cancel:${id}`); return {}; }));
+    setMut('useUpdateItem', vi.fn(async () => { order.push('update'); return {}; }));
     const { onOpenChange } = renderEntry(ITEM);
 
     fireEvent.click(screen.getByTestId('entry-save'));
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-    expect(cancel).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['cancel:item-1', 'update']);
+  });
+
+  it('cancel failure aborts the save and says so (T6c)', async () => {
+    const update = vi.fn().mockResolvedValue({});
+    setMut('useCancelAnalysis', vi.fn().mockRejectedValue(new Error('redis down')));
+    setMut('useUpdateItem', update);
+    const { onOpenChange } = renderEntry(TAGGING);
+
+    fireEvent.click(screen.getByTestId('entry-save'));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('entry.cancelError'));
+    expect(update).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('patch failure toasts an error and keeps the window open', async () => {
+    setMut('useCancelAnalysis', vi.fn().mockResolvedValue({}));
+    setMut('useUpdateItem', vi.fn().mockRejectedValue(new Error('500')));
+    const { onOpenChange } = renderEntry(ITEM);
+
+    fireEvent.click(screen.getByTestId('entry-save'));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('entry.saveError'));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('entry-save')).not.toBeDisabled();
   });
 
   it('discard cancels then deletes', async () => {
@@ -146,6 +170,19 @@ describe('ItemDetailDialog entry mode', () => {
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(order).toEqual(['cancel', 'delete:item-1']);
+  });
+
+  it('discard still deletes when cancel throws (T6c)', async () => {
+    const del = vi.fn().mockResolvedValue(undefined);
+    setMut('useCancelAnalysis', vi.fn().mockRejectedValue(new Error('redis down')));
+    setMut('useDeleteItem', del);
+    const { onOpenChange } = renderEntry(TAGGING);
+
+    fireEvent.click(screen.getByTestId('entry-discard'));
+    fireEvent.click(await screen.findByTestId('entry-discard-confirm'));
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(del).toHaveBeenCalledWith('item-1');
   });
 
   it('closing asks keep/delete/cancel instead of closing', async () => {
@@ -169,16 +206,17 @@ describe('ItemDetailDialog entry mode', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('close-delete deletes the item', async () => {
-    const del = vi.fn().mockResolvedValue(undefined);
-    setMut('useDeleteItem', del);
+  it('close-delete cancels then deletes, even when the polled status is ready', async () => {
+    const order: string[] = [];
+    setMut('useCancelAnalysis', vi.fn(async () => { order.push('cancel'); return {}; }));
+    setMut('useDeleteItem', vi.fn(async (id: string) => { order.push(`delete:${id}`); }));
     const { onOpenChange } = renderEntry(ITEM);
 
     fireEvent.click(screen.getByTitle('close'));
     fireEvent.click(await screen.findByTestId('entry-close-delete'));
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-    expect(del).toHaveBeenCalledWith('item-1');
+    expect(order).toEqual(['cancel', 'delete:item-1']);
   });
 
   it('form waits while processing and offers fill-now', () => {

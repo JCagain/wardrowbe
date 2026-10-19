@@ -324,23 +324,24 @@ export function ItemDetailDialog({
       return true;
     } catch (error) {
       console.error('Failed to update item:', error);
+      // entry 模式保存失败要说出来（窗口不关）
+      if (isEntry) toast.error(t('entry.saveError'));
       return false;
     }
   };
 
-  // 保存：打标还在跑就先取消（防作业晚到覆盖用户值），再走 PATCH
+  // 保存：先取消在跑的作业（防作业晚到覆盖用户值），再走 PATCH。无条件调用——
+  // 轮询来的 item.status 可能晚 ~2s；后端对非 processing 物品是空操作。
   const handleEntrySave = async () => {
     if (entryBusy) return;
     setEntryBusy(true);
     try {
-      if (item.status === 'processing') {
-        try {
-          await cancelAnalysis.mutateAsync(item.id);
-        } catch (error) {
-          console.error('Failed to cancel analysis before saving:', error);
-          toast.error(t('entry.cancelError'));
-          return;
-        }
+      try {
+        await cancelAnalysis.mutateAsync(item.id);
+      } catch (error) {
+        console.error('Failed to cancel analysis before saving:', error);
+        toast.error(t('entry.cancelError'));
+        return;
       }
       if (await handleSave()) {
         toast.success(t('entry.saved'));
@@ -351,17 +352,15 @@ export function ItemDetailDialog({
     }
   };
 
-  // 放弃 / 关窗删除：在跑先取消（取消失败也照删——物品没了，迟到的作业落不了地），再删
+  // 放弃 / 关窗删除：先取消（同上无条件；取消失败也照删——物品没了，迟到的作业落不了地），再删
   const handleEntryDelete = async () => {
     if (entryBusy) return;
     setEntryBusy(true);
     try {
-      if (item.status === 'processing') {
-        try {
-          await cancelAnalysis.mutateAsync(item.id);
-        } catch (error) {
-          console.error('Failed to cancel analysis before deleting:', error);
-        }
+      try {
+        await cancelAnalysis.mutateAsync(item.id);
+      } catch (error) {
+        console.error('Failed to cancel analysis before deleting:', error);
       }
       await deleteItem.mutateAsync(item.id);
       setShowDiscardConfirm(false);

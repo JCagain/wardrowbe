@@ -17,20 +17,19 @@
         "singleImage": "1 image selected that will be lost if you close this dialog.",
         "title": "Discard selected images?"
       },
-      "hint": "All items will be auto-tagged by AI. You can edit details later.",
       "imageCount": "{count, plural, one {# image selected} other {# images selected}}",
       "partial": "{success} uploaded, {failed} failed",
       "queued": "{count, plural, one {# photo queued for upload} other {# photos queued for upload}}",
       "resultFailed": "{count, plural, one {# item failed} other {# items failed}}",
       "resultSuccess": "{success} of {total} uploaded successfully",
-      "skipAi": "Skip AI analysis (add with placeholder values, edit details later)",
       "uploadButton": "Upload {count, plural, one {# Item} other {# Items}}",
       "uploadError": "Failed to upload items. Please try again.",
       "uploadMore": "Upload More",
       "uploadingCount": "{count, plural, one {Uploading # item...} other {Uploading # items...}}",
       "runAi": "AI process this batch",
       "aiQueued": "{count, plural, one {# item queued for AI processing} other {# items queued for AI processing}}",
-      "aiQueueError": "Failed to start AI processing for this batch"
+      "aiQueueError": "Failed to start AI processing for this batch",
+      "aiHint": "Uploads are not AI-processed automatically. To AI-process them, select the items in your wardrobe and use the AI process button."
     },
     "bulkUpload": "Bulk Upload",
     "dropzone": "Drag & drop an image, or tap to select",
@@ -323,7 +322,8 @@
         "keep": "Keep in wardrobe",
         "delete": "Delete this item",
         "continue": "Continue editing"
-      }
+      },
+      "saveError": "Failed to save the item. Please try again."
     }
   },
   "lightbox": {

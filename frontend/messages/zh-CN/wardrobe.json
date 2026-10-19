@@ -17,20 +17,19 @@
         "singleImage": "已选择 1 张图片，关闭此对话框将会丢失。",
         "title": "放弃选中的图片？"
       },
-      "hint": "所有单品将由 AI 自动打标签，你可以稍后编辑详情。",
       "imageCount": "{count, plural, one {已选择 # 张图片} other {已选择 # 张图片}}",
       "partial": "{success} 件上传成功，{failed} 件失败",
       "queued": "{count, plural, one {# photo queued for upload} other {# photos queued for upload}}",
       "resultFailed": "{count, plural, one {# 件单品上传失败} other {# 件单品上传失败}}",
       "resultSuccess": "{total} 件中 {success} 件上传成功",
-      "skipAi": "跳过 AI 分析（使用占位值添加，稍后编辑详情）",
       "uploadButton": "{count, plural, one {上传 # 件单品} other {上传 # 件单品}}",
       "uploadError": "上传单品失败，请重试。",
       "uploadMore": "继续上传",
       "uploadingCount": "{count, plural, one {正在上传 # 件单品...} other {正在上传 # 件单品...}}",
       "runAi": "AI 处理这批",
       "aiQueued": "{count, plural, one {# 件单品已加入 AI 处理队列} other {# 件单品已加入 AI 处理队列}}",
-      "aiQueueError": "这批单品的 AI 处理启动失败"
+      "aiQueueError": "这批单品的 AI 处理启动失败",
+      "aiHint": "上传不会自动 AI 处理。如需处理，请在衣橱中选中这些单品，再点「AI 处理」按钮。"
     },
     "bulkUpload": "批量上传",
     "dropzone": "拖放图片，或点击选择",
@@ -323,7 +322,8 @@
         "keep": "保留在衣橱",
         "delete": "删除这件",
         "continue": "继续编辑"
-      }
+      },
+      "saveError": "保存单品失败，请重试。"
     }
   },
   "lightbox": {
