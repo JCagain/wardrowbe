@@ -162,14 +162,16 @@ class TestRemoveBackgroundEndpoint:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
+    # "pipeline"：D8 流水线在抠图步失败后，用户点红色抠图步单独重试（final-findings #2）
+    @pytest.mark.parametrize("kind", ["background_removal", "pipeline"])
     async def test_error_kind_item_recovers_to_ready(
-        self, client: AsyncClient, test_user, auth_headers, db_session: AsyncSession
+        self, client: AsyncClient, test_user, auth_headers, db_session: AsyncSession, kind
     ):
         item = await _make_item(
             db_session,
             test_user,
             status=ItemStatus.error,
-            processing_kind="background_removal",
+            processing_kind=kind,
         )
         item_id = item.id
 

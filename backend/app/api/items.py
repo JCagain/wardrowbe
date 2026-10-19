@@ -1100,6 +1100,10 @@ def _tagging_scope(user_id: UUID) -> tuple:
         # which every ordinary tagging item has, stays included.
         ClothingItem.processing_kind.is_distinct_from("background_removal"),
         ClothingItem.processing_kind.is_distinct_from("rotate"),
+        # D8 pipeline image steps (calibrate/cutout) and their failures. The
+        # tagging hand-off clears processing_kind, so the tagging phase of a
+        # pipeline run is still counted.
+        ClothingItem.processing_kind.is_distinct_from("pipeline"),
     )
 
 
@@ -1819,6 +1823,15 @@ async def rotate_item_image(
             detail="Item has no image",
         )
 
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # Same guard as remove-background / mask: a live job owns the size files;
+        # rotating under a running cutout would be overwritten and split the
+        # `_src` orientation from the working image.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
+        )
+
     try:
         image_service = ImageService()
         # to_thread because rotate_image is a blocking decode/resize/encode
@@ -1879,8 +1892,11 @@ async def remove_item_background(
             detail="Item has a background job in progress",
         )
 
-    recovering_from_error = (
-        item.status == ItemStatus.error and item.processing_kind == "background_removal"
+    # "pipeline": a D8 pipeline that failed on an image step is retried from the
+    # red cutout step; a successful single cutout clears that error too.
+    recovering_from_error = item.status == ItemStatus.error and item.processing_kind in (
+        "background_removal",
+        "pipeline",
     )
 
     try:
@@ -2076,6 +2092,14 @@ async def replace_item_image(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Item not found",
+        )
+
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # Same guard as remove-background / mask: a live job would finish by writing
+        # the OLD image's cutout/calibration over the new image's columns.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
         )
 
     image_service = ImageService()
@@ -2324,6 +2348,14 @@ async def set_primary_image(
             detail="Image not found",
         )
 
+    if item.status == ItemStatus.processing and item.ai_job_id:
+        # Same guard as remove-background / mask: a live job would write the old
+        # primary's results over the swapped-in image.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item has a background job in progress",
+        )
+
     # Swap paths: current primary -> additional, additional -> primary
     old_primary = {
         "image_path": item.image_path,
@@ -2345,6 +2377,9 @@ async def set_primary_image(
     item.calibration_original_path = None
     item.original_image_path = None
     item.mask_path = None
+    # The new primary was never calibrated: a stale "done" would make the
+    # pipeline skip auto-calibration and the UI show it as already done.
+    item.calibration_state = "none"
 
     await db.flush()
     # A bare refresh() expires additional_images, which then lazy-loads during

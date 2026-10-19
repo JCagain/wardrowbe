@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -5,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -179,6 +181,8 @@ async def test_already_done_steps_are_not_rerun(db_session, test_user, stubs):
     assert item.calibration_state == "done"
     assert item.status == ItemStatus.ready
     assert item.processing_kind is None
+    # final-findings #8：跳过打标回到 ready 时 ai_started_at 不能残留
+    assert item.ai_started_at is None
 
 
 async def test_force_tag_requeues_tagged_item(db_session, test_user, stubs):
@@ -227,6 +231,7 @@ async def test_vision_disabled_defers_tagging(db_session, test_user, stubs, monk
     assert item.status == ItemStatus.ready
     assert item.tagging_status == TaggingStatus.pending
     assert item.processing_kind is None
+    assert item.ai_started_at is None
 
 
 async def test_enqueue_failure_marks_tagging_error(db_session, test_user, stubs):
@@ -244,3 +249,176 @@ async def test_enqueue_failure_marks_tagging_error(db_session, test_user, stubs)
 async def test_missing_item_returns_error(db_session):
     out = await _run(db_session, SimpleNamespace(id=uuid4()), FakeRedis())
     assert out["status"] == "error"
+
+
+# ---- final-findings #6 / Ruling 115：已有抠图时自动校色不动像素 ----
+
+
+async def test_existing_cutout_is_kept_when_calibration_state_is_none(
+    db_session, test_user, stubs
+):
+    item = await _make_item(db_session, test_user, mask_path="kept_mask.png")
+    stubs.item = item
+    stubs.detect = ReferenceDetection(kind="gray", box=(1, 1, 5, 5), cards=None)
+    redis = FakeRedis()
+
+    out = await _run(db_session, item, redis)
+
+    item = await _reload(db_session, item.id)
+    assert out["status"] == "success"
+    assert stubs.detect_calls == []
+    assert stubs.calibrate == [] and stubs.cutout == []
+    assert item.mask_path == "kept_mask.png"
+    assert item.calibration_state == "none"
+    assert len(redis.calls) == 1
+
+
+# ---- final-findings #9/#10 / Ruling 116：hand-off 前回读 DB ----
+
+
+async def test_hand_off_bails_when_the_item_was_cancelled_meanwhile(
+    db_session, test_user, stubs, monkeypatch
+):
+    item = await _make_item(db_session, test_user, ai_job_id="job-live")
+    stubs.item = item
+    from app.workers import pipeline as pipeline_mod
+
+    original = pipeline_mod.ensure_cutout
+
+    async def cut_then_user_cancels(db, it):
+        done = await original(db, it)
+        # 模拟 cancel-analysis 端点在另一个会话里把物品翻回 ready；
+        # synchronize_session=False：job 手里的内存对象不会被顺手同步
+        await db.execute(
+            update(ClothingItem)
+            .where(ClothingItem.id == it.id)
+            .values(status=ItemStatus.ready, processing_kind=None, ai_job_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        return done
+
+    monkeypatch.setattr(pipeline_mod, "ensure_cutout", cut_then_user_cancels)
+    redis = FakeRedis()
+
+    out = await _run(db_session, item, redis)
+
+    item = await _reload(db_session, item.id)
+    assert out["tagging"] == "cancelled"
+    assert redis.calls == []
+    assert item.status == ItemStatus.ready
+    assert item.processing_kind is None
+    assert item.ai_job_id is None
+
+
+# ---- final-findings #1 / Ruling 114：取消时等图像线程跑完并落文件列 ----
+
+
+class _Gate:
+    """让线程里的图像操作卡在门口，直到测试放行。"""
+
+    def __init__(self):
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.finished = threading.Event()
+
+
+async def _cancel_while_blocked(db_session, item, gate, *, cancels: int):
+    ctx = {"redis": FakeRedis()}
+    with (
+        patch("app.workers.pipeline.get_db_session", return_value=db_session),
+        patch.object(db_session, "close", new_callable=AsyncMock),
+    ):
+        task = asyncio.create_task(run_item_pipeline_job(ctx, str(item.id)))
+        assert await asyncio.to_thread(gate.entered.wait, 5)
+        for _ in range(cancels):
+            task.cancel()
+            for _ in range(5):
+                await asyncio.sleep(0)
+        # 用户的取消端点：状态列翻回 ready（取消路径绝不能再写这些列）
+        await db_session.execute(
+            update(ClothingItem)
+            .where(ClothingItem.id == item.id)
+            .values(status=ItemStatus.ready, processing_kind=None, ai_job_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        await db_session.commit()
+        gate.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        # 旧实现里线程在 job 结束后仍在跑：等它真正写完再看盘
+        assert await asyncio.to_thread(gate.finished.wait, 5)
+        return ctx["redis"]
+
+
+@pytest.mark.parametrize("cancels", [1, 2])
+async def test_cancel_during_cutout_persists_the_files_the_thread_wrote(
+    db_session, test_user, monkeypatch, cancels
+):
+    item = await _make_item(
+        db_session, test_user, calibration_state="skipped", ai_job_id="job-live"
+    )
+    gate = _Gate()
+
+    class BlockingProvider:
+        def remove(self, image):
+            gate.entered.set()
+            gate.release.wait(5)
+            return image.convert("RGBA")
+
+    original = ImageService.remove_background
+
+    def tracked(self, image_path):
+        try:
+            return original(self, image_path)
+        finally:
+            gate.finished.set()
+
+    monkeypatch.setattr(
+        "app.services.background_removal.get_provider", lambda: BlockingProvider()
+    )
+    monkeypatch.setattr(ImageService, "remove_background", tracked)
+
+    redis = await _cancel_while_blocked(db_session, item, gate, cancels=cancels)
+
+    item = await _reload(db_session, item.id)
+    svc = ImageService()
+    for col in ("image_path", "medium_path", "thumbnail_path", "mask_path", "original_image_path"):
+        rel = getattr(item, col)
+        assert rel, col
+        assert svc.get_image_path(rel).exists(), f"{col} -> missing {rel}"
+    assert item.image_path.endswith(".png")
+    # 状态列归取消端点所有：取消路径只落文件列
+    assert item.status == ItemStatus.ready
+    assert item.processing_kind is None
+    assert item.ai_job_id is None
+    assert redis.calls == []
+
+
+async def test_cancel_during_auto_calibrate_persists_the_calibration(
+    db_session, test_user, stubs, monkeypatch
+):
+    item = await _make_item(db_session, test_user, ai_job_id="job-live")
+    stubs.item = item
+    stubs.detect = ReferenceDetection(kind="gray", box=(1, 1, 5, 5), cards=None)
+    gate = _Gate()
+
+    def blocking_calibrate(self, image_path, source, box, baseline):
+        gate.entered.set()
+        gate.release.wait(5)
+        try:
+            stubs.calibrate.append((image_path, source, box, baseline))
+            return _sizes(stubs.item)
+        finally:
+            gate.finished.set()
+
+    monkeypatch.setattr(ImageService, "calibrate_image", blocking_calibrate)
+
+    await _cancel_while_blocked(db_session, item, gate, cancels=2)
+
+    item = await _reload(db_session, item.id)
+    assert len(stubs.calibrate) == 1
+    assert item.calibration_state == "done"
+    assert item.calibration_original_path
+    assert stubs.cutout == []
+    assert item.status == ItemStatus.ready

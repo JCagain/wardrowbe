@@ -25,6 +25,7 @@ from app.services.image_service import ImageService
 from app.services.item_pipeline import ensure_calibration_source
 from app.services.item_service import ItemService
 from app.utils.auth import get_current_user
+from app.utils.item_lifecycle import terminal_status
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,12 @@ async def _persist_image_op(
     item.mask_path = None
     # 抠图前备份随抠图一起作废（服务层已删文件）：否则「还原原图」会把旧校色写回
     item.original_image_path = None
+    if item.status == ItemStatus.error and item.processing_kind == "pipeline":
+        # 流水线卡在图像步骤：手动校色成功即视为这一步已由用户补上，清掉错误
+        # （同 remove-background 的 recovering_from_error）。打标失败不在此列。
+        item.status = terminal_status(item.lifecycle, ItemStatus.ready)
+        item.processing_kind = None
+        item.ai_started_at = None
     await db.commit()
     # 只刷写过的列：整对象 refresh 会把 get_by_id 预载的 additional_images
     # 打回未加载，ItemResponse 序列化时懒加载就会炸 greenlet
@@ -130,6 +137,9 @@ async def _persist_image_op(
             "mask_path",
             "original_image_path",
             "calibration_state",
+            "status",
+            "processing_kind",
+            "ai_started_at",
             "updated_at",
         ],
     )
